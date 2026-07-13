@@ -33,6 +33,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.shape.RoundedCornerShape
 
 enum class TabItem(
@@ -124,6 +125,7 @@ class MainActivity : ComponentActivity() {
                 var downloadedFile by remember { mutableStateOf<java.io.File?>(null) }
                 var updateErrorMessage by remember { mutableStateOf<String?>(null) }
                 var showPermissionRequiredDialog by remember { mutableStateOf(false) }
+                var isUpdateDialogDismissed by remember { mutableStateOf(false) }
 
                 LaunchedEffect(isInChatScreen) {
                     viewmodel.isInChatScreen.value = isInChatScreen
@@ -419,89 +421,113 @@ class MainActivity : ComponentActivity() {
                                 .fillMaxSize()
                                 .padding(innerPadding)
                         ) {
-                            // Versi Update Banner Alert
+                            // Central Update Dialog Overlay
                             val updateState by viewmodel.appUpdateState.collectAsState()
-                            if (updateState != null) {
+                            if (updateState != null && !isUpdateDialogDismissed) {
                                 val u = updateState!!
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.errorContainer
-                                    ),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(14.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                    ) {
+                                AlertDialog(
+                                    onDismissRequest = {}, // Force explicit interaction (either Update or Skip)
+                                    icon = {
                                         Icon(
-                                            imageVector = Icons.Default.Info,
+                                            imageVector = Icons.Default.SystemUpdate,
                                             contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onErrorContainer
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(36.dp)
                                         )
-                                        Column(modifier = Modifier.weight(1f)) {
+                                    },
+                                    title = {
+                                        Text(
+                                            text = "Update Tersedia!",
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.titleLarge,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    },
+                                    text = {
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
                                             Text(
-                                                "Versi Baru ${u.version} Tersedia!",
+                                                text = "Versi baru SFRD V${u.version} telah tersedia di GitHub.",
                                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                                color = MaterialTheme.colorScheme.onErrorContainer
+                                                color = MaterialTheme.colorScheme.onSurface
                                             )
                                             if (u.changelog.isNotBlank()) {
-                                                Text(
-                                                    u.changelog,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
-                                                )
-                                            }
-                                        }
-                                        if (u.downloadUrl.isNotBlank()) {
-                                            val context = androidx.compose.ui.platform.LocalContext.current
-                                            Button(
-                                                onClick = {
-                                                    if (downloadedFile != null && downloadedFile!!.exists()) {
-                                                        val success = com.example.util.AppUpdateChecker.installApk(context, downloadedFile!!)
-                                                        if (!success) {
-                                                            showPermissionRequiredDialog = true
-                                                        }
-                                                    } else {
-                                                        downloadProgress = 0f
-                                                        updateErrorMessage = null
-                                                        com.example.util.AppUpdateChecker.downloadApk(
-                                                            context = context,
-                                                            url = u.downloadUrl,
-                                                            onProgress = { progress ->
-                                                                downloadProgress = progress
-                                                            },
-                                                            onSuccess = { file ->
-                                                                downloadProgress = null
-                                                                downloadedFile = file
-                                                                val success = com.example.util.AppUpdateChecker.installApk(context, file)
-                                                                if (!success) {
-                                                                    showPermissionRequiredDialog = true
-                                                                }
-                                                            },
-                                                            onFailure = { error ->
-                                                                downloadProgress = null
-                                                                updateErrorMessage = "Gagal mengunduh update: ${error.localizedMessage}"
-                                                            }
+                                                Card(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                                ) {
+                                                    Column(modifier = Modifier.padding(12.dp)) {
+                                                        Text(
+                                                            text = "Catatan Rilis:",
+                                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        Spacer(Modifier.height(4.dp))
+                                                        Text(
+                                                            text = u.changelog,
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                                         )
                                                     }
-                                                },
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = MaterialTheme.colorScheme.error,
-                                                    contentColor = Color.White
-                                                )
-                                            ) {
+                                                }
+                                            } else {
                                                 Text(
-                                                    text = if (downloadedFile != null && downloadedFile!!.exists()) "Instal" else "Download",
-                                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                                    text = "Silakan unduh untuk memperbarui fitur dan performa aplikasi.",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             }
                                         }
+                                    },
+                                    confirmButton = {
+                                        Button(
+                                            onClick = {
+                                                if (downloadedFile != null && downloadedFile!!.exists()) {
+                                                    val success = com.example.util.AppUpdateChecker.installApk(context, downloadedFile!!)
+                                                    if (!success) {
+                                                        showPermissionRequiredDialog = true
+                                                    }
+                                                } else {
+                                                    downloadProgress = 0f
+                                                    updateErrorMessage = null
+                                                    com.example.util.AppUpdateChecker.downloadApk(
+                                                        context = context,
+                                                        url = u.downloadUrl,
+                                                        onProgress = { progress ->
+                                                            downloadProgress = progress
+                                                        },
+                                                        onSuccess = { file ->
+                                                            downloadProgress = null
+                                                            downloadedFile = file
+                                                            val success = com.example.util.AppUpdateChecker.installApk(context, file)
+                                                            if (!success) {
+                                                                showPermissionRequiredDialog = true
+                                                            }
+                                                        },
+                                                        onFailure = { error ->
+                                                            downloadProgress = null
+                                                            updateErrorMessage = "Gagal mengunduh update: ${error.localizedMessage}"
+                                                        }
+                                                    )
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(12.dp)
+                                        ) {
+                                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            Text(if (downloadedFile != null && downloadedFile!!.exists()) "Instal" else "Update Sekarang")
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(
+                                            onClick = { isUpdateDialogDismissed = true }
+                                        ) {
+                                            Text("Nanti / Skip", color = MaterialTheme.colorScheme.outline)
+                                        }
                                     }
-                                }
+                                )
                             }
 
                             // Render app update status dialogs inline
