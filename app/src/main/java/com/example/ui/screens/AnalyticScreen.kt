@@ -12,18 +12,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Analytics
-import androidx.compose.material.icons.filled.AssignmentTurnedIn
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Flight
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.outlined.EventNote
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,6 +24,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -46,21 +37,10 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.material.icons.filled.HourglassEmpty
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.CloudQueue
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Photo
-import androidx.compose.material.icons.filled.Terrain
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.clickable
 import com.example.ui.ScheduleViewModel
-import com.example.ui.screens.MonthlyAnalysisCard
+import com.example.ui.SyncState
+import com.example.network.MeetingListing
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
@@ -72,64 +52,49 @@ fun AnalyticScreen(
     onNavigateBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val schedules by viewModel.allSchedules.collectAsState()
-    val editFotoTasks by viewModel.allEditFotoTasks.collectAsState()
-    val selectedMonth by viewModel.selectedMonth.collectAsState()
+    val listings by viewModel.weeklyMeetingAnalyticsListings.collectAsState()
+    val syncStatus by viewModel.analyticSyncStatus.collectAsState()
+    
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(pageCount = { 2 })
     
-    // Filter out VERSION_CHECK items and filter by selectedMonth (while including all month-agnostic non-aktif schedules)
-    val activeSchedules = schedules.filter { 
-        val isNonAktif = it.idListing.isNotBlank() &&
-                         it.namaMe.isNotBlank() &&
-                         it.lokasi.isNotBlank() &&
-                         it.tanggal.isBlank() &&
-                         it.jam.isBlank()
-        it.idListing.trim() != "VERSION_CHECK" && (isNonAktif || isDateInSelectedMonth(it.tanggal, selectedMonth))
-    }
+    // Month filter selection states
+    var selectedMonthFilter by remember { mutableStateOf("Semua Bulan 2026") }
+    var isMonthDropdownExpanded by remember { mutableStateOf(false) }
     
-    // Page 1 Statistics
-    val totalCount = activeSchedules.size
-    val doneCount = activeSchedules.count { 
-        val typeLower = it.type.lowercase().trim()
-        val statusLower = it.status.lowercase().trim()
-        typeLower.startsWith("done") || statusLower == "done" || statusLower == "selesai"
-    }
-    val pendingCount = totalCount - doneCount
+    val monthsList = listOf(
+        "Semua Bulan 2026",
+        "Januari 2026", "Februari 2026", "Maret 2026", "April 2026", "Mei 2026", "Juni 2026",
+        "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026"
+    )
     
-    val fotoCount = activeSchedules.count { 
-        val t = it.type.lowercase().trim()
-        t.contains("done") && t.contains("foto")
-    }
-    val videoCount = activeSchedules.count { 
-        it.type.lowercase().contains("video")
-    }
-    val droneCount = activeSchedules.count {
-        val t = it.type.lowercase().trim()
-        t.contains("done") && t.contains("drone")
+    LaunchedEffect(selectedMonthFilter) {
+        viewModel.fetchWeeklyMeetingAnalyticsData(selectedMonthFilter)
     }
 
-    // State to toggle between showing all months or only selected month for Instagram Posting
-    var showAllMonthsIg by remember { mutableStateOf(true) }
-
-    // Page 2 Statistics (Instagram Posting)
-    val filteredEditFotoTasks = remember(editFotoTasks, selectedMonth, showAllMonthsIg) {
-        if (showAllMonthsIg) {
-            editFotoTasks
-        } else {
-            editFotoTasks.filter {
-                isDateInSelectedMonth(it.jadwalPosting, selectedMonth)
-            }
-        }
+    // Calculations based on Laporan Weekly Meeting listings
+    val totalCount = listings.size
+    
+    val hotPropertyCount = listings.count { 
+        it.keterangan.trim().uppercase() == "HOT PROPERTY" 
     }
-    val totalIgTasks = filteredEditFotoTasks.size
-    val igPostedCount = filteredEditFotoTasks.count { it.postingIg }
-    val igDoneNotPostedCount = filteredEditFotoTasks.count { it.done && !it.postingIg }
-    val igNotDoneCount = filteredEditFotoTasks.count { !it.done }
-    val igNotPostedCount = filteredEditFotoTasks.count { !it.postingIg }
+    val igCount = listings.count { 
+        it.keterangan.trim().uppercase() == "IG" 
+    }
+    val fotoUlangCount = listings.count { 
+        it.keterangan.trim().uppercase() == "FOTO ULANG" 
+    }
+    val lainnyaCount = totalCount - (hotPropertyCount + igCount + fotoUlangCount)
+    
+    // Instagram posting status
+    val isPostedPredicate = { it: MeetingListing ->
+        val p = it.postingIg.trim().lowercase()
+        p == "✔" || p == "true" || p == "yes" || p == "1" || p == "done" || p == "ya"
+    }
+    val igPostedCount = listings.count { isPostedPredicate(it) }
+    val igPendingCount = totalCount - igPostedCount
 
     Scaffold(
         modifier = modifier.fillMaxSize().testTag("analytic_screen"),
@@ -157,13 +122,11 @@ fun AnalyticScreen(
                     IconButton(onClick = onNavigateBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Kembali ke Dashboard"
+                            contentDescription = "Kembali"
                         )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
             )
         }
     ) { innerPadding ->
@@ -173,670 +136,634 @@ fun AnalyticScreen(
                 .padding(innerPadding)
                 .background(MaterialTheme.colorScheme.background)
         ) {
-            // Scrollable TabRow to switch between Media and IG Posting analytic pages
-            TabRow(
-                selectedTabIndex = pagerState.currentPage,
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.primary
+            // Month Selector Header Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
             ) {
-                Tab(
-                    selected = pagerState.currentPage == 0,
-                    onClick = {
-                        scope.launch {
-                            pagerState.animateScrollToPage(0)
-                        }
-                    },
-                    text = {
-                        Text(
-                            text = "Media & Proyek",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleSmall
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CalendarToday,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
                         )
-                    }
-                )
-                Tab(
-                    selected = pagerState.currentPage == 1,
-                    onClick = {
-                        scope.launch {
-                            pagerState.animateScrollToPage(1)
+                        Column {
+                            Text(
+                                text = "Periode Analisis",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = selectedMonthFilter,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
                         }
-                    },
-                    text = {
-                        Text(
-                            text = "Postingan IG",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleSmall
-                        )
                     }
-                )
+                    
+                    Box {
+                        Button(
+                            onClick = { isMonthDropdownExpanded = true },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Pilih Bulan", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                            Spacer(Modifier.width(4.dp))
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp))
+                        }
+                        
+                        DropdownMenu(
+                            expanded = isMonthDropdownExpanded,
+                            onDismissRequest = { isMonthDropdownExpanded = false }
+                        ) {
+                            monthsList.forEach { month ->
+                                DropdownMenuItem(
+                                    text = { Text(month, fontWeight = if (month == selectedMonthFilter) FontWeight.Bold else FontWeight.Normal) },
+                                    onClick = {
+                                        selectedMonthFilter = month
+                                        isMonthDropdownExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .weight(1f)
-            ) { page ->
-                when (page) {
-                    0 -> {
-                        // PAGE 1: Media & Proyek Overview
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                                .padding(vertical = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+            // Sync Status Indicator / Loader Overlay
+            if (syncStatus is SyncState.Loading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(36.dp))
+                        Text(
+                            "Memuat data meeting dari spreadsheet...",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                }
+            } else {
+                // Tab Selection
+                TabRow(
+                    selectedTabIndex = pagerState.currentPage,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Tab(
+                        selected = pagerState.currentPage == 0,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
+                        text = {
+                            Text(
+                                text = "Distribusi Target",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                        }
+                    )
+                    Tab(
+                        selected = pagerState.currentPage == 1,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(1) } },
+                        text = {
+                            Text(
+                                text = "Status Instagram",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                        }
+                    )
+                }
+
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .weight(1f)
+                ) { page ->
+                    if (totalCount == 0) {
+                        Box(
+                            modifier = Modifier.fillMaxSize().padding(24.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "DISTRIBUSI MEDIA LISTING",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
-                            )
-                            
-                            MonthlyAnalysisCard(schedules = activeSchedules)
-
-                            Text(
-                                text = "METRIK KESELURUHAN",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
-                            )
-
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                // Completed Projects Card
-                                Card(
-                                    modifier = Modifier.weight(1f),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f))
-                                ) {
-                                    Column(modifier = Modifier.padding(14.dp)) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Icon(Icons.Default.AssignmentTurnedIn, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
-                                            Text("Selesai", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                                        }
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text("$doneCount", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black))
-                                        Text(
-                                            text = if (totalCount > 0) "${((doneCount.toFloat() / totalCount.toFloat()) * 100).toInt()}% dari total" else "0%",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-
-                                // Pending Projects Card
-                                Card(
-                                    modifier = Modifier.weight(1f),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f))
-                                ) {
-                                    Column(modifier = Modifier.padding(14.dp)) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Icon(Icons.Outlined.EventNote, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.secondary)
-                                            Text("Pending", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer)
-                                        }
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Text("$pendingCount", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Black))
-                                        Text(
-                                            text = if (totalCount > 0) "${((pendingCount.toFloat() / totalCount.toFloat()) * 100).toInt()}% dari total" else "0%",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.secondary
-                                        )
-                                    }
-                                }
-                            }
-
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f))
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                                ) {
-                                    Text(
-                                        text = "Rasio Volume Kerja",
-                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    
-                                    // Foto Progress
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                                                Text("Sesi Foto", style = MaterialTheme.typography.labelMedium)
-                                            }
-                                            Text("$fotoCount", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-                                        }
-                                        val fotoRatio = if (totalCount > 0) fotoCount.toFloat() / totalCount.toFloat() else 0f
-                                        LinearProgressIndicator(
-                                            progress = { fotoRatio },
-                                            modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
-                                            color = MaterialTheme.colorScheme.primary,
-                                            trackColor = MaterialTheme.colorScheme.surfaceVariant
-                                        )
-                                    }
-
-                                    // Video Progress
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
-                                                Text("Sesi Video", style = MaterialTheme.typography.labelMedium)
-                                            }
-                                            Text("$videoCount", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-                                        }
-                                        val videoRatio = if (totalCount > 0) videoCount.toFloat() / totalCount.toFloat() else 0f
-                                        LinearProgressIndicator(
-                                            progress = { videoRatio },
-                                            modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
-                                            color = MaterialTheme.colorScheme.secondary,
-                                            trackColor = MaterialTheme.colorScheme.surfaceVariant
-                                        )
-                                    }
-
-                                    // Drone Progress
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                Icon(Icons.Default.Flight, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF2E7D32))
-                                                Text("Sesi Drone", style = MaterialTheme.typography.labelMedium)
-                                            }
-                                            Text("$droneCount", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-                                        }
-                                        val droneRatio = if (totalCount > 0) droneCount.toFloat() / totalCount.toFloat() else 0f
-                                        LinearProgressIndicator(
-                                            progress = { droneRatio },
-                                            modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
-                                            color = Color(0xFF2E7D32),
-                                            trackColor = MaterialTheme.colorScheme.surfaceVariant
-                                        )
-                                    }
-                                }
-                            }
-
-                            // SHARE MONTHLY REPORT CARD
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-                                ),
-                                shape = RoundedCornerShape(20.dp),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(18.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Share,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(22.dp)
-                                        )
-                                        Text(
-                                            text = "Bagikan Laporan Bulanan",
-                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-
-                                    Text(
-                                        text = if (doneCount > 0) {
-                                            "Terdapat $doneCount jadwal selesai pada bulan $selectedMonth. Anda dapat membagikan laporan rekapan ini langsung ke WhatsApp Business atau menyalin teksnya."
-                                        } else {
-                                            "Belum ada jadwal selesai pada bulan $selectedMonth untuk dibuatkan laporan."
-                                        },
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-
-                                    if (doneCount > 0) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                        ) {
-                                            // WhatsApp Business Share Button
-                                            Button(
-                                                onClick = {
-                                                    val doneSchedulesList = activeSchedules.filter {
-                                                        val typeLower = it.type.lowercase().trim()
-                                                        val statusLower = it.status.lowercase().trim()
-                                                        typeLower.startsWith("done") || statusLower == "done" || statusLower == "selesai"
-                                                    }.sortedWith(compareBy<com.example.data.Schedule> { it.tanggal }.thenBy { it.jam })
-
-                                                    val reportText = buildReportText(selectedMonth, doneSchedulesList)
- 
-                                                    val whatsappBusinessPackage = "com.whatsapp.w4b"
-                                                    val isWaBusinessInstalled = try {
-                                                        context.packageManager.getPackageInfo(whatsappBusinessPackage, 0)
-                                                        true
-                                                    } catch (e: Exception) {
-                                                        false
-                                                    }
- 
-                                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                                        type = "text/plain"
-                                                        putExtra(Intent.EXTRA_TEXT, reportText)
-                                                        if (isWaBusinessInstalled) {
-                                                            setPackage(whatsappBusinessPackage)
-                                                        }
-                                                    }
- 
-                                                    try {
-                                                        val title = if (isWaBusinessInstalled) "Bagikan ke WhatsApp Business" else "Bagikan Laporan"
-                                                        val chooser = Intent.createChooser(shareIntent, title)
-                                                        context.startActivity(chooser)
-                                                    } catch (e: Exception) {
-                                                        Toast.makeText(context, "Gagal membagikan laporan: ${e.message}", Toast.LENGTH_SHORT).show()
-                                                    }
-                                                },
-                                                modifier = Modifier.weight(1.5f),
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = MaterialTheme.colorScheme.primary
-                                                ),
-                                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Share,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text("Bagikan WA", style = MaterialTheme.typography.labelLarge)
-                                            }
- 
-                                            // Copy to Clipboard Button
-                                            OutlinedButton(
-                                                onClick = {
-                                                    val doneSchedulesList = activeSchedules.filter {
-                                                        val typeLower = it.type.lowercase().trim()
-                                                        val statusLower = it.status.lowercase().trim()
-                                                        typeLower.startsWith("done") || statusLower == "done" || statusLower == "selesai"
-                                                    }.sortedWith(compareBy<com.example.data.Schedule> { it.tanggal }.thenBy { it.jam })
-
-                                                    val reportText = buildReportText(selectedMonth, doneSchedulesList)
- 
-                                                    clipboardManager.setText(AnnotatedString(reportText))
-                                                    Toast.makeText(context, "Laporan disalin ke papan klip!", Toast.LENGTH_SHORT).show()
-                                                },
-                                                modifier = Modifier.weight(1.2f),
-                                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.ContentCopy,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(18.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text("Salin Teks", style = MaterialTheme.typography.labelLarge)
-                                            }
-                                        }
-                                    }
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.FolderOpen,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(56.dp),
+                                    tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
+                                )
+                                Text(
+                                    text = "Tidak Ada Data Listing",
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Tidak ditemukan listing pada Google Sheet untuk periode $selectedMonthFilter.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center
+                                )
                             }
                         }
-                    }
-                    1 -> {
-                        // PAGE 2: Instagram Posting Diagram & Overview
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                                .padding(vertical = 16.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            Text(
-                                text = "ANALISIS POSTINGAN INSTAGRAM",
-                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
-                            )
-
-                            // TABS / SEGMENTED CONTROL FOR FILTER TYPE
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
-                                    .padding(4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Box(
+                    } else {
+                        when (page) {
+                            0 -> {
+                                // Tab 0: Distribusi Target Keterangan
+                                Column(
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (!showAllMonthsIg) MaterialTheme.colorScheme.primary else Color.Transparent)
-                                        .clickable { showAllMonthsIg = false }
-                                        .padding(vertical = 10.dp),
-                                    contentAlignment = Alignment.Center
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(vertical = 16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
                                     Text(
-                                        text = selectedMonth,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (!showAllMonthsIg) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        text = "DISTRIBUSI KETERANGAN MEETING",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
                                     )
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(if (showAllMonthsIg) MaterialTheme.colorScheme.primary else Color.Transparent)
-                                        .clickable { showAllMonthsIg = true }
-                                        .padding(vertical = 10.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "Semua Bulan (Total)",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (showAllMonthsIg) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
 
-                            // Calculate floating percentages for precision and readability
-                            val pctPosted = if (totalIgTasks > 0) (igPostedCount.toFloat() / totalIgTasks * 100f) else 0f
-                            val pctDoneNotPosted = if (totalIgTasks > 0) (igDoneNotPostedCount.toFloat() / totalIgTasks * 100f) else 0f
-                            val pctNotDone = if (totalIgTasks > 0) (igNotDoneCount.toFloat() / totalIgTasks * 100f) else 0f
-
-                            // Custom Donut/Arc Diagram for Instagram Posting
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 16.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
-                                ),
-                                shape = RoundedCornerShape(20.dp),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                            ) {
-                                Column(modifier = Modifier.padding(18.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    // Custom Donut Chart Card
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                        ),
+                                        shape = RoundedCornerShape(20.dp),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                                     ) {
-                                        Column {
-                                            Text(
-                                                text = "Ringkasan Publikasi",
-                                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                            Text(
-                                                text = if (showAllMonthsIg) "Status upload feed untuk seluruh data" else "Status upload feed untuk bulan $selectedMonth",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(100.dp))
-                                                .padding(horizontal = 12.dp, vertical = 6.dp)
-                                        ) {
-                                            Text(
-                                                text = "Total: $totalIgTasks",
-                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                                            )
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(20.dp))
-
-                                    if (totalIgTasks == 0) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 32.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                Icon(
-                                                    imageVector = Icons.Default.CloudQueue,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                                                    modifier = Modifier.size(48.dp)
-                                                )
-                                                Spacer(modifier = Modifier.height(12.dp))
-                                                Text(
-                                                    text = "Belum ada data di bulan $selectedMonth",
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                                                )
-                                            }
-                                        }
-                                    } else {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                        ) {
-                                            val colorPosted = Color(0xFF4CAF50) // Beautiful Green
-                                            val colorDoneNotPosted = Color(0xFFFF9800) // Vibrant Orange
-                                            val colorNotDone = Color(0xFF9E9E9E) // Sleek Grey
-
-                                            Box(
-                                                modifier = Modifier.size(110.dp),
-                                                contentAlignment = Alignment.Center
+                                        Column(modifier = Modifier.padding(18.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Canvas(modifier = Modifier.fillMaxSize()) {
-                                                    val strokeWidthPx = 14.dp.toPx()
-                                                    val diameter = size.minDimension - strokeWidthPx
-                                                    val topLeftOffset = Offset(
-                                                        (size.width - diameter) / 2f,
-                                                        (size.height - diameter) / 2f
-                                                    )
-                                                    val arcSize = Size(diameter, diameter)
-
-                                                    // Calculate degrees
-                                                    val degPosted = (igPostedCount.toFloat() / totalIgTasks) * 360f
-                                                    val degDoneNotPosted = (igDoneNotPostedCount.toFloat() / totalIgTasks) * 360f
-                                                    val degNotDone = (igNotDoneCount.toFloat() / totalIgTasks) * 360f
-
-                                                    var startAngle = -90f
-
-                                                    if (degPosted > 0) {
-                                                        drawArc(
-                                                            color = colorPosted,
-                                                            startAngle = startAngle,
-                                                            sweepAngle = degPosted,
-                                                            useCenter = false,
-                                                            topLeft = topLeftOffset,
-                                                            size = arcSize,
-                                                            style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
-                                                        )
-                                                        startAngle += degPosted
-                                                    }
-
-                                                    if (degDoneNotPosted > 0) {
-                                                        drawArc(
-                                                            color = colorDoneNotPosted,
-                                                            startAngle = startAngle,
-                                                            sweepAngle = degDoneNotPosted,
-                                                            useCenter = false,
-                                                            topLeft = topLeftOffset,
-                                                            size = arcSize,
-                                                            style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
-                                                        )
-                                                        startAngle += degDoneNotPosted
-                                                    }
-
-                                                    if (degNotDone > 0) {
-                                                        drawArc(
-                                                            color = colorNotDone,
-                                                            startAngle = startAngle,
-                                                            sweepAngle = degNotDone,
-                                                            useCenter = false,
-                                                            topLeft = topLeftOffset,
-                                                            size = arcSize,
-                                                            style = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
-                                                        )
-                                                    }
-                                                }
-
-                                                // Center percentage text
-                                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Column {
                                                     Text(
-                                                        text = "${String.format(Locale.US, "%.1f", pctPosted)}%",
-                                                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold),
+                                                        text = "Kategori Keterangan",
+                                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
                                                         color = MaterialTheme.colorScheme.onSurface
                                                     )
                                                     Text(
-                                                        text = "Terbit",
+                                                        text = "Pembagian target hasil meeting",
                                                         style = MaterialTheme.typography.labelSmall,
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
                                                 }
+                                                Box(
+                                                    modifier = Modifier
+                                                        .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(100.dp))
+                                                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "Total: $totalCount",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                    )
+                                                }
                                             }
 
-                                            // Legends
-                                            Column(
-                                                modifier = Modifier.weight(1f),
-                                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                                            Spacer(Modifier.height(18.dp))
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(16.dp)
                                             ) {
-                                                LegendItem(
-                                                    color = colorPosted,
-                                                    label = "Sudah Diposting",
-                                                    count = igPostedCount,
-                                                    percentage = pctPosted
-                                                )
-                                                LegendItem(
-                                                    color = colorDoneNotPosted,
-                                                    label = "Selesai Edit, Belum Post",
-                                                    count = igDoneNotPostedCount,
-                                                    percentage = pctDoneNotPosted
-                                                )
-                                                LegendItem(
-                                                    color = colorNotDone,
-                                                    label = "Belum Selesai Edit",
-                                                    count = igNotDoneCount,
-                                                    percentage = pctNotDone
-                                                )
+                                                val colorHot = Color(0xFFFF5722)
+                                                val colorIg = Color(0xFFE1306C)
+                                                val colorFotoUlang = Color(0xFF2196F3)
+                                                val colorLainnya = Color(0xFF757575)
+
+                                                Box(
+                                                    modifier = Modifier.size(110.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Canvas(modifier = Modifier.fillMaxSize()) {
+                                                        val strokeWidth = 14.dp.toPx()
+                                                        val diameter = size.minDimension - strokeWidth
+                                                        val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
+                                                        val arcSize = Size(diameter, diameter)
+
+                                                        val floatHot = hotPropertyCount.toFloat() / totalCount
+                                                        val floatIg = igCount.toFloat() / totalCount
+                                                        val floatFotoUlang = fotoUlangCount.toFloat() / totalCount
+                                                        val floatLainnya = lainnyaCount.toFloat() / totalCount
+
+                                                        var startAngle = -90f
+
+                                                        // Draw Hot Property slice
+                                                        if (floatHot > 0f) {
+                                                            drawArc(colorHot, startAngle, floatHot * 360f, false, topLeft, arcSize, style = Stroke(strokeWidth, cap = StrokeCap.Round))
+                                                            startAngle += floatHot * 360f
+                                                        }
+                                                        // Draw IG slice
+                                                        if (floatIg > 0f) {
+                                                            drawArc(colorIg, startAngle, floatIg * 360f, false, topLeft, arcSize, style = Stroke(strokeWidth, cap = StrokeCap.Round))
+                                                            startAngle += floatIg * 360f
+                                                        }
+                                                        // Draw Foto Ulang slice
+                                                        if (floatFotoUlang > 0f) {
+                                                            drawArc(colorFotoUlang, startAngle, floatFotoUlang * 360f, false, topLeft, arcSize, style = Stroke(strokeWidth, cap = StrokeCap.Round))
+                                                            startAngle += floatFotoUlang * 360f
+                                                        }
+                                                        // Draw Lainnya slice
+                                                        if (floatLainnya > 0f) {
+                                                            drawArc(colorLainnya, startAngle, floatLainnya * 360f, false, topLeft, arcSize, style = Stroke(strokeWidth, cap = StrokeCap.Round))
+                                                        }
+                                                    }
+                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                        Text("$totalCount", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black))
+                                                        Text("Listing", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    }
+                                                }
+
+                                                Column(
+                                                    modifier = Modifier.weight(1f),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    LegendItem(colorHot, "Hot Property", hotPropertyCount, (hotPropertyCount.toFloat() / totalCount * 100))
+                                                    LegendItem(colorIg, "Instagram", igCount, (igCount.toFloat() / totalCount * 100))
+                                                    LegendItem(colorFotoUlang, "Foto Ulang", fotoUlangCount, (fotoUlangCount.toFloat() / totalCount * 100))
+                                                    LegendItem(colorLainnya, "Lainnya", lainnyaCount, (lainnyaCount.toFloat() / totalCount * 100))
+                                                }
                                             }
+                                        }
+                                    }
+
+                                    // Detailed Metrics Card
+                                    Text(
+                                        text = "RINCIAN METRIK HARI INI",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+                                    )
+
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f))
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(16.dp),
+                                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                                        ) {
+                                            // Hot Property progress item
+                                            MetricProgressBarItem(
+                                                title = "Hot Property",
+                                                icon = Icons.Default.Whatshot,
+                                                count = hotPropertyCount,
+                                                total = totalCount,
+                                                color = Color(0xFFFF5722)
+                                            )
+
+                                            // IG progress item
+                                            MetricProgressBarItem(
+                                                title = "Instagram",
+                                                icon = Icons.Default.AlternateEmail,
+                                                count = igCount,
+                                                total = totalCount,
+                                                color = Color(0xFFE1306C)
+                                            )
+
+                                            // Foto Ulang progress item
+                                            MetricProgressBarItem(
+                                                title = "Foto Ulang",
+                                                icon = Icons.Default.PhotoCamera,
+                                                count = fotoUlangCount,
+                                                total = totalCount,
+                                                color = Color(0xFF2196F3)
+                                            )
+
+                                            // Lainnya progress item
+                                            MetricProgressBarItem(
+                                                title = "Keterangan Lainnya",
+                                                icon = Icons.Default.Info,
+                                                count = lainnyaCount,
+                                                total = totalCount,
+                                                color = Color(0xFF757575)
+                                            )
                                         }
                                     }
                                 }
                             }
-
-                            if (totalIgTasks > 0) {
-                                // Funnel Progress / Additional details
-                                Text(
-                                    text = "RINCIAN STATUS SEBARAN FEED",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
-                                )
-
-                                val sudahDipostingSubItems = remember(filteredEditFotoTasks) {
-                                    filteredEditFotoTasks.filter { it.postingIg }.map { item ->
-                                        AnalyticSubItem(
-                                            idListing = item.idListing,
-                                            title = item.judul.ifBlank { "Listing ${item.idListing}" },
-                                            subtitle = "ME: ${item.namaMe}",
-                                            extraInfo = "Notes: ${item.editNotes}"
-                                        )
-                                    }
-                                }
-
-                                val selesaiEditMenungguPostSubItems = remember(filteredEditFotoTasks) {
-                                    filteredEditFotoTasks.filter { it.done && !it.postingIg }.map { item ->
-                                        AnalyticSubItem(
-                                            idListing = item.idListing,
-                                            title = item.judul.ifBlank { "Listing ${item.idListing}" },
-                                            subtitle = "ME: ${item.namaMe}",
-                                            extraInfo = "Notes: ${item.editNotes}"
-                                        )
-                                    }
-                                }
-
-                                val belumSelesaiSedangDieditSubItems = remember(activeSchedules) {
-                                    activeSchedules.filter {
-                                        val typeLower = it.type.lowercase().trim()
-                                        val statusLower = it.status.lowercase().trim()
-                                        typeLower.startsWith("done") && statusLower != "done" && statusLower != "selesai"
-                                    }.map { item ->
-                                        AnalyticSubItem(
-                                            idListing = item.idListing,
-                                            title = item.lokasi.ifBlank { "Listing ${item.idListing}" },
-                                            subtitle = "ME: ${item.namaMe}",
-                                            extraInfo = "Status: ${item.status}"
-                                        )
-                                    }
-                                }
-
+                            
+                            1 -> {
+                                // Tab 1: Status Publikasi Instagram
                                 Column(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp),
-                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(vertical = 16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
-                                    // 1. Sudah Diposting
-                                    StatusProgressCard(
-                                        title = "Sudah Diposting ke Instagram",
-                                        count = igPostedCount,
-                                        total = totalIgTasks,
-                                        percentage = pctPosted,
-                                        color = Color(0xFF4CAF50),
-                                        icon = Icons.Default.CheckCircle,
-                                        subItems = sudahDipostingSubItems
+                                    Text(
+                                        text = "ANALISIS PUBLIKASI INSTAGRAM",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
                                     )
 
-                                    // 2. Selesai Edit, Belum Post
-                                    StatusProgressCard(
-                                        title = "Selesai Edit, Menunggu Post",
-                                        count = igDoneNotPostedCount,
-                                        total = totalIgTasks,
-                                        percentage = pctDoneNotPosted,
-                                        color = Color(0xFFFF9800),
-                                        icon = Icons.Default.HourglassEmpty,
-                                        subItems = selesaiEditMenungguPostSubItems
-                                    )
+                                    // Donut Chart Posted vs Pending
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                        ),
+                                        shape = RoundedCornerShape(20.dp),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                    ) {
+                                        Column(modifier = Modifier.padding(18.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column {
+                                                    Text(
+                                                        text = "Status Publikasi",
+                                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    Text(
+                                                        text = "Realisasi upload Instagram",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                                Box(
+                                                    modifier = Modifier
+                                                        .background(Color(0xFF2E7D32).copy(alpha = 0.15f), RoundedCornerShape(100.dp))
+                                                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "Posted: $igPostedCount / $totalCount",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                        color = Color(0xFF2E7D32)
+                                                    )
+                                                }
+                                            }
 
-                                    // 3. Belum Selesai Edit
-                                    StatusProgressCard(
-                                        title = "Belum Selesai / Sedang Diedit",
-                                        count = igNotDoneCount,
-                                        total = totalIgTasks,
-                                        percentage = pctNotDone,
-                                        color = Color(0xFF9E9E9E),
-                                        icon = Icons.Default.Edit,
-                                        subItems = belumSelesaiSedangDieditSubItems
-                                    )
+                                            Spacer(Modifier.height(18.dp))
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                            ) {
+                                                val colorPosted = Color(0xFF2E7D32)
+                                                val colorPending = Color(0xFFD84315)
+
+                                                Box(
+                                                    modifier = Modifier.size(110.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Canvas(modifier = Modifier.fillMaxSize()) {
+                                                        val strokeWidth = 14.dp.toPx()
+                                                        val diameter = size.minDimension - strokeWidth
+                                                        val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
+                                                        val arcSize = Size(diameter, diameter)
+
+                                                        val floatPosted = igPostedCount.toFloat() / totalCount
+                                                        val floatPending = igPendingCount.toFloat() / totalCount
+
+                                                        drawArc(colorPosted, -90f, floatPosted * 360f, false, topLeft, arcSize, style = Stroke(strokeWidth, cap = StrokeCap.Round))
+                                                        if (floatPending > 0f) {
+                                                            drawArc(colorPending, -90f + (floatPosted * 360f), floatPending * 360f, false, topLeft, arcSize, style = Stroke(strokeWidth, cap = StrokeCap.Round))
+                                                        }
+                                                    }
+                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                        val pct = if (totalCount > 0) ((igPostedCount.toFloat() / totalCount) * 100).toInt() else 0
+                                                        Text("$pct%", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black))
+                                                        Text("Selesai", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    }
+                                                }
+
+                                                Column(
+                                                    modifier = Modifier.weight(1f),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    LegendItem(colorPosted, "Sudah Posting", igPostedCount, (igPostedCount.toFloat() / totalCount * 100))
+                                                    LegendItem(colorPending, "Pending / Belum", igPendingCount, (igPendingCount.toFloat() / totalCount * 100))
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Share Report Card
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                        ),
+                                        shape = RoundedCornerShape(20.dp),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(18.dp),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Share,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(22.dp)
+                                                )
+                                                Text(
+                                                    text = "Bagikan Laporan Weekly Meeting",
+                                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+
+                                            Text(
+                                                text = "Anda dapat membagikan rangkuman target dan publikasi weekly meeting ini secara terformat ke WhatsApp Business atau menyalin teksnya.",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                Button(
+                                                    onClick = {
+                                                        val report = buildWeeklyReportText(selectedMonthFilter, listings, igPostedCount, igPendingCount, hotPropertyCount, fotoUlangCount, igCount)
+                                                        val whatsappBusinessPackage = "com.whatsapp.w4b"
+                                                        val isWaBusinessInstalled = try {
+                                                            context.packageManager.getPackageInfo(whatsappBusinessPackage, 0)
+                                                            true
+                                                        } catch (e: Exception) {
+                                                            false
+                                                        }
+                                                        
+                                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                            type = "text/plain"
+                                                            putExtra(Intent.EXTRA_TEXT, report)
+                                                            if (isWaBusinessInstalled) {
+                                                                setPackage(whatsappBusinessPackage)
+                                                            }
+                                                        }
+                                                        try {
+                                                            context.startActivity(Intent.createChooser(shareIntent, "Bagikan Laporan via"))
+                                                        } catch (e: Exception) {
+                                                            Toast.makeText(context, "Gagal membagikan laporan", Toast.LENGTH_SHORT).show()
+                                                        }
+                                                    },
+                                                    modifier = Modifier.weight(1f),
+                                                    shape = RoundedCornerShape(12.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Text("WhatsApp Business")
+                                                }
+
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        val report = buildWeeklyReportText(selectedMonthFilter, listings, igPostedCount, igPendingCount, hotPropertyCount, fotoUlangCount, igCount)
+                                                        clipboardManager.setText(AnnotatedString(report))
+                                                        Toast.makeText(context, "Laporan disalin ke clipboard!", Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    modifier = Modifier.weight(1f),
+                                                    shape = RoundedCornerShape(12.dp)
+                                                ) {
+                                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                    Spacer(Modifier.width(8.dp))
+                                                    Text("Salin Teks")
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // List of Pending Listings for Quick Reference
+                                    if (igPendingCount > 0) {
+                                        Text(
+                                            text = "DAFTAR LISTING PENDING PUBLIKASI (${igPendingCount})",
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.error,
+                                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
+                                        )
+
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            listings.filter { !isPostedPredicate(it) }.forEach { item ->
+                                                Card(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    colors = CardDefaults.cardColors(
+                                                        containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f)
+                                                    ),
+                                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.2f))
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(12.dp),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.SpaceBetween
+                                                    ) {
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                                                val ketColor = when (item.keterangan.trim().uppercase()) {
+                                                                    "HOT PROPERTY" -> Color(0xFFFF5722)
+                                                                    "IG" -> Color(0xFFE1306C)
+                                                                    "FOTO ULANG" -> Color(0xFF2196F3)
+                                                                    else -> MaterialTheme.colorScheme.primary
+                                                                }
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .background(ketColor.copy(alpha = 0.1f), RoundedCornerShape(4.dp))
+                                                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                                                ) {
+                                                                    Text(
+                                                                        text = item.keterangan.ifBlank { "MEETING" },
+                                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                                        color = ketColor
+                                                                    )
+                                                                }
+                                                                Text(
+                                                                    text = "ID: ${item.idListing}",
+                                                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                                    color = MaterialTheme.colorScheme.onSurface
+                                                                )
+                                                            }
+                                                            Spacer(Modifier.height(4.dp))
+                                                            Text(
+                                                                text = "ME: ${item.namaMe.ifBlank { "Tidak Diketahui" }}",
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                            if (item.catatan.isNotBlank()) {
+                                                                Text(
+                                                                    text = "Catatan: ${item.catatan}",
+                                                                    style = MaterialTheme.typography.bodySmall,
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis
+                                                                )
+                                                            }
+                                                        }
+                                                        
+                                                        IconButton(
+                                                            onClick = {
+                                                                val itemText = "Pending Instagram:\nID: ${item.idListing}\nME: ${item.namaMe}\nKet: ${item.keterangan}\nCatatan: ${item.catatan}\nhttps://raywhitecipete.net/ListingView/Detail/${item.idListing}"
+                                                                clipboardManager.setText(AnnotatedString(itemText))
+                                                                Toast.makeText(context, "Listing disalin ke clipboard!", Toast.LENGTH_SHORT).show()
+                                                            }
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.ContentCopy,
+                                                                contentDescription = "Salin Info",
+                                                                tint = MaterialTheme.colorScheme.outline
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -877,444 +804,71 @@ private fun LegendItem(color: Color, label: String, count: Int, percentage: Floa
 }
 
 @Composable
-private fun StatusProgressCard(
+private fun MetricProgressBarItem(
     title: String,
+    icon: ImageVector,
     count: Int,
     total: Int,
-    percentage: Float,
-    color: Color,
-    icon: ImageVector,
-    subItems: List<AnalyticSubItem>
+    color: Color
 ) {
-    var isExpanded by remember { mutableStateOf(false) }
-    var expandedSubCategory by remember { mutableStateOf<String?>(null) }
-
-    val groupedItems = remember(subItems) {
-        val groups = mutableMapOf<String, List<AnalyticSubItem>>(
-            "Up Foto" to emptyList(),
-            "Edit Video" to emptyList(),
-            "Garis Tanah" to emptyList()
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp), tint = color)
+                Text(title, style = MaterialTheme.typography.labelMedium)
+            }
+            Text("$count data", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+        }
+        val ratio = if (total > 0) count.toFloat() / total.toFloat() else 0f
+        LinearProgressIndicator(
+            progress = { ratio },
+            modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
+            color = color,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant
         )
-        subItems.forEach { item ->
-            val combined = (item.title + " " + item.extraInfo).lowercase()
-            val cat = when {
-                combined.contains("video", ignoreCase = true) -> "Edit Video"
-                combined.contains("garis", ignoreCase = true) || combined.contains("tanah", ignoreCase = true) -> "Garis Tanah"
-                else -> "Up Foto"
-            }
-            groups[cat] = (groups[cat] ?: emptyList()) + item
+    }
+}
+
+private fun buildWeeklyReportText(
+    monthFilter: String,
+    listings: List<MeetingListing>,
+    igPostedCount: Int,
+    igPendingCount: Int,
+    hotPropertyCount: Int,
+    fotoUlangCount: Int,
+    igCount: Int
+): String {
+    return buildString {
+        append("📝 LAPORAN REKAPITULASI WEEKLY MEETING RAY WHITE CIPETE\n")
+        append("📅 Periode: ").append(monthFilter).append("\n")
+        append("📂 Total Listing Dibahas: ").append(listings.size).append(" unit\n\n")
+        
+        append("🔥 HOT PROPERTY: ").append(hotPropertyCount).append(" listing\n")
+        append("📸 FOTO ULANG: ").append(fotoUlangCount).append(" listing\n")
+        append("📱 TARGET INSTAGRAM: ").append(igCount).append(" listing\n")
+        append("   ✅ Sudah Diposting: ").append(igPostedCount).append(" listing\n")
+        append("   ❌ Pending / Belum: ").append(igPendingCount).append(" listing\n\n")
+        
+        val pendingList = listings.filter { 
+            val p = it.postingIg.trim().lowercase()
+            p != "✔" && p != "true" && p != "yes" && p != "1" && p != "done" && p != "ya"
         }
-        groups
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { isExpanded = !isExpanded },
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
-        ),
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // Icon container
-                Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(color.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = color,
-                        modifier = Modifier.size(24.dp)
-                    )
+        
+        if (pendingList.isNotEmpty()) {
+            append("⚠️ DAFTAR PENDING PUBLIKASI / PROSES:\n")
+            pendingList.forEachIndexed { index, item ->
+                append("${index + 1}. [${item.keterangan.trim().ifEmpty { "MEETING" }}] ID: ${item.idListing} - ME: ${item.namaMe}\n")
+                if (item.catatan.isNotBlank()) {
+                    append("   Catatan: ${item.catatan}\n")
                 }
-
-                // Info column
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    
-                    Spacer(modifier = Modifier.height(4.dp))
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "$count dari $total data",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "${String.format(Locale.US, "%.1f", percentage)}%",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                            color = color
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    LinearProgressIndicator(
-                        progress = { if (total > 0) count.toFloat() / total.toFloat() else 0f },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp)),
-                        color = color,
-                        trackColor = MaterialTheme.colorScheme.surfaceVariant
-                    )
-                }
-                
-                Icon(
-                    imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = if (isExpanded) "Collapse" else "Expand",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-
-            AnimatedVisibility(visible = isExpanded) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.05f))
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                    
-                    listOf("Up Foto", "Edit Video", "Garis Tanah").forEach { subCat ->
-                        val items = groupedItems[subCat] ?: emptyList()
-                        val isSubExpanded = expandedSubCategory == subCat
-                        
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f))
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        expandedSubCategory = if (isSubExpanded) null else subCat
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    val subIcon = when (subCat) {
-                                        "Up Foto" -> Icons.Default.Photo
-                                        "Edit Video" -> Icons.Default.Videocam
-                                        else -> Icons.Default.Terrain
-                                    }
-                                    Icon(
-                                        imageVector = subIcon,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Text(
-                                        text = subCat,
-                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Badge(
-                                        containerColor = if (items.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                                        contentColor = if (items.isNotEmpty()) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    ) {
-                                        Text(items.size.toString(), style = MaterialTheme.typography.labelSmall)
-                                    }
-                                    Icon(
-                                        imageVector = if (isSubExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            
-                            AnimatedVisibility(visible = isSubExpanded) {
-                                if (items.isEmpty()) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(12.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "Tidak ada data",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                } else {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 12.dp, vertical = 4.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        items.forEach { subItem ->
-                                            Card(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                colors = CardDefaults.cardColors(
-                                                    containerColor = MaterialTheme.colorScheme.surface
-                                                ),
-                                                shape = RoundedCornerShape(8.dp)
-                                            ) {
-                                                Column(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .padding(8.dp)
-                                                ) {
-                                                    Row(
-                                                        modifier = Modifier.fillMaxWidth(),
-                                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        Text(
-                                                            text = subItem.idListing,
-                                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                                            color = MaterialTheme.colorScheme.primary
-                                                        )
-                                                        Text(
-                                                            text = subItem.subtitle,
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                        )
-                                                    }
-                                                    Spacer(modifier = Modifier.height(2.dp))
-                                                    Text(
-                                                        text = subItem.title,
-                                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                                        color = MaterialTheme.colorScheme.onSurface,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                    if (subItem.extraInfo.isNotBlank()) {
-                                                        Spacer(modifier = Modifier.height(2.dp))
-                                                        Text(
-                                                            text = subItem.extraInfo,
-                                                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
-                                                            color = MaterialTheme.colorScheme.secondary,
-                                                            maxLines = 2,
-                                                            overflow = TextOverflow.Ellipsis
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-private fun getWeekDates(weekOffset: Int): List<Date> {
-    val calendar = Calendar.getInstance(Locale("id", "ID")).apply {
-        firstDayOfWeek = Calendar.MONDAY
-        time = Date()
-        set(Calendar.HOUR_OF_DAY, 12)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-    while (calendar.get(Calendar.DAY_OF_WEEK) != Calendar.MONDAY) {
-        calendar.add(Calendar.DAY_OF_YEAR, -1)
-    }
-    calendar.add(Calendar.DAY_OF_YEAR, weekOffset * 7)
-    
-    val dates = mutableListOf<Date>()
-    for (i in 0 until 7) {
-        dates.add(calendar.time)
-        calendar.add(Calendar.DAY_OF_YEAR, 1)
-    }
-    return dates
-}
-
-private fun parseDateToYmd(dateStr: String): String {
-    val result = com.example.data.normalizeDate(dateStr)
-    return if (result.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) result else ""
-}
-
-private fun calculateBestWeekPage(tasks: List<com.example.data.EditFotoTask>): Int {
-    if (tasks.isEmpty()) return 500
-    
-    val sdfYmd = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-    val todayCalendar = Calendar.getInstance(Locale("id", "ID")).apply {
-        firstDayOfWeek = Calendar.MONDAY
-        time = Date()
-        set(Calendar.HOUR_OF_DAY, 12)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-    while (todayCalendar.get(Calendar.DAY_OF_WEEK) != Calendar.MONDAY) {
-        todayCalendar.add(Calendar.DAY_OF_YEAR, -1)
-    }
-    
-    val weekCounts = mutableMapOf<Int, Int>()
-    
-    for (task in tasks) {
-        val ymd = parseDateToYmd(task.jadwalPosting)
-        if (ymd.isEmpty()) continue
-        try {
-            val taskDate = sdfYmd.parse(ymd) ?: continue
-            val taskCalendar = Calendar.getInstance(Locale("id", "ID")).apply {
-                firstDayOfWeek = Calendar.MONDAY
-                time = taskDate
-                set(Calendar.HOUR_OF_DAY, 12)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-            while (taskCalendar.get(Calendar.DAY_OF_WEEK) != Calendar.MONDAY) {
-                taskCalendar.add(Calendar.DAY_OF_YEAR, -1)
-            }
-            
-            val diffMs = taskCalendar.timeInMillis - todayCalendar.timeInMillis
-            val weeksDiff = Math.round(diffMs.toDouble() / (1000.0 * 60 * 60 * 24 * 7)).toInt()
-            val page = 500 + weeksDiff
-            if (page in 0..999) {
-                weekCounts[page] = (weekCounts[page] ?: 0) + 1
-            }
-        } catch (e: Exception) { }
-    }
-    
-    // Find page with max tasks, if none match fallback to 500
-    if (weekCounts.isEmpty()) return 500
-    return weekCounts.maxByOrNull { it.value }?.key ?: 500
-}
-
-private fun isDateInSelectedMonth(dateStr: String, selectedMonth: String): Boolean {
-    val normalized = com.example.data.normalizeDate(dateStr)
-    if (normalized.length < 7) return false
-    val yearPart = normalized.substring(0, 4) // "2026"
-    val monthPart = normalized.substring(5, 7) // "06"
-    
-    val monthName = when (monthPart) {
-        "01" -> "Januari"
-        "02" -> "Februari"
-        "03" -> "Maret"
-        "04" -> "April"
-        "05" -> "Mei"
-        "06" -> "Juni"
-        "07" -> "Juli"
-        "08" -> "Agustus"
-        "09" -> "September"
-        "10" -> "Oktober"
-        "11" -> "November"
-        "12" -> "Desember"
-        else -> ""
-    }
-    val targetMonthYear = "$monthName $yearPart".lowercase().trim()
-    return targetMonthYear == selectedMonth.lowercase().trim()
-}
-
-private fun formatReportDate(dateStr: String): String {
-    return try {
-        val date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(dateStr)
-        if (date != null) {
-            val sdf = SimpleDateFormat("EEEE, dd-MMMM-yyyy", Locale("id", "ID"))
-            val formatted = sdf.format(date)
-            val parts = formatted.split("-")
-            if (parts.size == 3) {
-                val day = parts[0]
-                val month = parts[1].replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale("id", "ID")) else it.toString() }
-                val year = parts[2]
-                "$day-$month-$year"
-            } else {
-                formatted
+                append("   Link: https://raywhitecipete.net/ListingView/Detail/${item.idListing}\n")
             }
         } else {
-            dateStr
+            append("🎉 Semua target weekly meeting periode ini telah selesai dikerjakan!")
         }
-    } catch (e: Exception) {
-        dateStr
     }
 }
-
-private fun buildReportText(selectedMonth: String, doneSchedulesList: List<com.example.data.Schedule>): String {
-    return buildString {
-        append("Update Foto Raffa - David Bulan ").append(selectedMonth).append("\n\n")
-        
-        var lastDate: String? = null
-        var overallIndex = 1
-        
-        doneSchedulesList.forEach { schedule ->
-            val currentDateStr = schedule.tanggal
-            if (currentDateStr != lastDate) {
-                if (lastDate != null) {
-                    append("\n") // Empty line before new date header
-                }
-                append(formatReportDate(currentDateStr)).append("\n")
-                lastDate = currentDateStr
-            }
-            
-            val cleanType = schedule.type
-                .replace("(?i)^done\\s*".toRegex(), "")
-                .trim()
-                .ifEmpty { "Foto" }
-                
-            val idTrimmed = schedule.idListing.trim()
-            append("${overallIndex}. ${schedule.lokasi} : $cleanType\n")
-            append("https://raywhitecipete.net/ListingView/Detail/$idTrimmed\n")
-            overallIndex++
-        }
-        
-        val reportFotoCount = doneSchedulesList.count { 
-            val t = it.type.lowercase()
-            t.contains("foto") || (!t.contains("video") && !t.contains("drone"))
-        }
-        val reportVideoCount = doneSchedulesList.count { 
-            it.type.lowercase().contains("video")
-        }
-        val reportDroneCount = doneSchedulesList.count { 
-            it.type.lowercase().contains("drone")
-        }
-        
-        append("\n")
-        append("📸 Sesi Foto : $reportFotoCount\n")
-        append("📹 Sesi Video : $reportVideoCount\n")
-        append("🛸 Sesi Drone : $reportDroneCount")
-    }
-}
-
-data class AnalyticSubItem(
-    val idListing: String,
-    val title: String,
-    val subtitle: String,
-    val extraInfo: String
-)
-

@@ -2383,6 +2383,56 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
+    // Weekly Meeting Analytics states and fetcher method
+    val weeklyMeetingAnalyticsListings = MutableStateFlow<List<com.example.network.MeetingListing>>(emptyList())
+    private val _analyticSyncStatus = MutableStateFlow<SyncState>(SyncState.Success("Siap"))
+    val analyticSyncStatus: StateFlow<SyncState> = _analyticSyncStatus.asStateFlow()
+
+    fun fetchWeeklyMeetingAnalyticsData(monthFilter: String) {
+        val baseUrl = appsScriptUrl.value
+        if (baseUrl.isBlank()) {
+            _analyticSyncStatus.value = SyncState.Error("URL Google Apps Script belum diatur.")
+            return
+        }
+        
+        _analyticSyncStatus.value = SyncState.Loading
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val listingsResult = mutableListOf<com.example.network.MeetingListing>()
+                
+                if (monthFilter == "Semua Bulan 2026" || monthFilter == "Semua Bulan") {
+                    val separator = if (baseUrl.contains("?")) "&" else "?"
+                    val url = "$baseUrl${separator}action=get_yearly_weekly_meeting_listings"
+                    val response = apiService.getMeetingListings(url)
+                    if (response.status.lowercase() == "success") {
+                        listingsResult.addAll(response.listings)
+                    } else {
+                        _analyticSyncStatus.value = SyncState.Error(response.message ?: "Gagal memuat data tahunan")
+                        return@launch
+                    }
+                } else {
+                    val sheetName = getWeeklyMeetingSheetNameForMonth(monthFilter)
+                    val encodedSheet = java.net.URLEncoder.encode(sheetName, "UTF-8")
+                    val separator = if (baseUrl.contains("?")) "&" else "?"
+                    val url = "$baseUrl${separator}action=get_all_weekly_meeting_listings&sheetName=$encodedSheet"
+                    val response = apiService.getMeetingListings(url)
+                    if (response.status.lowercase() == "success") {
+                        listingsResult.addAll(response.listings)
+                    } else {
+                        _analyticSyncStatus.value = SyncState.Error(response.message ?: "Gagal memuat data bulan $monthFilter")
+                        return@launch
+                    }
+                }
+                
+                weeklyMeetingAnalyticsListings.value = listingsResult
+                _analyticSyncStatus.value = SyncState.Success("Berhasil memuat ${listingsResult.size} data analisis!")
+            } catch (e: Exception) {
+                _analyticSyncStatus.value = SyncState.Error("Gagal: ${e.localizedMessage ?: "Masalah jaringan"}")
+            }
+        }
+    }
+
+
     fun isNewerVersion(server: String, current: String): Boolean {
         return try {
             val serverParts = server.trim().lowercase().removePrefix("v").split(".").mapNotNull { it.toIntOrNull() }

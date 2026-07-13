@@ -75,6 +75,9 @@ function doGet(e) {
     if (action === "get_all_weekly_meeting_listings") {
       return getAllWeeklyMeetingListings(e);
     }
+    if (action === "get_yearly_weekly_meeting_listings") {
+      return getYearlyWeeklyMeetingListings(e);
+    }
     if (action === "get_yearly_ig_posting_history") {
       return getYearlyIgPostingHistory(e);
     }
@@ -968,6 +971,98 @@ function getAllWeeklyMeetingListings(e) {
     "status": "success",
     "sheetName": sheet.getName(),
     "listings": listings
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function getYearlyWeeklyMeetingListings(e) {
+  var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+  var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+  var months = [
+    "Januari 2026", "Februari 2026", "Maret 2026", "April 2026", "Mei 2026", "Juni 2026", 
+    "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026"
+  ];
+  
+  var allListings = [];
+  
+  for (var m = 0; m < months.length; m++) {
+    var sheetName = months[m];
+    var sheet = findSheetByFlexibleName(ss, sheetName);
+    if (!sheet) continue;
+    
+    var sName = sheet.getName();
+    var cleanMonth = sheetName.replace("Recap Meeting ", "").replace(/\s*\d{4}/g, "").trim();
+    var indonesianMonths = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    var monthIndex = indonesianMonths.indexOf(cleanMonth);
+    if (monthIndex === -1) monthIndex = m;
+    
+    var yearMatch = sName.match(/\b(\d{4})\b/);
+    var sheetYear = yearMatch ? parseInt(yearMatch[1], 10) : 2026;
+    var monthNum = monthIndex + 1;
+    var monthStr = ("0" + monthNum).slice(-2);
+    
+    var dateCols = [];
+    var checkCols = [2, 10, 18, 26, 34, 42, 50, 58];
+    for (var i = 0; i < checkCols.length; i++) {
+      var col = checkCols[i];
+      if (col > sheet.getLastColumn()) break;
+      
+      var foundDay = null;
+      for (var r = 1; r <= 4; r++) {
+        var val = sheet.getRange(r, col).getValue();
+        if (!val) continue;
+        if (val instanceof Date) {
+          foundDay = val.getDate();
+          break;
+        }
+        var valStr = val.toString().toLowerCase();
+        var numMatch = valStr.match(/\b(\d{1,2})\b/);
+        if (numMatch) {
+          foundDay = parseInt(numMatch[1], 10);
+          break;
+        }
+      }
+      
+      if (foundDay !== null) {
+        var dayStr = ("0" + foundDay).slice(-2);
+        dateCols.push({ col: col, date: sheetYear + "-" + monthStr + "-" + dayStr, maxRow: 120 });
+      }
+    }
+    
+    for (var d = 0; d < dateCols.length; d++) {
+      var colInfo = dateCols[d];
+      var colIndex = colInfo.col;
+      var dateStr = colInfo.date;
+      var maxRow = colInfo.maxRow;
+      var startRow = 5;
+      var numRows = maxRow - startRow + 1;
+      
+      var dataRange = sheet.getRange(startRow, colIndex, numRows, 6);
+      var values = dataRange.getValues();
+      
+      for (var r = 0; r < values.length; r++) {
+        var row = values[r];
+        var idListing = row[0] ? row[0].toString().trim() : "";
+        var keterangan = row[1] ? row[1].toString().trim() : "";
+        if (idListing !== "") {
+          allListings.push({
+            "no": (startRow + r),
+            "date": dateStr,
+            "colIndex": colIndex,
+            "idListing": idListing,
+            "keterangan": keterangan,
+            "postingIg": row[2] ? row[2].toString().trim() : "",
+            "jadwalPosting": row[3] ? row[3].toString().trim() : "",
+            "namaMe": row[4] ? row[4].toString().trim() : "",
+            "catatan": row[5] ? row[5].toString().trim() : ""
+          });
+        }
+      }
+    }
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({
+    "status": "success",
+    "listings": allListings
   })).setMimeType(ContentService.MimeType.JSON);
 }
 

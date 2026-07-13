@@ -1678,9 +1678,9 @@ fun AddMeetingListingDialog(
 
                             optionsData.forEach { (option, icon, baseColor) ->
                                 val isSelected = selectedKeterangan == option
-                                val backgroundColor = if (isSelected) baseColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                                val borderColor = if (isSelected) baseColor else MaterialTheme.colorScheme.outlineVariant
-                                val contentColor = if (isSelected) baseColor else MaterialTheme.colorScheme.onSurfaceVariant
+                                val backgroundColor = if (isSelected) baseColor else baseColor.copy(alpha = 0.08f)
+                                val borderColor = if (isSelected) baseColor else baseColor.copy(alpha = 0.3f)
+                                val contentColor = if (isSelected) Color.White else baseColor
                                 val borderStroke = BorderStroke(if (isSelected) 2.dp else 1.dp, borderColor)
 
                                 Card(
@@ -1743,9 +1743,9 @@ fun AddMeetingListingDialog(
 
                             templatesData.forEach { (template, icon, baseColor) ->
                                 val isSelected = selectedEditOptions.contains(template)
-                                val backgroundColor = if (isSelected) baseColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                                val borderColor = if (isSelected) baseColor else MaterialTheme.colorScheme.outlineVariant
-                                val contentColor = if (isSelected) baseColor else MaterialTheme.colorScheme.onSurfaceVariant
+                                val backgroundColor = if (isSelected) baseColor else baseColor.copy(alpha = 0.08f)
+                                val borderColor = if (isSelected) baseColor else baseColor.copy(alpha = 0.3f)
+                                val contentColor = if (isSelected) Color.White else baseColor
                                 val borderStroke = BorderStroke(if (isSelected) 2.dp else 1.dp, borderColor)
 
                                 Card(
@@ -2435,9 +2435,9 @@ fun EditMeetingListingDialog(
 
                             optionsData.forEach { (option, icon, baseColor) ->
                                 val isSelected = selectedKeterangan == option
-                                val backgroundColor = if (isSelected) baseColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                                val borderColor = if (isSelected) baseColor else MaterialTheme.colorScheme.outlineVariant
-                                val contentColor = if (isSelected) baseColor else MaterialTheme.colorScheme.onSurfaceVariant
+                                val backgroundColor = if (isSelected) baseColor else baseColor.copy(alpha = 0.08f)
+                                val borderColor = if (isSelected) baseColor else baseColor.copy(alpha = 0.3f)
+                                val contentColor = if (isSelected) Color.White else baseColor
                                 val borderStroke = BorderStroke(if (isSelected) 2.dp else 1.dp, borderColor)
 
                                 Card(
@@ -2500,9 +2500,9 @@ fun EditMeetingListingDialog(
 
                             templatesData.forEach { (template, icon, baseColor) ->
                                 val isSelected = selectedEditOptions.contains(template)
-                                val backgroundColor = if (isSelected) baseColor.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                                val borderColor = if (isSelected) baseColor else MaterialTheme.colorScheme.outlineVariant
-                                val contentColor = if (isSelected) baseColor else MaterialTheme.colorScheme.onSurfaceVariant
+                                val backgroundColor = if (isSelected) baseColor else baseColor.copy(alpha = 0.08f)
+                                val borderColor = if (isSelected) baseColor else baseColor.copy(alpha = 0.3f)
+                                val contentColor = if (isSelected) Color.White else baseColor
                                 val borderStroke = BorderStroke(if (isSelected) 2.dp else 1.dp, borderColor)
 
                                 Card(
