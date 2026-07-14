@@ -98,6 +98,8 @@ fun SchedulingDialog(
         val scheduled = filteredListings.filter {
             val jadwal = it.jadwalPosting.trim()
             jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
+        }.sortedByDescending { listing ->
+            parseJadwalPostingDateToDate(listing.jadwalPosting)
         }
 
         Pair(unscheduled, scheduled)
@@ -718,4 +720,78 @@ private fun formatJadwalPostingDate(rawDate: String): String {
     } catch (e: Exception) {}
 
     return clean
+}
+
+/**
+ * Robustly parse arbitrary date formats from the database back to a Date object for comparisons.
+ * Returns Date(0) if parsing fails.
+ */
+private fun parseJadwalPostingDateToDate(rawDate: String): Date {
+    val trimmed = rawDate.trim()
+    if (trimmed.isEmpty() || trimmed == "-") return Date(0)
+
+    // 1. Try parsing ISO/UTC standard format first, e.g., 2026-06-26T10:00:00.000Z
+    try {
+        if (trimmed.contains("T")) {
+            val datePart = trimmed.substringBefore("T")
+            val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            parser.parse(datePart)?.let { return it }
+        }
+    } catch (e: Exception) {}
+
+    // 2. Try parsing typical JavaScript Date string: e.g., "Fri Jun 26 2026 10:00:00 GMT+0700 (WIB)" or similar
+    try {
+        val tokens = trimmed.split(" ").filter { it.isNotBlank() }
+        if (tokens.size >= 4) {
+            val firstFour = tokens.take(4).joinToString(" ")
+            val parser = SimpleDateFormat("EEE MMM dd yyyy", Locale.US)
+            parser.parse(firstFour)?.let { return it }
+        }
+    } catch (e: Exception) {}
+
+    // 3. Try typical SimpleDateFormat patterns
+    val formats = listOf(
+        "yyyy-MM-dd",
+        "dd/MM/yyyy",
+        "dd-MM-yyyy",
+        "EEEE, dd MMMM yyyy",
+        "EEEE, d MMMM yyyy",
+        "EEEE, dd-MMMM-yyyy",
+        "dd MMMM yyyy",
+        "d MMMM yyyy",
+        "dd MMM yyyy",
+        "d MMM yyyy"
+    )
+
+    for (fmt in formats) {
+        try {
+            val parser = SimpleDateFormat(fmt, Locale("id", "ID"))
+            parser.parse(trimmed)?.let { return it }
+        } catch (e: Exception) {}
+        try {
+            val parser = SimpleDateFormat(fmt, Locale.US)
+            parser.parse(trimmed)?.let { return it }
+        } catch (e: Exception) {}
+    }
+
+    // 4. Last resort: manual clean-up of time components and timezone abbreviations
+    try {
+        var clean = trimmed
+        clean = clean.replace(Regex("\\b\\d{1,2}[:\\.]\\d{2}([:\\.]\\d{2})?\\b"), "")
+        clean = clean.replace(Regex("(?i)\\bGMT[+\\-\\d:]*\\b"), "")
+        clean = clean.replace(Regex("\\([^)]*\\)"), "")
+        val tzAbbrev = listOf("WIB", "WITA", "WIT", "UTC", "PST", "PDT", "EST", "EDT")
+        for (abbrev in tzAbbrev) {
+            clean = clean.replace(Regex("(?i)\\b$abbrev\\b"), "")
+        }
+        clean = clean.replace(Regex("\\s+"), " ").trim()
+        val tokens = clean.split(" ").filter { it.isNotBlank() }
+        if (tokens.size >= 4) {
+            val firstFour = tokens.take(4).joinToString(" ")
+            val parser = SimpleDateFormat("EEE MMM dd yyyy", Locale.US)
+            parser.parse(firstFour)?.let { return it }
+        }
+    } catch (e: Exception) {}
+
+    return Date(0)
 }
