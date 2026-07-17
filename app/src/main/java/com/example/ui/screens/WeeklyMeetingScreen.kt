@@ -56,7 +56,6 @@ import android.os.Build
 import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
-import android.os.VibratorManager
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -2836,17 +2835,14 @@ fun AutoScrapeWebDialog(
 
             // Vibrate
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    val vm = context.getSystemService(VibratorManager::class.java)
-                    vm?.defaultVibrator?.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
-                } else {
-                    @Suppress("DEPRECATION")
-                    val vm = context.getSystemService(Vibrator::class.java)
+                @Suppress("DEPRECATION")
+                val v = context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                if (v != null) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        vm?.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
+                        v.vibrate(VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE))
                     } else {
                         @Suppress("DEPRECATION")
-                        vm?.vibrate(500)
+                        v.vibrate(500)
                     }
                 }
             } catch (e: Exception) { e.printStackTrace() }
