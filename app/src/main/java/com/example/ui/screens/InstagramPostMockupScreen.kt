@@ -311,7 +311,7 @@ fun InstagramPostMockupScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
-                                    text = details["lokasi"]?.uppercase() ?: "CILANDAK",
+                                    text = details["lokasi"]?.uppercase() ?: "JAKARTA SELATAN",
                                     color = Color.White,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 18.sp,
@@ -689,14 +689,7 @@ private fun parsePropertyDetails(rawDesc: String, idListing: String, rawPrice: S
     details["id"] = idListing.ifBlank { "8255" }
 
     // 10. Lokasi (Location) - computed first for title fallback
-    var lokasiVal = "CILANDAK"
-    val locations = listOf("cilandak", "cipete", "kemang", "jagakarsa", "pondok indah", "ampera", "kebayoran", "senopati", "bintaro", "tebet", "pejaten", "cilodong")
-    for (loc in locations) {
-        if (descLower.contains(loc) || title.lowercase().contains(loc) || scrapedTitle.lowercase().contains(loc)) {
-            lokasiVal = loc.uppercase()
-            break
-        }
-    }
+    val lokasiVal = extractPropertyLocation(descLower, title.lowercase(), scrapedTitle.lowercase())
     details["lokasi"] = lokasiVal
 
     // 2. Title - Use task.judul if available, otherwise capitalize first line of description or fallback
@@ -987,15 +980,8 @@ private fun buildInstagramCaption(
         .trim()
 
     // Find location for title generation if needed
-    var lokasiVal = "CILANDAK"
-    val locations = listOf("cilandak", "cipete", "kemang", "jagakarsa", "pondok indah", "ampera", "kebayoran", "senopati", "bintaro", "tebet", "pejaten", "cilodong")
     val descLower = clean.lowercase()
-    for (loc in locations) {
-        if (descLower.contains(loc) || judulTask.lowercase().contains(loc) || scrapedTitle.lowercase().contains(loc)) {
-            lokasiVal = loc.uppercase()
-            break
-        }
-    }
+    val lokasiVal = extractPropertyLocation(descLower, judulTask.lowercase(), scrapedTitle.lowercase())
 
     // 2. Select beautiful title, avoiding pure stats or numbers
     val title = selectPropertyTitle(scrapedTitle, judulTask, clean, lokasiVal)
@@ -1255,4 +1241,40 @@ private fun formatSinglePriceCompact(raw: String): String {
         return "Harga ${if (!cleanM.startsWith("Rp")) "Rp " else ""}$cleanM"
     }
     return "Harga $clean"
+}
+
+private fun extractPropertyLocation(descLower: String, titleLower: String, scrapedTitleLower: String): String {
+    val locations = listOf(
+        // South Jakarta (Jakarta Selatan)
+        "kebagusan", "cilandak", "cipete", "kemang", "jagakarsa", "pondok indah", "ampera", "kebayoran baru", "kebayoran lama", "kebayoran", "senopati", "bintaro", "tebet", "pejaten", "cilodong", "pasar minggu", "gandaria", "mampang prapatan", "mampang", "pancoran", "setiabudi", "kalibata", "ciganjur", "lenteng agung", "ragunan", "tanjung barat", "pesanggrahan", "cipulir", "pondok pinang", "lebak bulus", "fatmawati", "blok m", "radio dalam", "dharmawangsa", "darmawangsa", "panglima polim", "permata hijau", "senayan", "sudirman", "kuningan", "menteng", "prapanca", "wijaya", "cipete dalam", "cipete utara", "cipete selatan", "gandaria utara", "gandaria selatan", "pondok labu", "petukangan", "ulujami", "kebon baru", "manggarai", "pasar manggis", "karet semanggi", "karet pedurenan", "karet tengsin", "karet", "gatot subroto", "gatsu", "rasuna said", "mega kuningan", "scbd", "tebet barat", "tebet timur", "menteng dalam", "pengadegan", "pejaten barat", "pejaten timur", "jatipadang", "buncit", "warung buncit", "duren tiga", "bangka", "tendean", "kapten tendean", "petogogan", "melawai", "pulo", "cipulo", "kebayoran lama utara", "kebayoran lama selatan", "cilandak barat", "cilandak timur", "tanah kusir",
+        // Depok & Bogor
+        "cinere", "depok", "sawangan", "margonda", "cimanggis", "limo", "beji", "pancoran mas", "sentul", "bogor", "cibubur", "bedahan", "beji timur", "gandul", "pangkalan jati", "krukut", "meruyung", "grogol", "mampang depok", "depok jaya", "sukmajaya", "tapos", "harjamukti", "bojonggede", "citayam", "sentul city", "tanah sareal", "bogor utara", "bogor selatan", "bogor timur", "bogor barat",
+        // Tangerang / South Tangerang (Tangerang Selatan)
+        "bsd city", "bsd", "serpong", "alam sutera", "gading serpong", "karawaci", "ciputat", "pamulang", "bintaro jaya", "ciledug", "tangerang", "serpong utara", "bintaro sektor 1", "bintaro sektor 2", "bintaro sektor 3", "bintaro sektor 4", "bintaro sektor 5", "bintaro sektor 6", "bintaro sektor 7", "bintaro sektor 8", "bintaro sektor 9", "graha raya", "pondok cabe", "cirendeu", "rempoa", "jombang", "sawah baru", "serua", "setu", "cisauk", "pagedangan", "legok", "curug", "cikokol", "tangerang kota", "larangan", "pondok aren",
+        // West Jakarta (Jakarta Barat)
+        "puri indah", "kembangan", "kebon jeruk", "meruya", "tanjung duren", "tomang", "grogol", "slipi", "palmerah", "kalideres", "cengkareng", "meruya utara", "meruya selatan", "kembangan utara", "kembangan selatan", "permata buana", "taman aries", "intercon", "semesta", "kemanggisan", "jelambar", "kapuk",
+        // East Jakarta (Jakarta Timur)
+        "rawamangun", "duren sawit", "pulomas", "ciracas", "kramat jati", "makasar", "matraman", "pasar rebo", "cakung", "cipayung", "jatinegara", "kayu putih", "pondok kelapa", "pondok bambu", "klender", "condet", "halim", "cililitan",
+        // Central Jakarta (Jakarta Pusat)
+        "salemba", "tanah abang", "gambir", "kemayoran", "cempaka putih", "sawah besar", "cikini", "gondangdia", "senen", "benhil", "bendungan hilir", "petamburan",
+        // North Jakarta (Jakarta Utara)
+        "pantai indah kapuk", "pik", "kelapa gading", "pluit", "sunter", "ancol", "cilincing", "koja", "pademangan", "penjaringan", "pik 2", "muara karang",
+        // Bekasi
+        "jatiasih", "tambun", "cikarang", "harapan indah", "summarecon bekasi", "bekasi", "grand wisata", "galaxy", "taman galaxy", "kemang pratama", "jatibening", "pondok gede"
+    )
+    val sortedLocations = locations.sortedByDescending { it.length }
+
+    for (loc in sortedLocations) {
+        if (titleLower.contains(loc) || scrapedTitleLower.contains(loc)) {
+            return loc.uppercase()
+        }
+    }
+
+    for (loc in sortedLocations) {
+        if (descLower.contains(loc)) {
+            return loc.uppercase()
+        }
+    }
+
+    return "JAKARTA SELATAN"
 }
