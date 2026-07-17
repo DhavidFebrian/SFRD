@@ -483,6 +483,94 @@ fun AnalyticScreen(
                                             )
                                         }
                                     }
+
+                                    // Share Report Card for Jadwal Foto
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                        ),
+                                        shape = RoundedCornerShape(20.dp),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(18.dp),
+                                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Share,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(22.dp)
+                                                )
+                                                Text(
+                                                    text = "Bagikan Laporan Jadwal Foto",
+                                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+
+                                            Text(
+                                                text = "Anda dapat membagikan rekap target jadwal foto ini secara terformat ke WhatsApp Business atau menyalin teksnya.",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                Button(
+                                                    onClick = {
+                                                        val report = buildJadwalFotoReportText(selectedMonthFilter, listings, hotPropertyCount, igCount, fotoUlangCount, lainnyaCount)
+                                                        val whatsappBusinessPackage = "com.whatsapp.w4b"
+                                                        val isWaBusinessInstalled = try {
+                                                            context.packageManager.getPackageInfo(whatsappBusinessPackage, 0)
+                                                            true
+                                                        } catch (e: Exception) {
+                                                            false
+                                                        }
+                                                        
+                                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                                            type = "text/plain"
+                                                            putExtra(Intent.EXTRA_TEXT, report)
+                                                            if (isWaBusinessInstalled) {
+                                                                setPackage(whatsappBusinessPackage)
+                                                            }
+                                                        }
+                                                        context.startActivity(Intent.createChooser(shareIntent, "Bagikan Laporan"))
+                                                    },
+                                                    modifier = Modifier.weight(1f),
+                                                    shape = RoundedCornerShape(12.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text("Share WA", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+                                                }
+
+                                                OutlinedButton(
+                                                    onClick = {
+                                                        val report = buildJadwalFotoReportText(selectedMonthFilter, listings, hotPropertyCount, igCount, fotoUlangCount, lainnyaCount)
+                                                        clipboardManager.setText(AnnotatedString(report))
+                                                        Toast.makeText(context, "Laporan disalin ke clipboard!", Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    modifier = Modifier.weight(1f),
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                                                ) {
+                                                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                                                    Spacer(Modifier.width(6.dp))
+                                                    Text("Salin Teks", style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold))
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                             
@@ -874,6 +962,74 @@ private fun buildWeeklyReportText(
             }
         } else {
             append("🎉 Semua target weekly meeting periode ini telah selesai dikerjakan!")
+        }
+    }
+}
+
+private fun buildJadwalFotoReportText(
+    monthFilter: String,
+    listings: List<MeetingListing>,
+    hotPropertyCount: Int,
+    igCount: Int,
+    fotoUlangCount: Int,
+    lainnyaCount: Int
+): String {
+    return buildString {
+        append("📝 LAPORAN DISTRIBUSI KETERANGAN JADWAL FOTO\n")
+        append("📅 Periode: ").append(monthFilter).append("\n")
+        append("📂 Total Target Meeting: ").append(listings.size).append(" unit\n\n")
+        
+        append("🔥 HOT PROPERTY: ").append(hotPropertyCount).append(" unit\n")
+        append("📱 TARGET INSTAGRAM: ").append(igCount).append(" unit\n")
+        append("📸 FOTO ULANG: ").append(fotoUlangCount).append(" unit\n")
+        append("ℹ️ KETERANGAN LAINNYA: ").append(lainnyaCount).append(" unit\n\n")
+        
+        val hotList = listings.filter { it.keterangan.trim().uppercase() == "HOT PROPERTY" }
+        val igList = listings.filter { it.keterangan.trim().uppercase() == "IG" }
+        val fotoUlangList = listings.filter { it.keterangan.trim().uppercase() == "FOTO ULANG" }
+        val lainnyaList = listings.filter { 
+            val ket = it.keterangan.trim().uppercase()
+            ket != "HOT PROPERTY" && ket != "IG" && ket != "FOTO ULANG"
+        }
+        
+        if (hotList.isNotEmpty()) {
+            append("🔥 DETAIL HOT PROPERTY:\n")
+            hotList.forEachIndexed { idx, item ->
+                append("${idx + 1}. ID: ${item.idListing} - ME: ${item.namaMe}\n")
+                if (item.catatan.isNotBlank()) append("   Catatan: ${item.catatan}\n")
+                append("   Link: https://raywhitecipete.net/ListingView/Detail/${item.idListing}\n")
+            }
+            append("\n")
+        }
+        
+        if (igList.isNotEmpty()) {
+            append("📱 DETAIL TARGET INSTAGRAM:\n")
+            igList.forEachIndexed { idx, item ->
+                append("${idx + 1}. ID: ${item.idListing} - ME: ${item.namaMe}\n")
+                if (item.catatan.isNotBlank()) append("   Catatan: ${item.catatan}\n")
+                append("   Link: https://raywhitecipete.net/ListingView/Detail/${item.idListing}\n")
+            }
+            append("\n")
+        }
+        
+        if (fotoUlangList.isNotEmpty()) {
+            append("📸 DETAIL FOTO ULANG:\n")
+            fotoUlangList.forEachIndexed { idx, item ->
+                append("${idx + 1}. ID: ${item.idListing} - ME: ${item.namaMe}\n")
+                if (item.catatan.isNotBlank()) append("   Catatan: ${item.catatan}\n")
+                append("   Link: https://raywhitecipete.net/ListingView/Detail/${item.idListing}\n")
+            }
+            append("\n")
+        }
+        
+        if (lainnyaList.isNotEmpty()) {
+            append("ℹ️ DETAIL KETERANGAN LAINNYA:\n")
+            lainnyaList.forEachIndexed { idx, item ->
+                append("${idx + 1}. ID: ${item.idListing} - ME: ${item.namaMe}\n")
+                if (item.catatan.isNotBlank()) append("   Catatan: ${item.catatan}\n")
+                append("   Link: https://raywhitecipete.net/ListingView/Detail/${item.idListing}\n")
+            }
+            append("\n")
         }
     }
 }
