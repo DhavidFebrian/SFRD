@@ -71,19 +71,25 @@ fun AbsenWeeklyMeetingScreen(
         if (currentDates != null && currentDates.isNotEmpty() && lastAutoSelectedMonthIndex != selectedMonthIndex) {
             val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
             val todayStr = sdf.format(java.util.Date())
-            
+
             val monthNum = selectedMonthIndex + 1
             val monthStr = monthNum.toString().padStart(2, '0')
             val dateStrList = currentDates.map { dateObj ->
-                val dayStr = dateObj.label.filter { it.isDigit() }
-                val dayFormatted = dayStr.padStart(2, '0')
-                "2026-$monthStr-$dayFormatted"
+                val label = dateObj.label
+                // Extract first number from label (supports "14/07/2026", "Selasa, 14 Juli 2026", etc.)
+                val dayNum = Regex("""\b(\d{1,2})\b""").find(label)?.groupValues?.get(1)?.toIntOrNull()
+                val dayFormatted = (dayNum ?: 1).toString().padStart(2, '0')
+                // Extract year from label (4-digit number), fallback to Calendar year
+                val yearNum = Regex("""\b(20\d{2})\b""").find(label)?.groupValues?.get(1)
+                    ?: java.util.Calendar.getInstance().get(java.util.Calendar.YEAR).toString()
+                "$yearNum-$monthStr-$dayFormatted"
             }
-            
+
             selectedDateIdx = viewModel.findRelevantDateIndex(dateStrList, todayStr)
             lastAutoSelectedMonthIndex = selectedMonthIndex
         }
     }
+
 
     Scaffold(
         modifier = modifier.fillMaxSize(),

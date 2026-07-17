@@ -1486,6 +1486,23 @@ fun ScheduleRowItem(
                                 }
                             }
 
+                            // Share (WhatsApp Follow-Up) button – only for Done schedules
+                            if (isSelesai) {
+                                IconButton(
+                                    onClick = onFollowUpClick,
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .testTag("share_schedule_${schedule.id}")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Share,
+                                        contentDescription = "Share ke WhatsApp",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+
                             IconButton(
                                 onClick = onDeleteClick,
                                 modifier = Modifier

@@ -2826,6 +2826,9 @@ fun AutoScrapeWebDialog(
     // Add-listing dialog state for manual FAB
     var showAddManualDialog by remember { mutableStateOf(false) }
 
+    var activePreviewImages by remember { mutableStateOf<List<String>?>(null) }
+    var activePreviewIndex by remember { mutableStateOf(0) }
+
     // Trigger vibrate when new listing is scraped
     LaunchedEffect(pendingList.size) {
         if (pendingList.size > lastTriggeredPendingSize && pendingList.isNotEmpty()) {
@@ -2973,11 +2976,13 @@ fun AutoScrapeWebDialog(
                         }
 
                         val listingImagesMap by viewModel.listingImagesMap.collectAsState()
+                        val listingImagesGalleryMap by viewModel.listingImagesGalleryMap.collectAsState()
                         val listingTitleMap by viewModel.listingTitleMap.collectAsState()
                         val listingPriceMap by viewModel.listingPriceMap.collectAsState()
+                        val listingDescMap by viewModel.listingDescMap.collectAsState()
                         val agentInfoMap by viewModel.agentInfoMap.collectAsState()
+                        val listingSoldMap by viewModel.listingSoldMap.collectAsState()
 
-                        val imageUrl = listingImagesMap[activeId]
                         val title = listingTitleMap[activeId] ?: "Memuat info listing..."
                         val price = listingPriceMap[activeId] ?: ""
                         val agentInfo = agentInfoMap[activeId]
@@ -2990,6 +2995,7 @@ fun AutoScrapeWebDialog(
                         var inputJudul by remember(activeId) { mutableStateOf("") }
                         var catatanManual by remember(activeId) { mutableStateOf("") }
                         var isSavingListing by remember { mutableStateOf(false) }
+                        var isDescExpanded by remember(activeId) { mutableStateOf(false) }
 
                         val computedCatatan = remember(selectedEditOptions, inputJudul, catatanManual) {
                             val formattedOptions = if (selectedEditOptions.isNotEmpty()) "edit ${selectedEditOptions.joinToString(" ")}" else ""
@@ -3000,8 +3006,8 @@ fun AutoScrapeWebDialog(
                         Card(
                             modifier = Modifier.fillMaxWidth().weight(1f),
                             shape = RoundedCornerShape(20.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.1f)),
-                            border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                         ) {
                             Column(
                                 modifier = Modifier
@@ -3012,63 +3018,45 @@ fun AutoScrapeWebDialog(
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Notifications,
-                                        contentDescription = "Alert",
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Text(
-                                        text = "LISTING HOT BARU TERDETEKSI!",
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(80.dp)
-                                            .background(MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(12.dp)),
-                                        contentAlignment = Alignment.Center
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        if (imageUrl != null) {
-                                            AsyncImage(
-                                                model = imageUrl,
-                                                contentDescription = null,
-                                                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
-                                                contentScale = ContentScale.Crop
-                                            )
-                                        } else {
-                                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                                        }
+                                        Icon(
+                                            imageVector = Icons.Default.Info,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(
+                                            text = "LISTING HOT BARU TERDETEKSI!",
+                                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
                                     }
-
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "ID Listing: $activeId",
-                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                                        )
-                                        Text(
-                                            text = title,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        if (price.isNotBlank()) {
+                                    
+                                    val isSold = listingSoldMap[activeId] ?: false
+                                    if (isSold) {
+                                        Surface(
+                                            color = Color.Red.copy(alpha = 0.15f),
+                                            contentColor = Color.Red,
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier.padding(horizontal = 4.dp)
+                                        ) {
                                             Text(
-                                                text = price,
-                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                                color = MaterialTheme.colorScheme.primary
+                                                text = "SOLD / INACTIVE",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                             )
                                         }
                                     }
                                 }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                                 val igListingsState by viewModel.weeklyMeetingIgListings.collectAsState()
                                 val editFotoTasksState by viewModel.allEditFotoTasks.collectAsState()
@@ -3077,8 +3065,265 @@ fun AutoScrapeWebDialog(
                                     viewModel.getIgPostingHistory(activeId)
                                 }
                                 IgPostingInfoCard(history = igHistory)
+                                
+                                val fallbackImg = listingImagesMap[activeId]
+                                val galleryList = listingImagesGalleryMap[activeId] ?: emptyList()
+                                val imagesToDisplay = remember(galleryList, fallbackImg, activeId) {
+                                    val rawList = if (galleryList.isNotEmpty()) galleryList else listOfNotNull(fallbackImg)
+                                    rawList.filter { img ->
+                                        val lower = img.lowercase()
+                                        !lower.contains("agent") &&
+                                        !lower.contains("profile") &&
+                                        !lower.contains("team") &&
+                                        !lower.contains("member") &&
+                                        !lower.contains("staff") &&
+                                        !lower.contains("/me/") &&
+                                        !lower.contains("avatar")
+                                    }
+                                }
 
-                                HorizontalDivider()
+                                if (title.startsWith("Memuat info") && imagesToDisplay.isEmpty()) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.padding(vertical = 8.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = "Mengambil detail dari website...",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                } else {
+                                    // Title
+                                    Text(
+                                        text = title,
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+
+                                    // Price
+                                    if (price.isNotBlank()) {
+                                        Text(
+                                            text = price,
+                                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+
+                                    // Photos Display
+                                    if (imagesToDisplay.isNotEmpty()) {
+                                        val totalPhotos = imagesToDisplay.size
+                                        if (totalPhotos == 1) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .wrapContentHeight()
+                                                    .clickable {
+                                                        activePreviewImages = imagesToDisplay
+                                                        activePreviewIndex = 0
+                                                    }
+                                            ) {
+                                                AsyncImage(
+                                                    model = imagesToDisplay.first(),
+                                                    contentDescription = "Foto Listing",
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .wrapContentHeight(),
+                                                    contentScale = ContentScale.FillWidth
+                                                )
+                                                Surface(
+                                                    color = Color.Black.copy(alpha = 0.6f),
+                                                    contentColor = Color.White,
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomEnd)
+                                                        .padding(8.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "1/1",
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                    )
+                                                }
+                                            }
+                                        } else {
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .horizontalScroll(rememberScrollState())
+                                            ) {
+                                                imagesToDisplay.forEachIndexed { idx, imgUrl ->
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .height(320.dp)
+                                                            .wrapContentWidth()
+                                                            .clickable {
+                                                                activePreviewImages = imagesToDisplay
+                                                                activePreviewIndex = idx
+                                                            }
+                                                    ) {
+                                                        AsyncImage(
+                                                            model = imgUrl,
+                                                            contentDescription = "Foto Listing",
+                                                            modifier = Modifier
+                                                                .height(320.dp)
+                                                                .wrapContentWidth(),
+                                                            contentScale = ContentScale.FillHeight
+                                                        )
+                                                        Surface(
+                                                            color = Color.Black.copy(alpha = 0.6f),
+                                                            contentColor = Color.White,
+                                                            shape = RoundedCornerShape(12.dp),
+                                                            modifier = Modifier
+                                                                .align(Alignment.BottomEnd)
+                                                                .padding(8.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = "${idx + 1}/$totalPhotos",
+                                                                fontSize = 11.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Agent Info
+                                    val finalAgentName = if (agentInfo != null && agentInfo.name.isNotBlank()) agentInfo.name else namaMe
+                                    val agentNamesList = remember(finalAgentName) {
+                                        com.example.ui.parseMultipleAgentNames(finalAgentName)
+                                    }
+                                    val avatarsList = remember(agentInfo) {
+                                        agentInfo?.avatarUrl?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
+                                    }
+
+                                    if (agentNamesList.isNotEmpty()) {
+                                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                        Column(
+                                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            agentNamesList.forEachIndexed { idx, namePart ->
+                                                val meAvatarUrl = if (idx < avatarsList.size) avatarsList[idx] else ""
+                                                val contact = com.example.ui.findContact(namePart)
+                                                val displayName = contact?.let { com.example.ui.capitalizeName(it.nameKey) } ?: com.example.ui.capitalizeName(namePart)
+                                                
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                ) {
+                                                    if (meAvatarUrl.isNotBlank()) {
+                                                        Card(
+                                                            shape = RoundedCornerShape(22.dp),
+                                                            modifier = Modifier.size(44.dp)
+                                                        ) {
+                                                            AsyncImage(
+                                                                model = meAvatarUrl,
+                                                                contentDescription = "Foto Agent",
+                                                                modifier = Modifier.fillMaxSize(),
+                                                                contentScale = ContentScale.Crop
+                                                            )
+                                                        }
+                                                    } else {
+                                                        Surface(
+                                                            color = MaterialTheme.colorScheme.secondaryContainer,
+                                                            shape = RoundedCornerShape(22.dp),
+                                                            modifier = Modifier.size(44.dp)
+                                                        ) {
+                                                            Box(
+                                                                contentAlignment = Alignment.Center,
+                                                                modifier = Modifier.fillMaxSize()
+                                                            ) {
+                                                                val initials = displayName.split(" ")
+                                                                    .filter { it.isNotBlank() }
+                                                                    .take(2)
+                                                                    .map { it.first().uppercaseChar() }
+                                                                    .joinToString("")
+                                                                Text(
+                                                                    text = initials.ifEmpty { "ME" },
+                                                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                                    color = MaterialTheme.colorScheme.primary
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                    
+                                                    Column {
+                                                        Text(
+                                                            text = displayName,
+                                                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
+                                                            color = MaterialTheme.colorScheme.onSurface
+                                                        )
+                                                        Text(
+                                                            text = "Marketing Executive",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    val rawDesc = listingDescMap[activeId] ?: ""
+                                    val description = remember(rawDesc) {
+                                        rawDesc
+                                            .replace("<[^>]*>".toRegex(), "")
+                                            .replace("\r", "")
+                                            .replace("(?m)^[ \t]*\r?\n".toRegex(), "\n")
+                                            .replace(" {2,}".toRegex(), " ")
+                                            .trim()
+                                    }
+
+                                    if (description.isNotBlank()) {
+                                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable { isDescExpanded = !isDescExpanded }
+                                                .padding(vertical = 4.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "Deskripsi Properti",
+                                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                Icon(
+                                                    imageVector = if (isDescExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                            Text(
+                                                text = description,
+                                                style = MaterialTheme.typography.bodySmall.copy(lineHeight = 16.sp),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = if (isDescExpanded) Int.MAX_VALUE else 3,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                                 OutlinedTextField(
                                     value = namaMe,
@@ -3090,46 +3335,134 @@ fun AutoScrapeWebDialog(
                                 )
 
                                 Text(
-                                    text = "Kategori / Keterangan",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                    text = "Keterangan",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    listOf("HOT PROPERTY", "IG", "FOTO ULANG").forEach { option ->
+                                    val optionsData = listOf(
+                                        Triple("HOT PROPERTY", Icons.Default.Whatshot, Color(0xFFFF5722)),
+                                        Triple("IG", Icons.Default.AlternateEmail, Color(0xFFE1306C)),
+                                        Triple("FOTO ULANG", Icons.Default.PhotoCamera, Color(0xFF2196F3))
+                                    )
+
+                                    optionsData.forEach { (option, icon, baseColor) ->
                                         val isSelected = selectedKeterangan == option
-                                        FilterChip(
-                                            selected = isSelected,
-                                            onClick = { selectedKeterangan = if (isSelected) "" else option },
-                                            label = { Text(option) }
-                                        )
+                                        val backgroundColor = if (isSelected) baseColor else baseColor.copy(alpha = 0.08f)
+                                        val borderColor = if (isSelected) baseColor else baseColor.copy(alpha = 0.3f)
+                                        val contentColor = if (isSelected) Color.White else baseColor
+                                        val borderStroke = BorderStroke(if (isSelected) 2.dp else 1.dp, borderColor)
+
+                                        Card(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    if (!isSavingListing) {
+                                                        selectedKeterangan = if (isSelected) "" else option
+                                                    }
+                                                },
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = CardDefaults.cardColors(containerColor = backgroundColor),
+                                            border = borderStroke
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(vertical = 12.dp, horizontal = 4.dp).fillMaxWidth(),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = icon,
+                                                    contentDescription = option,
+                                                    tint = contentColor,
+                                                    modifier = Modifier.size(22.dp)
+                                                )
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                Text(
+                                                    text = when (option) {
+                                                        "HOT PROPERTY" -> "Hot Property"
+                                                        "IG" -> "Instagram"
+                                                        "FOTO ULANG" -> "Foto Ulang"
+                                                        else -> option
+                                                    },
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = contentColor,
+                                                    textAlign = TextAlign.Center
+                                                )
+                                            }
+                                        }
                                     }
                                 }
 
+                                Spacer(modifier = Modifier.height(4.dp))
+
                                 Text(
-                                    text = "Opsi Edit (opsional)",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                                    text = "Template Catatan Edit Foto",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
+                                Spacer(modifier = Modifier.height(4.dp))
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    listOf("ratio", "perspective", "remove object").forEach { opt ->
-                                        val isChecked = selectedEditOptions.contains(opt)
-                                        FilterChip(
-                                            selected = isChecked,
-                                            onClick = {
-                                                selectedEditOptions = if (isChecked) {
-                                                    selectedEditOptions - opt
-                                                } else {
-                                                    selectedEditOptions + opt
-                                                }
-                                            },
-                                            label = { Text(opt) }
-                                        )
+                                    val templatesData = listOf(
+                                        Triple("ratio", Icons.Default.Crop, Color(0xFF9C27B0)),
+                                        Triple("perspective", Icons.Default.Transform, Color(0xFF4CAF50)),
+                                        Triple("remove object", Icons.Default.Brush, Color(0xFFFF9800))
+                                    )
+
+                                    templatesData.forEach { (template, icon, baseColor) ->
+                                        val isSelected = selectedEditOptions.contains(template)
+                                        val backgroundColor = if (isSelected) baseColor else baseColor.copy(alpha = 0.08f)
+                                        val borderColor = if (isSelected) baseColor else baseColor.copy(alpha = 0.3f)
+                                        val contentColor = if (isSelected) Color.White else baseColor
+                                        val borderStroke = BorderStroke(if (isSelected) 2.dp else 1.dp, borderColor)
+
+                                        Card(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable {
+                                                    if (!isSavingListing) {
+                                                        selectedEditOptions = if (isSelected) {
+                                                            selectedEditOptions - template
+                                                        } else {
+                                                            selectedEditOptions + template
+                                                        }
+                                                    }
+                                                },
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = CardDefaults.cardColors(containerColor = backgroundColor),
+                                            border = borderStroke
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 12.dp, horizontal = 4.dp),
+                                                horizontalArrangement = Arrangement.Center,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = icon,
+                                                    contentDescription = template,
+                                                    tint = contentColor,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = template,
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = contentColor
+                                                )
+                                            }
+                                        }
                                     }
                                 }
+
+                                Spacer(modifier = Modifier.height(8.dp))
 
                                 OutlinedTextField(
                                     value = inputJudul,
@@ -3234,7 +3567,7 @@ fun AutoScrapeWebDialog(
                                     modifier = Modifier.fillMaxSize(),
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    items(processedListings) { item ->
+                                    items(processedListings.asReversed()) { item ->
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -3267,6 +3600,14 @@ fun AutoScrapeWebDialog(
                         }
                     }
                 }
+                
+                if (activePreviewImages != null) {
+                    FullScreenImageGalleryDialog(
+                        images = activePreviewImages!!,
+                        initialIndex = activePreviewIndex,
+                        onDismiss = { activePreviewImages = null }
+                    )
+                }
             }
         }
     }
@@ -3277,7 +3618,15 @@ fun AutoScrapeWebDialog(
             viewModel = viewModel,
             month = month,
             dateStr = dateStr,
-            onDismiss = { showAddManualDialog = false }
+            onDismiss = {
+                showAddManualDialog = false
+                // Restart scraping in case it was paused while the dialog was open
+                if (!isScrapingActive) {
+                    viewModel.startAutoScraping(
+                        listings.map { it.idListing } + processedListings.map { it.first }
+                    )
+                }
+            }
         )
     }
 }

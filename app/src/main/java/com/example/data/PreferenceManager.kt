@@ -132,4 +132,18 @@ class PreferenceManager(context: Context) {
     fun saveAgentInfo(id: String, name: String, waUrl: String, avatarUrl: String) {
         prefs.edit().putString("agent_$id", "$name|||$waUrl|||$avatarUrl").apply()
     }
+
+    // Cache timestamp for listing data – used to implement TTL-based refresh
+    fun getListingCacheTime(id: String): Long = prefs.getLong("cache_time_$id", 0L)
+    fun saveListingCacheTime(id: String) = prefs.edit().putLong("cache_time_$id", System.currentTimeMillis()).apply()
+
+    /**
+     * Returns true if the cached data for [id] is older than [maxAgeMs] milliseconds.
+     * Default: 24 hours (86_400_000 ms). Used to determine if photos/details need refresh.
+     */
+    fun isListingCacheStale(id: String, maxAgeMs: Long = 24L * 60 * 60 * 1000): Boolean {
+        val savedTime = getListingCacheTime(id)
+        if (savedTime == 0L) return true // never cached
+        return (System.currentTimeMillis() - savedTime) > maxAgeMs
+    }
 }

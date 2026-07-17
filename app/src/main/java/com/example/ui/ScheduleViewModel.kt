@@ -860,20 +860,22 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     fun findRelevantDateIndex(dates: List<String>, todayStr: String): Int {
         if (dates.isEmpty()) return 0
         
-        var bestIndex = -1
-        for (i in dates.indices) {
-            val dateVal = dates[i]
-            if (dateVal <= todayStr) {
-                if (bestIndex == -1 || dateVal > dates[bestIndex]) {
-                    bestIndex = i
-                }
-            }
-        }
+        var closestIndex = 0
+        var minDiff = Long.MAX_VALUE
+        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+        val todayTime = try { sdf.parse(todayStr)?.time ?: System.currentTimeMillis() } catch(e: Exception) { System.currentTimeMillis() }
         
-        if (bestIndex != -1) {
-            return bestIndex
+        for (i in dates.indices) {
+            try {
+                val dateTime = sdf.parse(dates[i])?.time ?: 0L
+                val diff = Math.abs(todayTime - dateTime)
+                if (diff < minDiff) {
+                    minDiff = diff
+                    closestIndex = i
+                }
+            } catch (e: Exception) {}
         }
-        return 0
+        return closestIndex
     }
 
     fun selectRelevantMeetingDateAutomatically() {
@@ -1050,114 +1052,170 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     private var scrapingJob: kotlinx.coroutines.Job? = null
     private val persistentlySeenIds = mutableSetOf<String>()
 
+    private var sharedScrapingClient: okhttp3.OkHttpClient? = null
+
+    private fun getOrCreateScrapingClient(): okhttp3.OkHttpClient {
+        sharedScrapingClient?.let { return it }
+        val trustAllCerts = arrayOf<javax.net.ssl.TrustManager>(
+            object : javax.net.ssl.X509TrustManager {
+                override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+                override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
+                override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = arrayOf()
+            }
+        )
+        val sslContext = javax.net.ssl.SSLContext.getInstance("SSL")
+        sslContext.init(null, trustAllCerts, java.security.SecureRandom())
+        val sslSocketFactory = sslContext.socketFactory
+
+        val client = okhttp3.OkHttpClient.Builder()
+            .sslSocketFactory(sslSocketFactory, trustAllCerts[0] as javax.net.ssl.X509TrustManager)
+            .hostnameVerifier { _, _ -> true }
+            .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+            .followRedirects(true)
+            .followSslRedirects(true)
+            .build()
+        sharedScrapingClient = client
+        return client
+    }
+
     fun startAutoScraping(currentListings: List<String>) {
+        persistentlySeenIds.addAll(currentListings)
         if (_isAutoScrapingActive.value) return
         _isAutoScrapingActive.value = true
-        
+
         scrapingJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            persistentlySeenIds.addAll(currentListings)
-            
+            val client = getOrCreateScrapingClient()
+            // Cast a wide net: homepage, search pages (sorted newest), hot/featured filter, agents list
+            val urls = listOf(
+                "https://raywhitecipete.net/",
+                "https://raywhitecipete.net/ListingView/Search",
+                "https://raywhitecipete.net/ListingView/Search?sort=newest",
+                "https://raywhitecipete.net/ListingView/Search?sort=newest&page=1",
+                "https://raywhitecipete.net/ListingView/Search?sort=newest&page=2",
+                "https://raywhitecipete.net/ListingView/Search?filter=hot",
+                "https://raywhitecipete.net/ListingView/Search?type=HotProperty",
+                "https://raywhitecipete.net/HotProperty",
+                "https://raywhitecipete.net/agents/all"
+            )
+
+            // All ID extraction regexes – applied against the full raw HTML string
+            val idRegexList = listOf(
+                // Standard path-based detail URLs
+                """ListingView/Detail/([a-zA-Z0-9]+)""".toRegex(RegexOption.IGNORE_CASE),
+                // Query-param based detail URLs
+                """ListingView/Detail\?id=([a-zA-Z0-9]+)""".toRegex(RegexOption.IGNORE_CASE),
+                // HTML data-id / data-listing-id attributes
+                """data-(?:listing-)?id=["']([a-zA-Z0-9]+)["']""".toRegex(RegexOption.IGNORE_CASE),
+                // JSON key-value pairs that embed listing IDs
+                """"(?:idListing|listingId|listing_id|id)"\s*:\s*"([a-zA-Z0-9]+)"""".toRegex(RegexOption.IGNORE_CASE),
+                """"(?:idListing|listingId|listing_id)"\s*:\s*([0-9]+)""".toRegex(RegexOption.IGNORE_CASE),
+                // JavaScript variable assignments
+                """(?:idListing|listingId|listing_id)\s*=\s*["']?([a-zA-Z0-9]+)["']?""".toRegex(RegexOption.IGNORE_CASE)
+            )
+
             while (_isAutoScrapingActive.value) {
-                try {
-                    val url = "https://raywhitecipete.net/"
-                    val trustAllCerts = arrayOf<javax.net.ssl.TrustManager>(
-                        object : javax.net.ssl.X509TrustManager {
-                            override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
-                            override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
-                            override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = arrayOf()
-                        }
-                    )
-                    
-                    val sslContext = javax.net.ssl.SSLContext.getInstance("SSL")
-                    sslContext.init(null, trustAllCerts, java.security.SecureRandom())
-                    val sslSocketFactory = sslContext.socketFactory
-                    
-                    val client = okhttp3.OkHttpClient.Builder()
-                        .sslSocketFactory(sslSocketFactory, trustAllCerts[0] as javax.net.ssl.X509TrustManager)
-                        .hostnameVerifier { _, _ -> true }
-                        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                        .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                        .build()
+                for (url in urls) {
+                    if (!_isAutoScrapingActive.value) break
+                    try {
+                        val request = okhttp3.Request.Builder()
+                            .url(url)
+                            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                            .header("Accept-Language", "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7")
+                            .build()
 
-                    val request = okhttp3.Request.Builder()
-                        .url(url)
-                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
-                        .build()
+                        client.newCall(request).execute().use { response ->
+                            if (response.isSuccessful) {
+                                val html = response.body?.string() ?: ""
+                                val doc = org.jsoup.Jsoup.parse(html)
 
-                    client.newCall(request).execute().use { response ->
-                        if (response.isSuccessful) {
-                            val html = response.body?.string() ?: ""
-                            val doc = org.jsoup.Jsoup.parse(html)
-                            
-                            // Try to parse total listings count dynamically
-                            try {
-                                val textContent = doc.text()
-                                val countRegex = """(?i)(\d{1,3}[\.,]\d{3}|\d+)\s*(?:properti|properties|listings|listing|found|ditemukan)""".toRegex()
-                                val match = countRegex.find(textContent)
-                                if (match != null) {
-                                    val matchedStr = match.groupValues[1]
-                                    val cleanNum = matchedStr.replace(".", "").replace(",", "").toIntOrNull()
-                                    if (cleanNum != null) {
-                                        _totalWebHotListings.value = java.text.NumberFormat.getIntegerInstance(java.util.Locale("id", "ID")).format(cleanNum)
+                                // Try to parse total listings count dynamically
+                                try {
+                                    val textContent = doc.text()
+                                    val countRegex = """(?i)(\d{1,3}[.,]\d{3}|\d+)\s*(?:properti|properties|listings|listing|found|ditemukan)""".toRegex()
+                                    val match = countRegex.find(textContent)
+                                    if (match != null) {
+                                        val matchedStr = match.groupValues[1]
+                                        val cleanNum = matchedStr.replace(".", "").replace(",", "").toIntOrNull()
+                                        if (cleanNum != null) {
+                                            _totalWebHotListings.value = java.text.NumberFormat.getIntegerInstance(java.util.Locale("id", "ID")).format(cleanNum)
+                                        } else {
+                                            _totalWebHotListings.value = matchedStr
+                                        }
                                     } else {
-                                        _totalWebHotListings.value = matchedStr
-                                    }
-                                } else {
-                                    val fourDigitRegex = """\b(2\d{3})\b""".toRegex()
-                                    val fallbackMatch = fourDigitRegex.find(textContent)
-                                    if (fallbackMatch != null) {
-                                        val cleanNum = fallbackMatch.groupValues[1].toInt()
-                                        _totalWebHotListings.value = java.text.NumberFormat.getIntegerInstance(java.util.Locale("id", "ID")).format(cleanNum)
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                e.printStackTrace()
-                            }
-                            
-                            val scrapedIds = mutableListOf<String>()
-                            doc.select("a").forEach { a ->
-                                val href = a.attr("href") ?: ""
-                                if (href.contains("/ListingView/Detail/")) {
-                                    val id = href.substringAfter("/ListingView/Detail/").substringBefore("/").substringBefore("?").trim()
-                                    if (id.isNotBlank() && id.all { it.isLetterOrDigit() } && !scrapedIds.contains(id)) {
-                                        scrapedIds.add(id)
-                                    }
-                                }
-                            }
-                            
-                            // Regex fallback
-                            val regex = """ListingView/Detail/([a-zA-Z0-9]+)""".toRegex()
-                            val regexMatches = regex.findAll(html).map { it.groupValues[1] }.toList()
-                            for (id in regexMatches) {
-                                if (id.isNotBlank() && !scrapedIds.contains(id)) {
-                                    scrapedIds.add(id)
-                                }
-                            }
-                            
-                            // Check for any new IDs that are not in persistentlySeenIds
-                            val newIds = scrapedIds.filter { it !in persistentlySeenIds }
-                            if (newIds.isNotEmpty()) {
-                                _pendingScrapedListings.update { currentPending ->
-                                    val updated = currentPending.toMutableList()
-                                    for (newId in newIds) {
-                                        if (newId !in updated) {
-                                            updated.add(newId)
-                                            // Prefetch image & detail in background so it's loaded instantly when dialog pops up
-                                            fetchListingImageIfNeeded(newId)
+                                        val fourDigitRegex = """\b(2\d{3})\b""".toRegex()
+                                        val fallbackMatch = fourDigitRegex.find(textContent)
+                                        if (fallbackMatch != null) {
+                                            val cleanNum = fallbackMatch.groupValues[1].toInt()
+                                            _totalWebHotListings.value = java.text.NumberFormat.getIntegerInstance(java.util.Locale("id", "ID")).format(cleanNum)
                                         }
                                     }
-                                    updated
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
                                 }
-                                persistentlySeenIds.addAll(newIds)
+
+                                // Collect all candidate listing IDs from this page
+                                val scrapedIds = mutableSetOf<String>()
+
+                                // 1. Anchor href scanning (Jsoup DOM)
+                                doc.select("a[href]").forEach { a ->
+                                    val href = a.attr("abs:href").ifBlank { a.attr("href") }
+                                    val lowerHref = href.lowercase()
+                                    if (lowerHref.contains("/listingview/detail")) {
+                                        if (lowerHref.contains("/listingview/detail/")) {
+                                            val startIdx = lowerHref.indexOf("/listingview/detail/")
+                                            val sub = href.substring(startIdx + 20)
+                                            val id = sub.substringBefore("/").substringBefore("?").substringBefore("&").trim()
+                                            if (id.isNotBlank() && id.all { it.isLetterOrDigit() }) scrapedIds.add(id)
+                                        } else if (lowerHref.contains("id=")) {
+                                            val id = href.substringAfter("id=").substringBefore("&").substringBefore("/").trim()
+                                            if (id.isNotBlank() && id.all { it.isLetterOrDigit() }) scrapedIds.add(id)
+                                        }
+                                    }
+                                }
+
+                                // 2. Comprehensive regex sweeps over the full raw HTML
+                                for (regex in idRegexList) {
+                                    regex.findAll(html).forEach { match ->
+                                        val id = match.groupValues[1].trim()
+                                        if (id.isNotBlank() && id.length >= 3 && id.all { it.isLetterOrDigit() }) {
+                                            scrapedIds.add(id)
+                                        }
+                                    }
+                                }
+
+                                // 3. Find truly new IDs not seen before in this session
+                                val newIds = scrapedIds.filter { it !in persistentlySeenIds }
+                                if (newIds.isNotEmpty()) {
+                                    persistentlySeenIds.addAll(newIds)
+
+                                    // Immediately trigger vibration + notification for each new ID
+                                    for (newId in newIds) {
+                                        triggerHotListingNotification(newId, "Listing Baru", "")
+                                    }
+
+                                    _pendingScrapedListings.update { currentPending ->
+                                        val updated = currentPending.toMutableList()
+                                        for (newId in newIds) {
+                                            if (newId !in updated) {
+                                                updated.add(newId)
+                                                // Prefetch image & detail in background
+                                                fetchListingImageIfNeeded(newId)
+                                            }
+                                        }
+                                        updated
+                                    }
+                                }
                             }
                         }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
                 }
-                
-                // Poll every 5 seconds for fast real-time operator response
-                kotlinx.coroutines.delay(5000)
+
+                // Poll every 2 seconds for real-time detection
+                kotlinx.coroutines.delay(2000)
             }
         }
     }
@@ -1415,50 +1473,63 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         if (cleanId.isBlank()) return
         
         if (!forceRefresh) {
-            // 1. Check if already in-memory
-            if (_listingImagesMap.value.containsKey(cleanId) && 
-                _listingImagesGalleryMap.value.containsKey(cleanId) &&
-                _listingTitleMap.value.containsKey(cleanId) &&
-                _listingDescMap.value.containsKey(cleanId)) return
+            // 1. Check if cache is stale (older than 24 hours) — if so, bypass cache and re-fetch
+            val isCacheStale = preferenceManager.isListingCacheStale(cleanId)
 
-            // 2. Check if already in SharedPreferences (the persistent cache)
-            val cachedImg = preferenceManager.getListingImage(cleanId)
-            val cachedGallery = preferenceManager.getListingGallery(cleanId)
-            val cachedTitle = preferenceManager.getListingTitle(cleanId)
-            val cachedDesc = preferenceManager.getListingDesc(cleanId)
-            val cachedPrice = preferenceManager.getListingPrice(cleanId)
-            val cachedAgentStr = preferenceManager.getAgentInfo(cleanId)
-            val cachedSold = preferenceManager.getListingSold(cleanId)
+            if (!isCacheStale) {
+                // 1a. Check if already in-memory
+                if (_listingImagesMap.value.containsKey(cleanId) &&
+                    _listingImagesGalleryMap.value.containsKey(cleanId) &&
+                    _listingTitleMap.value.containsKey(cleanId) &&
+                    _listingDescMap.value.containsKey(cleanId)) return
 
-            if (cachedSold) {
-                _listingSoldMap.update { it + (cleanId to true) }
-            } else {
-                _listingSoldMap.update { it + (cleanId to false) }
-            }
+                // 1b. Check if already in SharedPreferences (the persistent cache)
+                val cachedImg = preferenceManager.getListingImage(cleanId)
+                val cachedGallery = preferenceManager.getListingGallery(cleanId)
+                val cachedTitle = preferenceManager.getListingTitle(cleanId)
+                val cachedDesc = preferenceManager.getListingDesc(cleanId)
+                val cachedPrice = preferenceManager.getListingPrice(cleanId)
+                val cachedAgentStr = preferenceManager.getAgentInfo(cleanId)
+                val cachedSold = preferenceManager.getListingSold(cleanId)
 
-            if (cachedImg != null && cachedGallery != null && cachedTitle != null && cachedDesc != null) {
-                _listingImagesMap.update { it + (cleanId to cachedImg) }
-                _listingImagesGalleryMap.update { it + (cleanId to cachedGallery) }
-                _listingTitleMap.update { it + (cleanId to cachedTitle) }
-                _listingDescMap.update { it + (cleanId to cachedDesc) }
-                if (cachedPrice != null) {
-                    _listingPriceMap.update { it + (cleanId to cachedPrice) }
+                if (cachedSold) {
+                    _listingSoldMap.update { it + (cleanId to true) }
+                } else {
+                    _listingSoldMap.update { it + (cleanId to false) }
                 }
-                if (cachedAgentStr != null) {
-                    val parts = cachedAgentStr.split("|||")
-                    if (parts.size >= 3) {
-                        val aInfo = AgentInfo(
-                            name = parts[0],
-                            phone = getAgentPhoneByName(parts[0]),
-                            waUrl = parts[1],
-                            avatarUrl = parts[2],
-                            email = getAgentEmailByName(parts[0]),
-                            instagram = getAgentInstagramByName(parts[0])
-                        )
-                        _agentInfoMap.update { it + (cleanId to aInfo) }
+
+                if (cachedImg != null && cachedGallery != null && cachedTitle != null && cachedDesc != null) {
+                    _listingImagesMap.update { it + (cleanId to cachedImg) }
+                    _listingImagesGalleryMap.update { it + (cleanId to cachedGallery) }
+                    _listingTitleMap.update { it + (cleanId to cachedTitle) }
+                    _listingDescMap.update { it + (cleanId to cachedDesc) }
+                    if (cachedPrice != null) {
+                        _listingPriceMap.update { it + (cleanId to cachedPrice) }
                     }
+                    if (cachedAgentStr != null) {
+                        val parts = cachedAgentStr.split("|||")
+                        if (parts.size >= 3) {
+                            val aInfo = AgentInfo(
+                                name = parts[0],
+                                phone = getAgentPhoneByName(parts[0]),
+                                waUrl = parts[1],
+                                avatarUrl = parts[2],
+                                email = getAgentEmailByName(parts[0]),
+                                instagram = getAgentInstagramByName(parts[0])
+                            )
+                            _agentInfoMap.update { it + (cleanId to aInfo) }
+                        }
+                    }
+                    return
                 }
-                return
+            } else {
+                // Cache is stale — evict in-memory data so fresh web data replaces it
+                _listingImagesMap.update { it - cleanId }
+                _listingImagesGalleryMap.update { it - cleanId }
+                _listingTitleMap.update { it - cleanId }
+                _listingDescMap.update { it - cleanId }
+                _listingPriceMap.update { it - cleanId }
+                _agentInfoMap.update { it - cleanId }
             }
         }
 
@@ -1466,28 +1537,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
             _activeScrapes.update { it + cleanId }
             val url = "https://raywhitecipete.net/ListingView/Detail/$cleanId"
             try {
-                // Create a trust-all trust manager to bypass SSL/TLS handshake issues on Cloud and Android
-                val trustAllCerts = arrayOf<javax.net.ssl.TrustManager>(
-                    object : javax.net.ssl.X509TrustManager {
-                        override fun checkClientTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
-                        override fun checkServerTrusted(chain: Array<out java.security.cert.X509Certificate>?, authType: String?) {}
-                        override fun getAcceptedIssuers(): Array<java.security.cert.X509Certificate> = arrayOf()
-                    }
-                )
-                
-                val sslContext = javax.net.ssl.SSLContext.getInstance("SSL")
-                sslContext.init(null, trustAllCerts, java.security.SecureRandom())
-                val sslSocketFactory = sslContext.socketFactory
-                
-                val client = okhttp3.OkHttpClient.Builder()
-                    .sslSocketFactory(sslSocketFactory, trustAllCerts[0] as javax.net.ssl.X509TrustManager)
-                    .hostnameVerifier { _, _ -> true }
-                    .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                    .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                    .followRedirects(true)
-                    .followSslRedirects(true)
-                    .build()
-
+                val client = getOrCreateScrapingClient()
                 val request = okhttp3.Request.Builder()
                     .url(url)
                     .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
@@ -2042,13 +2092,19 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                             current + (cleanId to agentInfo)
                         }
 
-                        // Save to persistent cache so it never needs to be scraped over network again
+                        // Trigger scraper alert notification if this listing was scraping-detected
+                        if (cleanId in _pendingScrapedListings.value) {
+                            triggerHotListingNotification(cleanId, parsedTitle, parsedPrice)
+                        }
+
+                        // Save to persistent cache (with timestamp for TTL refresh)
                         preferenceManager.saveListingImage(cleanId, allImages.firstOrNull() ?: "")
                         preferenceManager.saveListingGallery(cleanId, allImages)
                         preferenceManager.saveListingTitle(cleanId, parsedTitle)
                         preferenceManager.saveListingDesc(cleanId, parsedDesc)
                         preferenceManager.saveListingPrice(cleanId, parsedPrice)
                         preferenceManager.saveAgentInfo(cleanId, finalAgentName, finalWaUrl, agentAvatarUrl)
+                        preferenceManager.saveListingCacheTime(cleanId) // record fetch time for TTL
                     }
                 }
             } catch (e: Exception) {
@@ -3202,6 +3258,75 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
             .edit()
             .putString("sender_role_override", role)
             .apply()
+    }
+
+    fun triggerHotListingNotification(idListing: String, title: String, price: String) {
+        val context = getApplication<Application>().applicationContext
+        val channelId = "weekly_meeting_sync_channel"
+        val notificationManager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val channel = android.app.NotificationChannel(
+                channelId,
+                "Weekly Meeting Scraper Alerts",
+                android.app.NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifikasi deteksi listing hot baru di website"
+                enableLights(true)
+                lightColor = android.graphics.Color.RED
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 500, 200, 500)
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        val clickIntent = android.content.Intent(context, com.example.MainActivity::class.java).apply {
+            flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val flags = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        } else {
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val pendingIntent = android.app.PendingIntent.getActivity(context, System.currentTimeMillis().toInt(), clickIntent, flags)
+
+        val cleanTitle = if (title.startsWith("Memuat info")) "Listing Baru" else title
+        val text = "Terdeteksi hot listing id: $idListing.. $cleanTitle dan $price"
+
+        val notification = androidx.core.app.NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("🔥 Hot Listing Baru!")
+            .setContentText(text)
+            .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text))
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .setCategory(androidx.core.app.NotificationCompat.CATEGORY_ALARM)
+            .setAutoCancel(true)
+            .setVibrate(longArrayOf(0, 500, 200, 500))
+            .setDefaults(androidx.core.app.NotificationCompat.DEFAULT_ALL)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        // Trigger physical device vibration
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val vm = context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
+                vm?.defaultVibrator?.vibrate(android.os.VibrationEffect.createOneShot(500, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                val v = context.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    v?.vibrate(android.os.VibrationEffect.createOneShot(500, android.os.VibrationEffect.DEFAULT_AMPLITUDE))
+                } else {
+                    @Suppress("DEPRECATION")
+                    v?.vibrate(500)
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        val notificationId = idListing.hashCode()
+        notificationManager.notify(notificationId, notification)
     }
 }
 

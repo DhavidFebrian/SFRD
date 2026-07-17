@@ -61,14 +61,19 @@ fun AnalyticScreen(
     val pagerState = rememberPagerState(pageCount = { 2 })
     
     // Month filter selection states
-    var selectedMonthFilter by remember { mutableStateOf("Semua Bulan 2026") }
+    val indonesianMonthNames = listOf(
+        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+    )
+    val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+    val currentMonthIndex = Calendar.getInstance().get(Calendar.MONTH) // 0-based
+    val defaultMonthFilter = "${indonesianMonthNames[currentMonthIndex]} $currentYear"
+    var selectedMonthFilter by remember { mutableStateOf(defaultMonthFilter) }
     var isMonthDropdownExpanded by remember { mutableStateOf(false) }
     
     val monthsList = listOf(
-        "Semua Bulan 2026",
-        "Januari 2026", "Februari 2026", "Maret 2026", "April 2026", "Mei 2026", "Juni 2026",
-        "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026"
-    )
+        "Semua Bulan $currentYear"
+    ) + indonesianMonthNames.map { "$it $currentYear" }
     
     LaunchedEffect(selectedMonthFilter) {
         viewModel.fetchWeeklyMeetingAnalyticsData(selectedMonthFilter)
@@ -242,7 +247,7 @@ fun AnalyticScreen(
                         onClick = { scope.launch { pagerState.animateScrollToPage(0) } },
                         text = {
                             Text(
-                                text = "Distribusi Target",
+                                text = "Jadwal Foto",
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.titleSmall
                             )
