@@ -429,22 +429,7 @@ object NewsletterDownloader {
             }
         }
 
-        // Measure text width dynamically
-        val width1 = textPaint.measureText(line1)
-        val width2 = if (line2.isNotBlank()) textPaint.measureText(line2) else 0f
-        val width3 = subPaint.measureText("Ray White Cipete")
-        val maxWidth = maxOf(width1, width2, width3)
-        val rightBound = 120f + maxWidth + 60f // 120f start + maxWidth + padding
-        val coverWhiteBoxRight = maxOf(1150f, rightBound)
-
-        // 4. Clear text area with dynamically fitted white background box
-        val whitePaint = Paint().apply {
-            color = Color.WHITE
-            style = Paint.Style.FILL
-        }
-        canvas.drawRect(100f, 1240f, coverWhiteBoxRight, 1700f, whitePaint)
-
-        // 5. Draw text
+        // 4. Draw title text directly on the clean template
         if (line2.isBlank()) {
             canvas.drawText(line1, 120f, 1450f, textPaint)
         } else {
