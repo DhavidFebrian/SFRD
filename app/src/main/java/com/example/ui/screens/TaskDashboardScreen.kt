@@ -42,6 +42,9 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.items
 import com.example.ui.SyncState
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -522,34 +525,33 @@ fun TaskDashboardScreen(
                             "Juli","Agustus","September","Oktober","November","Desember")
                         var igMonthExpanded by remember { mutableStateOf(false) }
 
-                        // Belum Post: has jadwalPosting AND postingIg=false
+                        // Belum Post: has jadwalPosting AND postingIg=false, sorted newest date first
                         val unpostedList = remember(uploadIgList) {
-                            val todayMillis = System.currentTimeMillis()
                             val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
                             uploadIgList.filter { task ->
                                 val jadwal = task.jadwalPosting.trim()
                                 val hasJadwal = jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
                                 hasJadwal && !task.postingIg
                             }.sortedWith(
-                                    compareBy<com.example.data.EditFotoTask> { item ->
-                                        val norm = com.example.data.normalizeDate(item.jadwalPosting)
-                                        val time = try {
-                                            sdf.parse(norm)?.time ?: Long.MAX_VALUE
-                                        } catch (e: Exception) {
-                                            Long.MAX_VALUE
-                                        }
-                                        if (time == Long.MAX_VALUE) Long.MAX_VALUE
-                                        else Math.abs(time - todayMillis)
-                                    }.thenByDescending { it.no }
-                                )
+                                compareByDescending<com.example.data.EditFotoTask> { item ->
+                                    val norm = com.example.data.normalizeDate(item.jadwalPosting)
+                                    try { sdf.parse(norm)?.time ?: 0L } catch (e: Exception) { 0L }
+                                }.thenByDescending { it.no }
+                            )
                         }
-                        // Sudah Post: has jadwalPosting AND postingIg=true
+                        // Sudah Post: has jadwalPosting AND postingIg=true, sorted newest date first
                         val postedList = remember(uploadIgList) {
+                            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
                             uploadIgList.filter { task ->
                                 val jadwal = task.jadwalPosting.trim()
                                 val hasJadwal = jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
                                 hasJadwal && task.postingIg
-                            }
+                            }.sortedWith(
+                                compareByDescending<com.example.data.EditFotoTask> { item ->
+                                    val norm = com.example.data.normalizeDate(item.jadwalPosting)
+                                    try { sdf.parse(norm)?.time ?: 0L } catch (e: Exception) { 0L }
+                                }.thenByDescending { it.no }
+                            )
                         }
                         
                         val pagerState = rememberPagerState(pageCount = { 2 })
@@ -878,9 +880,11 @@ fun TaskDashboardScreen(
                                             subtitle = emptySub
                                         )
                                     } else {
-                                        LazyColumn(
-                                            contentPadding = PaddingValues(16.dp),
-                                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                                        LazyVerticalGrid(
+                                            columns = GridCells.Fixed(2),
+                                            contentPadding = PaddingValues(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                                             modifier = Modifier.fillMaxSize()
                                         ) {
                                             items(listToUse) { item ->
@@ -1704,31 +1708,18 @@ fun TaskUploadIgCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onClick() }
-            .shadow(elevation = 2.dp, shape = RoundedCornerShape(16.dp)),
+            .shadow(elevation = 2.dp, shape = RoundedCornerShape(14.dp)),
         colors = CardDefaults.cardColors(containerColor = cardBg),
         border = BorderStroke(1.dp, cardBorderColor),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(14.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Accent Status Strip on left
+        Column {
+            // Top: Property Image (fills width, fixed height)
             Box(
                 modifier = Modifier
-                    .fillMaxHeight()
-                    .width(6.dp)
-                    .background(statusColor)
-            )
-
-            // Property Image
-            Box(
-                modifier = Modifier
-                    .padding(vertical = 12.dp, horizontal = 8.dp)
-                    .size(90.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .fillMaxWidth()
+                    .height(120.dp)
+                    .clip(RoundedCornerShape(topStart = 14.dp, topEnd = 14.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
                 contentAlignment = Alignment.Center
             ) {
@@ -1743,7 +1734,7 @@ fun TaskUploadIgCard(
                         )
                     } else {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(24.dp),
                             strokeWidth = 2.dp,
                             color = statusColor
                         )
@@ -1756,183 +1747,152 @@ fun TaskUploadIgCard(
                         imageVector = Icons.Default.Image,
                         contentDescription = "No Image",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(32.dp)
                     )
                 }
+                // Status badge on image top-right
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .background(statusColor.copy(alpha = 0.92f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = if (task.postingIg) "✓ Posted" else "Pending",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 8.sp),
+                        color = Color.White
+                    )
+                }
+                // Status accent bar at bottom of image
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .background(statusColor)
+                )
             }
 
-            // Info Column
+            // Bottom: Info section
             Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 12.dp, top = 10.dp, bottom = 10.dp)
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
             ) {
-                // Header tags & Delete
+                // ID + number row
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        if (task.no > 0) {
-                            Text(
-                                text = "#${task.no}",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
-                                color = Color.White,
-                                modifier = Modifier
-                                    .background(statusColor, RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
-                        }
+                    if (task.no > 0) {
                         Text(
-                            text = if (task.idListing.isNotBlank()) "ID: ${task.idListing}" else "Manual Input",
-                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.primary
+                            text = "#${task.no}",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold, fontSize = 9.sp),
+                            color = Color.White,
+                            modifier = Modifier
+                                .background(statusColor, RoundedCornerShape(3.dp))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
                         )
                     }
-
-                    if (!task.source.contains("|||")) {
-                        IconButton(
-                            onClick = onDelete,
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = "Hapus Jadwal Upload",
-                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
+                    Text(
+                        text = if (task.idListing.isNotBlank()) task.idListing else "Manual",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // Location Title
+                // Location
                 Text(
                     text = displayLocation,
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 11.sp),
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 14.sp
                 )
 
-                // Price Tag if available
+                // Price
                 if (!priceVal.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = priceVal,
-                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFFD4AF37)), // Gold-ish
-                        fontSize = 11.sp
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                        color = Color(0xFFD4AF37)
                     )
                 }
 
-                // Property Specs row if parsed
+                // Specs chips
                 if (specs != null) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val specItems = listOf(
-                            Icons.Default.AspectRatio to "LT ${specs["lt"]}",
-                            Icons.Default.Home to "LB ${specs["lb"]}",
+                    Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        listOf(
+                            Icons.Default.AspectRatio to specs["lt"],
+                            Icons.Default.Home to specs["lb"],
                             Icons.Default.Bed to specs["kt"],
                             Icons.Default.Bathtub to specs["km"]
-                        )
-                        specItems.forEach { (icon, text) ->
-                            if (text != "-" && text != null) {
+                        ).forEach { (icon, text) ->
+                            if (!text.isNullOrBlank() && text != "-") {
                                 Row(
                                     modifier = Modifier
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
+                                        .padding(horizontal = 3.dp, vertical = 2.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(2.dp)
                                 ) {
-                                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(9.dp))
-                                    Text(text, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.outline)
+                                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(8.dp))
+                                    Text(text, fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.outline)
                                 }
                             }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
-                // ME & Jadwal
+                // ME & Jadwal compact row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(11.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(9.dp))
                         Text(
-                            text = "ME: ${task.namaMe.ifBlank { "Tidak ada" }}",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                            text = task.namaMe.ifBlank { "-" },
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(11.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(9.dp))
                         Text(
                             text = formatJadwalPostingDate(task.jadwalPosting),
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-
-                // Notes inside card if present
-                if (task.editNotes.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 6.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(10.dp))
-                        Text(
-                            text = task.editNotes,
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp, lineHeight = 11.sp),
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
+                            maxLines = 1
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Beautiful interactive Status Toggle Button
+                // Status Toggle Button (full width at bottom)
                 Surface(
-                    color = statusColor.copy(alpha = 0.08f),
+                    color = statusColor.copy(alpha = 0.1f),
                     shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, statusColor.copy(alpha = 0.3f)),
+                    border = BorderStroke(1.dp, statusColor.copy(alpha = 0.35f)),
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onTogglePosting() }
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
@@ -1940,12 +1900,12 @@ fun TaskUploadIgCard(
                             imageVector = if (task.postingIg) Icons.Default.CheckCircle else Icons.Default.CloudUpload,
                             contentDescription = null,
                             tint = statusColor,
-                            modifier = Modifier.size(14.dp)
+                            modifier = Modifier.size(12.dp)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = if (task.postingIg) "Sudah Diposting ke IG" else "Tandai Sudah Diposting",
-                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                            text = if (task.postingIg) "Sudah Posted" else "Tandai Posted",
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
                             color = statusColor
                         )
                     }
