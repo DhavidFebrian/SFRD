@@ -435,13 +435,14 @@ object NewsletterDownloader {
         val width3 = subPaint.measureText("Ray White Cipete")
         val maxWidth = maxOf(width1, width2, width3)
         val rightBound = 120f + maxWidth + 60f // 120f start + maxWidth + padding
+        val coverWhiteBoxRight = maxOf(1150f, rightBound)
 
         // 4. Clear text area with dynamically fitted white background box
         val whitePaint = Paint().apply {
             color = Color.WHITE
             style = Paint.Style.FILL
         }
-        canvas.drawRect(100f, 1240f, rightBound, 1700f, whitePaint)
+        canvas.drawRect(100f, 1240f, coverWhiteBoxRight, 1700f, whitePaint)
 
         // 5. Draw text
         if (line2.isBlank()) {
@@ -519,14 +520,14 @@ object NewsletterDownloader {
                 val origWidth = page.width
                 val origHeight = page.height
 
-                val scale = 4
+                val scale = 6
                 val bmpWidth = origWidth * scale
                 val bmpHeight = origHeight * scale
                 val pageBitmap = Bitmap.createBitmap(bmpWidth, bmpHeight, Bitmap.Config.ARGB_8888)
 
                 val canvas = Canvas(pageBitmap)
                 canvas.drawColor(Color.WHITE)
-                page.render(pageBitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                page.render(pageBitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
                 page.close()
 
                 // Calculate centered aspect-ratio scaling to fit the full container
@@ -550,7 +551,10 @@ object NewsletterDownloader {
                 // Draw centered content
                 val srcRect = Rect(0, 0, bmpWidth, bmpHeight)
                 val destRect = Rect(dx, dy, dx + drawWidth, dy + drawHeight)
-                val filterPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+                val filterPaint = Paint(Paint.FILTER_BITMAP_FLAG).apply {
+                    isAntiAlias = true
+                    isDither = true
+                }
                 newPage.canvas.drawBitmap(pageBitmap, srcRect, destRect, filterPaint)
 
                 // Seamless 3:4 Aspect Ratio conversion:
