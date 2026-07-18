@@ -6,6 +6,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
@@ -292,107 +293,118 @@ fun InstagramPostMockupScreen(
                                 )
                         )
 
-                        // Overlaid Property spec card exactly like user screenshot
-                        Column(
+                        // Beautiful Glassmorphic Spec Card Overlay
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.65f)),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .align(Alignment.BottomStart)
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
+                                .padding(12.dp)
                         ) {
-                            // Location Pin + Name
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.LocationOn,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = details["lokasi"]?.uppercase() ?: "JAKARTA SELATAN",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    fontSize = 18.sp,
-                                    letterSpacing = 1.sp
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            // Icons Row: LT, LB, KT, KM
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(Icons.Default.AspectRatio, contentDescription = "LT", tint = Color.White, modifier = Modifier.size(13.dp))
-                                    Text("LT ${details["lt"]}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                // Location Pin + Name
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.LocationOn,
+                                        contentDescription = null,
+                                        tint = Color(0xFFFFDF00), // Yellow theme accent
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = details["lokasi"]?.uppercase() ?: "JAKARTA SELATAN",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 16.sp,
+                                        letterSpacing = 1.sp
+                                    )
                                 }
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(Icons.Default.Home, contentDescription = "LB", tint = Color.White, modifier = Modifier.size(13.dp))
-                                    Text("LB ${details["lb"]}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+
+                                // Specs Row with mini chips
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val specs = listOf(
+                                        Icons.Default.AspectRatio to "LT ${details["lt"]}",
+                                        Icons.Default.Home to "LB ${details["lb"]}",
+                                        Icons.Default.Bed to "KT ${details["kt"]}",
+                                        Icons.Default.Bathtub to "KM ${details["km"]}"
+                                    )
+                                    specs.forEach { (icon, text) ->
+                                        Row(
+                                            modifier = Modifier
+                                                .background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
+                                                .border(BorderStroke(0.5.dp, Color.White.copy(alpha = 0.2f)), RoundedCornerShape(6.dp))
+                                                .padding(horizontal = 6.dp, vertical = 3.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(11.dp))
+                                            Text(text, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
                                 }
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(Icons.Default.Bed, contentDescription = "KT", tint = Color.White, modifier = Modifier.size(13.dp))
-                                    Text(details["kt"] ?: "4", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Price (yellow gold text, large)
+                                    Text(
+                                        text = details["harga"] ?: "Rp. 6,50 M",
+                                        color = Color(0xFFFFD700), // Gold
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 20.sp
+                                    )
+
+                                    // "HOT SALE" Red badge
+                                    Box(
+                                        modifier = Modifier
+                                            .background(Color(0xFFE53935), RoundedCornerShape(6.dp))
+                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(
+                                            "HOT SALE",
+                                            color = Color.White,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
                                 }
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(Icons.Default.Bathtub, contentDescription = "KM", tint = Color.White, modifier = Modifier.size(13.dp))
-                                    Text(details["km"] ?: "3", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+
+                                HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
+
+                                // Footer details
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        "PROUDLY RAY WHITE",
+                                        color = Color.White.copy(alpha = 0.6f),
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp
+                                    )
+                                    Text(
+                                        "ID ${details["id"]}",
+                                        color = Color.White.copy(alpha = 0.6f),
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
-                            }
-
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            // Price (yellow gold text, large)
-                            Text(
-                                text = details["harga"] ?: "Rp. 6,50 M",
-                                color = Color(0xFFFFD700), // Gold
-                                fontWeight = FontWeight.Black,
-                                fontSize = 22.sp
-                            )
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            // "HOT SALE" Red badge
-                            Box(
-                                modifier = Modifier
-                                    .background(Color(0xFFE53935), RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 8.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    "HOT SALE",
-                                    color = Color.White,
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 0.5.sp
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(4.dp))
-
-                            // Footer details
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    "PROUDLY RAY WHITE",
-                                    color = Color.White.copy(alpha = 0.8f),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    letterSpacing = 1.sp
-                                )
-                                Text(
-                                    "ID ${details["id"]}",
-                                    color = Color.White.copy(alpha = 0.8f),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
                             }
                         }
                     }
@@ -419,141 +431,163 @@ fun InstagramPostMockupScreen(
                         }
                     }
 
-                    // IG Icons Row directly below image
-                    Row(
+                    // Sleek Interactive Post Details Container
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF161616)),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
                     ) {
-                        // Like Icon button
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clickable {
-                                    isLiked = !isLiked
-                                    if (isLiked) likeCount++ else likeCount--
-                                }
-                                .padding(4.dp)
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Icon(
-                                imageVector = if (isLiked) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
-                                contentDescription = "Like",
-                                tint = if (isLiked) Color.Red else Color.White,
-                                modifier = Modifier.size(26.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
+                            // Toolbar Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Like
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clickable {
+                                            isLiked = !isLiked
+                                            if (isLiked) likeCount++ else likeCount--
+                                        }
+                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isLiked) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                                        contentDescription = "Like",
+                                        tint = if (isLiked) Color.Red else Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "$likeCount",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                // Comment
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clickable {
+                                            isCommented = !isCommented
+                                            if (isCommented) commentCount++ else commentCount--
+                                        }
+                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.ChatBubbleOutline,
+                                        contentDescription = "Komen",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "$commentCount",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                // Repost
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clickable {
+                                            isReposted = !isReposted
+                                            if (isReposted) repostCount++ else repostCount--
+                                        }
+                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Autorenew,
+                                        contentDescription = "Repost",
+                                        tint = if (isReposted) Color(0xFF4CAF50) else Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "$repostCount",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                // Share
+                                Box(
+                                    modifier = Modifier
+                                        .clickable {
+                                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                                type = "text/plain"
+                                                putExtra(Intent.EXTRA_TEXT, captionText)
+                                            }
+                                            context.startActivity(Intent.createChooser(intent, "Bagikan ke WhatsApp"))
+                                        }
+                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.Send,
+                                        contentDescription = "Share WA",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.weight(1f))
+
+                                // Save
+                                Box(
+                                    modifier = Modifier
+                                        .clickable { isSaved = !isSaved }
+                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isSaved) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
+                                        contentDescription = "Save",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
+
+                            // Caption Text
                             Text(
-                                text = "$likeCount",
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
+                                text = "Pratinjau Caption Posting:",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFFFDF00),
+                                letterSpacing = 0.5.sp
                             )
-                        }
-
-                        Spacer(modifier = Modifier.width(16.dp))
-
-                        // Comment Icon button
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clickable {
-                                    isCommented = !isCommented
-                                    if (isCommented) commentCount++ else commentCount--
-                                }
-                                .padding(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.ChatBubbleOutline,
-                                contentDescription = "Komen",
-                                tint = Color.White,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "$commentCount",
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
+                                text = captionText,
+                                color = Color.White.copy(alpha = 0.9f),
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp
                             )
                         }
-
-                        Spacer(modifier = Modifier.width(16.dp))
-
-                        // Repost / Retweet Icon button
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clickable {
-                                    isReposted = !isReposted
-                                    if (isReposted) repostCount++ else repostCount--
-                                }
-                                .padding(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Autorenew,
-                                contentDescription = "Repost",
-                                tint = if (isReposted) Color(0xFF4CAF50) else Color.White,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "$repostCount",
-                                color = Color.White,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.sp
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(16.dp))
-
-                        // Share / WA Icon button (Paper plane icon)
-                        IconButton(
-                            onClick = {
-                                val intent = Intent(Intent.ACTION_SEND).apply {
-                                    type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, captionText)
-                                }
-                                context.startActivity(Intent.createChooser(intent, "Bagikan ke WhatsApp"))
-                            },
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Send,
-                                contentDescription = "Share WA",
-                                tint = Color.White,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.weight(1f))
-
-                        // Bookmark Save Icon button
-                        IconButton(
-                            onClick = { isSaved = !isSaved },
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (isSaved) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
-                                contentDescription = "Save",
-                                tint = Color.White,
-                                modifier = Modifier.size(26.dp)
-                            )
-                        }
-                    }
-
-                    // Caption details section
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = "$captionText less",
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            lineHeight = 18.sp
-                        )
                     }
 
                     Spacer(modifier = Modifier.height(20.dp))

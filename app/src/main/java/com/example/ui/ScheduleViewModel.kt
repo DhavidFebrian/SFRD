@@ -860,22 +860,40 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     fun findRelevantDateIndex(dates: List<String>, todayStr: String): Int {
         if (dates.isEmpty()) return 0
         
-        var closestIndex = 0
-        var minDiff = Long.MAX_VALUE
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val todayTime = try { sdf.parse(todayStr)?.time ?: System.currentTimeMillis() } catch(e: Exception) { System.currentTimeMillis() }
+        
+        var bestIndex = -1
+        var bestTime = Long.MIN_VALUE
         
         for (i in dates.indices) {
             try {
                 val dateTime = sdf.parse(dates[i])?.time ?: 0L
-                val diff = Math.abs(todayTime - dateTime)
-                if (diff < minDiff) {
-                    minDiff = diff
-                    closestIndex = i
+                if (dateTime <= todayTime) {
+                    if (dateTime > bestTime) {
+                        bestTime = dateTime
+                        bestIndex = i
+                    }
                 }
             } catch (e: Exception) {}
         }
-        return closestIndex
+        
+        if (bestIndex == -1) {
+            var closestIndex = 0
+            var minDiff = Long.MAX_VALUE
+            for (i in dates.indices) {
+                try {
+                    val dateTime = sdf.parse(dates[i])?.time ?: 0L
+                    val diff = Math.abs(todayTime - dateTime)
+                    if (diff < minDiff) {
+                        minDiff = diff
+                        closestIndex = i
+                    }
+                } catch (e: Exception) {}
+            }
+            return closestIndex
+        }
+        return bestIndex
     }
 
     fun selectRelevantMeetingDateAutomatically() {
