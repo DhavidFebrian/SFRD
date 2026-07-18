@@ -97,6 +97,7 @@ fun TaskDashboardScreen(
     val agentInfoMap by viewModel.agentInfoMap.collectAsState()
     val listingTitleMap by viewModel.listingTitleMap.collectAsState()
     val listingDescMap by viewModel.listingDescMap.collectAsState()
+    val listingPriceMap by viewModel.listingPriceMap.collectAsState()
 
     val unreadCount by viewModel.unreadChatCount.collectAsState()
     var selectedScheduleForDetail by remember { mutableStateOf<Schedule?>(null) }
@@ -598,27 +599,7 @@ fun TaskDashboardScreen(
                                     .background(MaterialTheme.colorScheme.background)
                                     .padding(vertical = 4.dp)
                             ) {
-                                // 1. Search Bar
-                                OutlinedTextField(
-                                    value = searchQuery,
-                                    onValueChange = { searchQuery = it },
-                                    placeholder = { Text("Cari listing (ID, ME)...") },
-                                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                                    trailingIcon = {
-                                        if (searchQuery.isNotEmpty()) {
-                                            IconButton(onClick = { searchQuery = "" }) {
-                                                Icon(Icons.Default.Close, contentDescription = "Hapus")
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                                    shape = RoundedCornerShape(12.dp),
-                                    singleLine = true
-                                )
-                                
-                                // 2. Date Filter Chip
+                                // Unified Premium Filter Card
                                 val context = LocalContext.current
                                 val calendar = Calendar.getInstance()
                                 val dateCalendar = Calendar.getInstance().apply {
@@ -638,112 +619,158 @@ fun TaskDashboardScreen(
                                     dateCalendar.get(Calendar.MONTH),
                                     dateCalendar.get(Calendar.DAY_OF_MONTH)
                                 )
-                                
-                                Row(
+
+                                Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                                 ) {
-                                    val dateText = selectedUploadIgDateFilter?.let {
-                                        try {
-                                            val d = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(it)
-                                            SimpleDateFormat("d MMMM yyyy", Locale("id", "ID")).format(d!!)
-                                        } catch (e: Exception) {
-                                            it
-                                        }
-                                    } ?: "Filter Tanggal"
-                                    
-                                    val isDateFiltered = selectedUploadIgDateFilter != null
-                                    
-                                    InputChip(
-                                        selected = isDateFiltered,
-                                        onClick = { datePickerDialog.show() },
-                                        label = { 
-                                            Text(
-                                                text = dateText,
-                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
-                                            ) 
-                                        },
-                                        trailingIcon = {
-                                            if (isDateFiltered) {
-                                                IconButton(
-                                                    onClick = { selectedUploadIgDateFilter = null },
-                                                    modifier = Modifier.size(16.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Close,
-                                                        contentDescription = "Clear date filter",
-                                                        modifier = Modifier.size(12.dp)
-                                                    )
-                                                }
-                                            } else {
-                                                Icon(
-                                                    imageVector = Icons.Default.CalendarToday,
-                                                    contentDescription = "Select date",
-                                                    modifier = Modifier.size(12.dp)
-                                                )
-                                            }
-                                        },
-                                        colors = InputChipDefaults.inputChipColors(
-                                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                            selectedLabelColor = MaterialTheme.colorScheme.primary
-                                        )
-                                    )
-                                }
-                                
-                                // 3. Month Selector Row
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Text(
-                                        text = "Bulan:",
-                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                        modifier = Modifier.padding(end = 4.dp)
-                                    )
-                                    ExposedDropdownMenuBox(
-                                        expanded = igMonthExpanded,
-                                        onExpandedChange = { igMonthExpanded = it },
-                                        modifier = Modifier.weight(1f)
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
+                                        // 1. Search Bar
                                         OutlinedTextField(
-                                            value = selectedUploadIgMonth,
-                                            onValueChange = {},
-                                            readOnly = true,
-                                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = igMonthExpanded) },
+                                            value = searchQuery,
+                                            onValueChange = { searchQuery = it },
+                                            placeholder = { Text("Cari listing (ID, ME)...", style = MaterialTheme.typography.bodyMedium) },
+                                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                            trailingIcon = {
+                                                if (searchQuery.isNotEmpty()) {
+                                                    IconButton(onClick = { searchQuery = "" }) {
+                                                        Icon(Icons.Default.Close, contentDescription = "Hapus")
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(12.dp),
                                             singleLine = true,
-                                            shape = RoundedCornerShape(10.dp),
                                             colors = OutlinedTextFieldDefaults.colors(
                                                 focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                                            ),
-                                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                                                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                                                containerColor = MaterialTheme.colorScheme.surface
+                                            )
                                         )
-                                        ExposedDropdownMenu(
-                                            expanded = igMonthExpanded,
-                                            onDismissRequest = { igMonthExpanded = false }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            allIgMonths.forEach { m ->
-                                                DropdownMenuItem(
-                                                    text = { Text(m) },
-                                                    onClick = {
-                                                        selectedUploadIgMonth = m
-                                                        igMonthExpanded = false
-                                                    }
+                                            // 2. Month Selector
+                                            ExposedDropdownMenuBox(
+                                                expanded = igMonthExpanded,
+                                                onExpandedChange = { igMonthExpanded = it },
+                                                modifier = Modifier.weight(1.3f)
+                                            ) {
+                                                OutlinedTextField(
+                                                    value = selectedUploadIgMonth,
+                                                    onValueChange = {},
+                                                    readOnly = true,
+                                                    leadingIcon = { Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp)) },
+                                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = igMonthExpanded) },
+                                                    singleLine = true,
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    colors = OutlinedTextFieldDefaults.colors(
+                                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                                                        containerColor = MaterialTheme.colorScheme.surface
+                                                    ),
+                                                    modifier = Modifier.menuAnchor().fillMaxWidth(),
+                                                    textStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
                                                 )
+                                                ExposedDropdownMenu(
+                                                    expanded = igMonthExpanded,
+                                                    onDismissRequest = { igMonthExpanded = false }
+                                                ) {
+                                                    allIgMonths.forEach { m ->
+                                                        DropdownMenuItem(
+                                                            text = { Text(m, style = MaterialTheme.typography.bodyMedium) },
+                                                            onClick = {
+                                                                selectedUploadIgMonth = m
+                                                                igMonthExpanded = false
+                                                            }
+                                                        )
+                                                    }
+                                                }
                                             }
-                                        }
-                                    }
-                                    if (igSyncStatus is SyncState.Loading) {
-                                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                                    } else {
-                                        IconButton(onClick = { viewModel.fetchWeeklyMeetingIgListings(selectedUploadIgMonth) }) {
-                                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", modifier = Modifier.size(20.dp))
+
+                                            // 3. Date Filter Chip
+                                            val dateText = selectedUploadIgDateFilter?.let {
+                                                try {
+                                                    val d = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(it)
+                                                    SimpleDateFormat("d MMM", Locale("id", "ID")).format(d!!)
+                                                } catch (e: Exception) {
+                                                    it
+                                                }
+                                            } ?: "Pilih Tanggal"
+
+                                            val isDateFiltered = selectedUploadIgDateFilter != null
+
+                                            Button(
+                                                onClick = { datePickerDialog.show() },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = if (isDateFiltered) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                                    contentColor = if (isDateFiltered) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                                ),
+                                                border = BorderStroke(1.dp, if (isDateFiltered) Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                                                shape = RoundedCornerShape(10.dp),
+                                                modifier = Modifier.weight(1.1f).height(48.dp),
+                                                contentPadding = PaddingValues(horizontal = 6.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.Center,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (isDateFiltered) Icons.Default.EventAvailable else Icons.Default.CalendarToday,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = dateText,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
+                                                    )
+                                                    if (isDateFiltered) {
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Icon(
+                                                            imageVector = Icons.Default.Close,
+                                                            contentDescription = "Clear",
+                                                            modifier = Modifier
+                                                                .size(14.dp)
+                                                                .clickable { selectedUploadIgDateFilter = null }
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            // 4. Refresh Button
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(48.dp)
+                                                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f), RoundedCornerShape(10.dp))
+                                                    .border(BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)), RoundedCornerShape(10.dp))
+                                                    .clickable { viewModel.fetchWeeklyMeetingIgListings(selectedUploadIgMonth) },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (igSyncStatus is SyncState.Loading) {
+                                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                                } else {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Refresh,
+                                                        contentDescription = "Refresh",
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -860,6 +887,7 @@ fun TaskDashboardScreen(
                                                     listingSoldMap = listingSoldMap,
                                                     listingTitleMap = listingTitleMap,
                                                     listingDescMap = listingDescMap,
+                                                    listingPriceMap = listingPriceMap,
                                                     schedules = schedules,
                                                     onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, item.namaMe) },
                                                     onTogglePosting = {
@@ -1602,6 +1630,7 @@ fun TaskUploadIgCard(
     listingSoldMap: Map<String, Boolean> = emptyMap(),
     listingTitleMap: Map<String, String> = emptyMap(),
     listingDescMap: Map<String, String> = emptyMap(),
+    listingPriceMap: Map<String, String> = emptyMap(),
     schedules: List<Schedule> = emptyList(),
     onFetchImage: (String) -> Unit,
     onTogglePosting: () -> Unit,
@@ -1619,26 +1648,60 @@ fun TaskUploadIgCard(
         getDisplayLocation(task, schedules, listingTitleMap, listingDescMap)
     }
 
-    val indicatorColor = if (task.postingIg) Color(0xFF4CAF50) else Color(0xFFE1306C)
-
-    val cardBg = if (task.postingIg) {
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
-    } else {
-        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.12f)
+    val desc = remember(cleanId, listingDescMap) {
+        if (cleanId.isNotBlank()) listingDescMap[cleanId] ?: "" else ""
     }
+
+    // Parse specs for card layout
+    val specs = remember(desc) {
+        if (desc.isBlank()) null else {
+            val descLower = desc.lowercase()
+            val lt = Regex("(?i)\\b(?:lt)[:\\s\\.]*(\\d+)").find(descLower)?.groupValues?.get(1)
+            val lb = Regex("(?i)\\b(?:lb)[:\\s\\.]*(\\d+)").find(descLower)?.groupValues?.get(1)
+            val kt = Regex("(?i)\\b(?:kt|kamar\\s*tidur)[:\\s\\.]*(\\d+(?:\\s*\\+\\s*\\d+)?)").find(descLower)?.groupValues?.get(1)
+            val km = Regex("(?i)\\b(?:km|kamar\\s*mandi)[:\\s\\.]*(\\d+(?:\\s*\\+\\s*\\d+)?)").find(descLower)?.groupValues?.get(1)
+            if (lt != null || lb != null) {
+                mapOf("lt" to (lt ?: "-"), "lb" to (lb ?: "-"), "kt" to (kt ?: "-"), "km" to (km ?: "-"))
+            } else null
+        }
+    }
+
+    // Parse price for card layout
+    val priceVal = remember(cleanId, listingPriceMap, desc) {
+        val rawPrice = if (cleanId.isNotBlank()) listingPriceMap[cleanId] ?: "" else ""
+        if (rawPrice.isNotBlank() && !rawPrice.contains("Hubungi", ignoreCase = true)) {
+            rawPrice
+        } else {
+            val priceRegex = Regex("(?i)(?:harga|rp|idr)[:\\s-]*([\\d\\.,]+(?:\\s*(?:milyar|miliar|juta|m|jt|b|t))?)")
+            val match = priceRegex.find(desc.lowercase())
+            if (match != null) {
+                val pVal = match.groupValues[1].uppercase().trim()
+                if (pVal.endsWith("M") || pVal.contains("MILYAR") || pVal.contains("MILIAR")) {
+                    "Rp. ${pVal.replace("MILYAR", "M").replace("MILIAR", "M").trim()}"
+                } else if (pVal.endsWith("JT") || pVal.contains("JUTA")) {
+                    "Rp. ${pVal.replace("JUTA", "Jt").trim()}"
+                } else {
+                    "Rp. $pVal"
+                }
+            } else null
+        }
+    }
+
+    val statusColor = if (task.postingIg) Color(0xFF4CAF50) else Color(0xFFE1306C)
+    
+    val cardBg = MaterialTheme.colorScheme.surface
     val cardBorderColor = if (task.postingIg) {
-        Color(0xFF4CAF50).copy(alpha = 0.3f)
+        Color(0xFF4CAF50).copy(alpha = 0.25f)
     } else {
-        Color(0xFFE1306C).copy(alpha = 0.3f)
+        Color(0xFFE1306C).copy(alpha = 0.25f)
     }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
-        colors = CardDefaults.cardColors(
-            containerColor = cardBg
-        ),
+            .clickable { onClick() }
+            .shadow(elevation = 2.dp, shape = RoundedCornerShape(16.dp)),
+        colors = CardDefaults.cardColors(containerColor = cardBg),
         border = BorderStroke(1.dp, cardBorderColor),
         shape = RoundedCornerShape(16.dp)
     ) {
@@ -1648,13 +1711,21 @@ fun TaskUploadIgCard(
                 .height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left aspect: Property Image filling left side completely
+            // Accent Status Strip on left
             Box(
                 modifier = Modifier
-                    .width(115.dp)
                     .fillMaxHeight()
-                    .clip(RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                    .width(6.dp)
+                    .background(statusColor)
+            )
+
+            // Property Image
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 12.dp, horizontal = 8.dp)
+                    .size(90.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
                 contentAlignment = Alignment.Center
             ) {
                 if (cleanId.isNotBlank()) {
@@ -1668,12 +1739,11 @@ fun TaskUploadIgCard(
                         )
                     } else {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(22.dp),
+                            modifier = Modifier.size(20.dp),
                             strokeWidth = 2.dp,
-                            color = indicatorColor
+                            color = statusColor
                         )
                     }
-                    
                     if (listingSoldMap[cleanId] == true) {
                         SoldWatermark()
                     }
@@ -1682,18 +1752,18 @@ fun TaskUploadIgCard(
                         imageVector = Icons.Default.Image,
                         contentDescription = "No Image",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                 }
             }
 
-            // Right Aspect: Info with balanced spacing
+            // Info Column
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(12.dp)
+                    .padding(end = 12.dp, top = 10.dp, bottom = 10.dp)
             ) {
-                // Row 1: Tag/ID & Delete button
+                // Header tags & Delete
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1701,25 +1771,22 @@ fun TaskUploadIgCard(
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         if (task.no > 0) {
                             Text(
                                 text = "#${task.no}",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 11.sp
-                                ),
-                                color = indicatorColor
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold),
+                                color = Color.White,
+                                modifier = Modifier
+                                    .background(statusColor, RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
                         Text(
-                            text = if (task.idListing.isNotBlank()) task.idListing else "Manual Input",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp
-                            ),
-                            color = if (task.idListing.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary
+                            text = if (task.idListing.isNotBlank()) "ID: ${task.idListing}" else "Manual Input",
+                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
 
@@ -1743,36 +1810,66 @@ fun TaskUploadIgCard(
                 // Location Title
                 Text(
                     text = displayLocation,
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        lineHeight = 17.sp
-                    ),
+                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 2,
+                    maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                // Price Tag if available
+                if (!priceVal.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = priceVal,
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, color = Color(0xFFD4AF37)), // Gold-ish
+                        fontSize = 11.sp
+                    )
+                }
 
-                // Info lines: ME & Jadwal
+                // Property Specs row if parsed
+                if (specs != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val specItems = listOf(
+                            Icons.Default.AspectRatio to "LT ${specs["lt"]}",
+                            Icons.Default.Home to "LB ${specs["lb"]}",
+                            Icons.Default.Bed to specs["kt"],
+                            Icons.Default.Bathtub to specs["km"]
+                        )
+                        specItems.forEach { (icon, text) ->
+                            if (text != "-" && text != null) {
+                                Row(
+                                    modifier = Modifier
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(9.dp))
+                                    Text(text, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.outline)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // ME & Jadwal
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // ME details
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(2.dp),
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = "ME",
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(12.dp)
-                        )
+                        Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(11.dp))
                         Text(
                             text = "ME: ${task.namaMe.ifBlank { "Tidak ada" }}",
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
@@ -1781,18 +1878,11 @@ fun TaskUploadIgCard(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-
-                    // Date
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.CalendarToday,
-                            contentDescription = "Jadwal",
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(12.dp)
-                        )
+                        Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(11.dp))
                         Text(
                             text = formatJadwalPostingDate(task.jadwalPosting),
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.sp),
@@ -1805,55 +1895,56 @@ fun TaskUploadIgCard(
 
                 // Notes inside card if present
                 if (task.editNotes.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Box(
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                                shape = RoundedCornerShape(6.dp)
-                            )
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
+                        Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(10.dp))
                         Text(
                             text = task.editNotes,
-                            style = MaterialTheme.typography.bodySmall.copy(
-                                fontSize = 10.sp,
-                                lineHeight = 13.sp
-                            ),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp, lineHeight = 11.sp),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
                             maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-                // Status Toggle / Checkbox Row with set onCheckedChange = null to prevent double triggers
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
+                // Beautiful interactive Status Toggle Button
+                Surface(
+                    color = statusColor.copy(alpha = 0.08f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, statusColor.copy(alpha = 0.3f)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
                         .clickable { onTogglePosting() }
-                        .padding(vertical = 4.dp)
                 ) {
-                    Checkbox(
-                        checked = task.postingIg,
-                        onCheckedChange = null, // critical to prevent double triggering click events
-                        colors = CheckboxDefaults.colors(checkedColor = indicatorColor),
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (task.postingIg) "Sudah Diposting ke IG" else "Belum Diposting ke IG",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp
-                        ),
-                        color = indicatorColor
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = if (task.postingIg) Icons.Default.CheckCircle else Icons.Default.CloudUpload,
+                            contentDescription = null,
+                            tint = statusColor,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (task.postingIg) "Sudah Diposting ke IG" else "Tandai Sudah Diposting",
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                            color = statusColor
+                        )
+                    }
                 }
             }
         }

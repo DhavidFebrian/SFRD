@@ -293,118 +293,107 @@ fun InstagramPostMockupScreen(
                                 )
                         )
 
-                        // Beautiful Glassmorphic Spec Card Overlay
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.65f)),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f)),
+                        // Overlaid Property spec card exactly like user screenshot
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .align(Alignment.BottomStart)
-                                .padding(12.dp)
+                                .padding(horizontal = 14.dp, vertical = 10.dp)
                         ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            // Location Pin + Name
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                // Location Pin + Name
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.LocationOn,
-                                        contentDescription = null,
-                                        tint = Color(0xFFFFDF00), // Yellow theme accent
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Text(
-                                        text = details["lokasi"]?.uppercase() ?: "JAKARTA SELATAN",
-                                        color = Color.White,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        fontSize = 16.sp,
-                                        letterSpacing = 1.sp
-                                    )
+                                Icon(
+                                    imageVector = Icons.Default.LocationOn,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = details["lokasi"]?.uppercase() ?: "JAKARTA SELATAN",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 18.sp,
+                                    letterSpacing = 1.sp
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            // Icons Row: LT, LB, KT, KM
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Icon(Icons.Default.AspectRatio, contentDescription = "LT", tint = Color.White, modifier = Modifier.size(13.dp))
+                                    Text("LT ${details["lt"]}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
-
-                                // Specs Row with mini chips
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val specs = listOf(
-                                        Icons.Default.AspectRatio to "LT ${details["lt"]}",
-                                        Icons.Default.Home to "LB ${details["lb"]}",
-                                        Icons.Default.Bed to "KT ${details["kt"]}",
-                                        Icons.Default.Bathtub to "KM ${details["km"]}"
-                                    )
-                                    specs.forEach { (icon, text) ->
-                                        Row(
-                                            modifier = Modifier
-                                                .background(Color.White.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
-                                                .border(BorderStroke(0.5.dp, Color.White.copy(alpha = 0.2f)), RoundedCornerShape(6.dp))
-                                                .padding(horizontal = 6.dp, vertical = 3.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(11.dp))
-                                            Text(text, color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Icon(Icons.Default.Home, contentDescription = "LB", tint = Color.White, modifier = Modifier.size(13.dp))
+                                    Text("LB ${details["lb"]}", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    // Price (yellow gold text, large)
-                                    Text(
-                                        text = details["harga"] ?: "Rp. 6,50 M",
-                                        color = Color(0xFFFFD700), // Gold
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 20.sp
-                                    )
-
-                                    // "HOT SALE" Red badge
-                                    Box(
-                                        modifier = Modifier
-                                            .background(Color(0xFFE53935), RoundedCornerShape(6.dp))
-                                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                                    ) {
-                                        Text(
-                                            "HOT SALE",
-                                            color = Color.White,
-                                            fontSize = 9.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            letterSpacing = 0.5.sp
-                                        )
-                                    }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Icon(Icons.Default.Bed, contentDescription = "KT", tint = Color.White, modifier = Modifier.size(13.dp))
+                                    Text(details["kt"] ?: "4", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
-
-                                HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
-
-                                // Footer details
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        "PROUDLY RAY WHITE",
-                                        color = Color.White.copy(alpha = 0.6f),
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = 1.sp
-                                    )
-                                    Text(
-                                        "ID ${details["id"]}",
-                                        color = Color.White.copy(alpha = 0.6f),
-                                        fontSize = 9.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Icon(Icons.Default.Bathtub, contentDescription = "KM", tint = Color.White, modifier = Modifier.size(13.dp))
+                                    Text(details["km"] ?: "3", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            // Price (yellow gold text, large)
+                            Text(
+                                text = details["harga"] ?: "Rp. 6,50 M",
+                                color = Color(0xFFFFD700), // Gold
+                                fontWeight = FontWeight.Black,
+                                fontSize = 22.sp
+                            )
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            // "HOT SALE" Red badge
+                            Box(
+                                modifier = Modifier
+                                    .background(Color(0xFFE53935), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    "HOT SALE",
+                                    color = Color.White,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            // Footer details
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    "PROUDLY RAY WHITE",
+                                    color = Color.White.copy(alpha = 0.8f),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                )
+                                Text(
+                                    "ID ${details["id"]}",
+                                    color = Color.White.copy(alpha = 0.8f),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                     }
