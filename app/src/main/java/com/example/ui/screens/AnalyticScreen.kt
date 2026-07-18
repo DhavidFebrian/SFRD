@@ -54,6 +54,8 @@ fun AnalyticScreen(
 ) {
     val listings by viewModel.weeklyMeetingAnalyticsListings.collectAsState()
     val syncStatus by viewModel.analyticSyncStatus.collectAsState()
+    val listingTitleMap by viewModel.listingTitleMap.collectAsState()
+    val listingDescMap by viewModel.listingDescMap.collectAsState()
     
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -312,175 +314,84 @@ fun AnalyticScreen(
                                     verticalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
                                     Text(
-                                        text = "DISTRIBUSI KETERANGAN MEETING",
+                                        text = "LAPORAN JADWAL FOTO BULANAN",
                                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                                         color = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
                                     )
 
-                                    // Custom Donut Chart Card
                                     Card(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(horizontal = 16.dp),
                                         colors = CardDefaults.cardColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
                                         ),
                                         shape = RoundedCornerShape(20.dp),
                                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                                     ) {
-                                        Column(modifier = Modifier.padding(18.dp)) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column {
-                                                    Text(
-                                                        text = "Kategori Keterangan",
-                                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                                                        color = MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                    Text(
-                                                        text = "Pembagian target hasil meeting",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
+                                        Column(modifier = Modifier.padding(16.dp)) {
+                                            val listingsByDate = listings.groupBy { it.date }.toSortedMap()
+                                            var globalIndex = 1
+                                            
+                                            listingsByDate.forEach { (dateStr, dateList) ->
+                                                Text(
+                                                    text = formatToIndonesianDayDate(dateStr),
+                                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.padding(vertical = 6.dp)
+                                                )
+                                                
+                                                dateList.forEach { item ->
+                                                    val location = getListingLocation(item, listingTitleMap, listingDescMap)
+                                                    val sessionType = getSessionType(item)
+                                                    val cleanId = item.idListing.trim()
+                                                    
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .padding(vertical = 4.dp),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Column(modifier = Modifier.weight(1f)) {
+                                                            Text(
+                                                                text = "$globalIndex. $location : $sessionType",
+                                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                                                                color = MaterialTheme.colorScheme.onSurface
+                                                            )
+                                                            Text(
+                                                                text = "https://raywhitecipete.net/ListingView/Detail/$cleanId",
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = MaterialTheme.colorScheme.primary,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
+                                                        }
+                                                    }
+                                                    globalIndex++
                                                 }
-                                                Box(
-                                                    modifier = Modifier
-                                                        .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(100.dp))
-                                                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "Total: $totalCount",
-                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                                    )
-                                                }
+                                                Spacer(modifier = Modifier.height(8.dp))
                                             }
-
-                                            Spacer(Modifier.height(18.dp))
-
+                                            
+                                            HorizontalDivider(
+                                                modifier = Modifier.padding(vertical = 12.dp),
+                                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                            )
+                                            
+                                            // Count sessions
+                                            val fotoCount = listings.count { getSessionType(it).contains("Foto") }
+                                            val videoCount = listings.count { getSessionType(it).contains("Video") }
+                                            val droneCount = listings.count { getSessionType(it).contains("Drone") }
+                                            
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
-                                                verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(16.dp)
                                             ) {
-                                                val colorHot = Color(0xFFFF5722)
-                                                val colorIg = Color(0xFFE1306C)
-                                                val colorFotoUlang = Color(0xFF2196F3)
-                                                val colorLainnya = Color(0xFF757575)
-
-                                                Box(
-                                                    modifier = Modifier.size(110.dp),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Canvas(modifier = Modifier.fillMaxSize()) {
-                                                        val strokeWidth = 14.dp.toPx()
-                                                        val diameter = size.minDimension - strokeWidth
-                                                        val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
-                                                        val arcSize = Size(diameter, diameter)
-
-                                                        val floatHot = hotPropertyCount.toFloat() / totalCount
-                                                        val floatIg = igCount.toFloat() / totalCount
-                                                        val floatFotoUlang = fotoUlangCount.toFloat() / totalCount
-                                                        val floatLainnya = lainnyaCount.toFloat() / totalCount
-
-                                                        var startAngle = -90f
-
-                                                        // Draw Hot Property slice
-                                                        if (floatHot > 0f) {
-                                                            drawArc(colorHot, startAngle, floatHot * 360f, false, topLeft, arcSize, style = Stroke(strokeWidth, cap = StrokeCap.Round))
-                                                            startAngle += floatHot * 360f
-                                                        }
-                                                        // Draw IG slice
-                                                        if (floatIg > 0f) {
-                                                            drawArc(colorIg, startAngle, floatIg * 360f, false, topLeft, arcSize, style = Stroke(strokeWidth, cap = StrokeCap.Round))
-                                                            startAngle += floatIg * 360f
-                                                        }
-                                                        // Draw Foto Ulang slice
-                                                        if (floatFotoUlang > 0f) {
-                                                            drawArc(colorFotoUlang, startAngle, floatFotoUlang * 360f, false, topLeft, arcSize, style = Stroke(strokeWidth, cap = StrokeCap.Round))
-                                                            startAngle += floatFotoUlang * 360f
-                                                        }
-                                                        // Draw Lainnya slice
-                                                        if (floatLainnya > 0f) {
-                                                            drawArc(colorLainnya, startAngle, floatLainnya * 360f, false, topLeft, arcSize, style = Stroke(strokeWidth, cap = StrokeCap.Round))
-                                                        }
-                                                    }
-                                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                                        Text("$totalCount", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black))
-                                                        Text("Listing", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                                    }
-                                                }
-
-                                                Column(
-                                                    modifier = Modifier.weight(1f),
-                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    LegendItem(colorHot, "Hot Property", hotPropertyCount, (hotPropertyCount.toFloat() / totalCount * 100))
-                                                    LegendItem(colorIg, "Instagram", igCount, (igCount.toFloat() / totalCount * 100))
-                                                    LegendItem(colorFotoUlang, "Foto Ulang", fotoUlangCount, (fotoUlangCount.toFloat() / totalCount * 100))
-                                                    LegendItem(colorLainnya, "Lainnya", lainnyaCount, (lainnyaCount.toFloat() / totalCount * 100))
-                                                }
+                                                Text("📸 Sesi Foto : $fotoCount", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                                                Text("📹 Sesi Video : $videoCount", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
+                                                Text("🛸 Sesi Drone : $droneCount", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
                                             }
-                                        }
-                                    }
-
-                                    // Detailed Metrics Card
-                                    Text(
-                                        text = "RINCIAN METRIK HARI INI",
-                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp)
-                                    )
-
-                                    Card(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 16.dp),
-                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f))
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(16.dp),
-                                            verticalArrangement = Arrangement.spacedBy(14.dp)
-                                        ) {
-                                            // Hot Property progress item
-                                            MetricProgressBarItem(
-                                                title = "Hot Property",
-                                                icon = Icons.Default.Whatshot,
-                                                count = hotPropertyCount,
-                                                total = totalCount,
-                                                color = Color(0xFFFF5722)
-                                            )
-
-                                            // IG progress item
-                                            MetricProgressBarItem(
-                                                title = "Instagram",
-                                                icon = Icons.Default.AlternateEmail,
-                                                count = igCount,
-                                                total = totalCount,
-                                                color = Color(0xFFE1306C)
-                                            )
-
-                                            // Foto Ulang progress item
-                                            MetricProgressBarItem(
-                                                title = "Foto Ulang",
-                                                icon = Icons.Default.PhotoCamera,
-                                                count = fotoUlangCount,
-                                                total = totalCount,
-                                                color = Color(0xFF2196F3)
-                                            )
-
-                                            // Lainnya progress item
-                                            MetricProgressBarItem(
-                                                title = "Keterangan Lainnya",
-                                                icon = Icons.Default.Info,
-                                                count = lainnyaCount,
-                                                total = totalCount,
-                                                color = Color(0xFF757575)
-                                            )
                                         }
                                     }
 
@@ -528,7 +439,7 @@ fun AnalyticScreen(
                                             ) {
                                                 Button(
                                                     onClick = {
-                                                        val report = buildJadwalFotoReportText(selectedMonthFilter, listings, hotPropertyCount, igCount, fotoUlangCount, lainnyaCount)
+                                                        val report = buildJadwalFotoReportText(selectedMonthFilter, listings, listingTitleMap, listingDescMap)
                                                         val whatsappBusinessPackage = "com.whatsapp.w4b"
                                                         val isWaBusinessInstalled = try {
                                                             context.packageManager.getPackageInfo(whatsappBusinessPackage, 0)
@@ -556,7 +467,7 @@ fun AnalyticScreen(
 
                                                 OutlinedButton(
                                                     onClick = {
-                                                        val report = buildJadwalFotoReportText(selectedMonthFilter, listings, hotPropertyCount, igCount, fotoUlangCount, lainnyaCount)
+                                                        val report = buildJadwalFotoReportText(selectedMonthFilter, listings, listingTitleMap, listingDescMap)
                                                         clipboardManager.setText(AnnotatedString(report))
                                                         Toast.makeText(context, "Laporan disalin ke clipboard!", Toast.LENGTH_SHORT).show()
                                                     },
@@ -969,67 +880,143 @@ private fun buildWeeklyReportText(
 private fun buildJadwalFotoReportText(
     monthFilter: String,
     listings: List<MeetingListing>,
-    hotPropertyCount: Int,
-    igCount: Int,
-    fotoUlangCount: Int,
-    lainnyaCount: Int
+    titleMap: Map<String, String>,
+    descMap: Map<String, String>
 ): String {
+    val cleanMonthFilter = if (monthFilter.contains("Semua")) {
+        "Tahun 2026"
+    } else {
+        monthFilter
+    }
+    
     return buildString {
-        append("📝 LAPORAN DISTRIBUSI KETERANGAN JADWAL FOTO\n")
-        append("📅 Periode: ").append(monthFilter).append("\n")
-        append("📂 Total Target Meeting: ").append(listings.size).append(" unit\n\n")
+        append("Update Foto Raffa - David Bulan ").append(cleanMonthFilter).append("\n\n")
         
-        append("🔥 HOT PROPERTY: ").append(hotPropertyCount).append(" unit\n")
-        append("📱 TARGET INSTAGRAM: ").append(igCount).append(" unit\n")
-        append("📸 FOTO ULANG: ").append(fotoUlangCount).append(" unit\n")
-        append("ℹ️ KETERANGAN LAINNYA: ").append(lainnyaCount).append(" unit\n\n")
+        val listingsByDate = listings.groupBy { it.date }.toSortedMap()
         
-        val hotList = listings.filter { it.keterangan.trim().uppercase() == "HOT PROPERTY" }
-        val igList = listings.filter { it.keterangan.trim().uppercase() == "IG" }
-        val fotoUlangList = listings.filter { it.keterangan.trim().uppercase() == "FOTO ULANG" }
-        val lainnyaList = listings.filter { 
-            val ket = it.keterangan.trim().uppercase()
-            ket != "HOT PROPERTY" && ket != "IG" && ket != "FOTO ULANG"
-        }
-        
-        if (hotList.isNotEmpty()) {
-            append("🔥 DETAIL HOT PROPERTY:\n")
-            hotList.forEachIndexed { idx, item ->
-                append("${idx + 1}. ID: ${item.idListing} - ME: ${item.namaMe}\n")
-                if (item.catatan.isNotBlank()) append("   Catatan: ${item.catatan}\n")
-                append("   Link: https://raywhitecipete.net/ListingView/Detail/${item.idListing}\n")
+        var globalIndex = 1
+        listingsByDate.forEach { (dateStr, dateList) ->
+            append(formatToIndonesianDayDate(dateStr)).append("\n")
+            dateList.forEach { item ->
+                val location = getListingLocation(item, titleMap, descMap)
+                val sessionType = getSessionType(item)
+                val cleanId = item.idListing.trim()
+                
+                append(globalIndex).append(". ").append(location).append(" : ").append(sessionType).append("\n")
+                append("https://raywhitecipete.net/ListingView/Detail/").append(cleanId).append("\n")
+                
+                globalIndex++
             }
             append("\n")
         }
         
-        if (igList.isNotEmpty()) {
-            append("📱 DETAIL TARGET INSTAGRAM:\n")
-            igList.forEachIndexed { idx, item ->
-                append("${idx + 1}. ID: ${item.idListing} - ME: ${item.namaMe}\n")
-                if (item.catatan.isNotBlank()) append("   Catatan: ${item.catatan}\n")
-                append("   Link: https://raywhitecipete.net/ListingView/Detail/${item.idListing}\n")
-            }
-            append("\n")
-        }
+        val fotoCount = listings.count { getSessionType(it).contains("Foto") }
+        val videoCount = listings.count { getSessionType(it).contains("Video") }
+        val droneCount = listings.count { getSessionType(it).contains("Drone") }
         
-        if (fotoUlangList.isNotEmpty()) {
-            append("📸 DETAIL FOTO ULANG:\n")
-            fotoUlangList.forEachIndexed { idx, item ->
-                append("${idx + 1}. ID: ${item.idListing} - ME: ${item.namaMe}\n")
-                if (item.catatan.isNotBlank()) append("   Catatan: ${item.catatan}\n")
-                append("   Link: https://raywhitecipete.net/ListingView/Detail/${item.idListing}\n")
+        append("📸 Sesi Foto : ").append(fotoCount).append("\n")
+        append("📹 Sesi Video : ").append(videoCount).append("\n")
+        append("🛸 Sesi Drone : ").append(droneCount)
+    }
+}
+
+private fun extractLocationFromText(text: String): String? {
+    if (text.isBlank()) return null
+    val textLower = text.lowercase()
+    val locations = listOf(
+        "kebagusan", "cilandak", "cipete", "kemang", "jagakarsa", "pondok indah", "ampera", "kebayoran baru", "kebayoran lama", "kebayoran", "senopati", "bintaro", "tebet", "pejaten", "cilodong", "pasar minggu", "gandaria", "mampang prapatan", "mampang", "pancoran", "setiabudi", "kalibata", "ciganjur", "lenteng agung", "ragunan", "tanjung barat", "pesanggrahan", "cipulir", "pondok pinang", "lebak bulus", "fatmawati", "blok m", "radio dalam", "dharmawangsa", "darmawangsa", "panglima polim", "permata hijau", "senayan", "sudirman", "kuningan", "menteng", "prapanca", "wijaya", "cipete dalam", "cipete utara", "cipete selatan", "gandaria utara", "gandaria selatan", "pondok labu", "petukangan", "ulujami", "kebon baru", "manggarai", "pasar manggis", "karet semanggi", "karet pedurenan", "karet tengsin", "karet", "gatot subroto", "gatsu", "rasuna said", "mega kuningan", "scbd", "tebet barat", "tebet timur", "menteng dalam", "pengadegan", "pejaten barat", "pejaten timur", "jatipadang", "buncit", "warung buncit", "duren tiga", "bangka", "tendean", "kapten tendean", "petogogan", "melawai", "pulo", "cipulo", "kebayoran lama utara", "kebayoran lama selatan", "cilandak barat", "cilandak timur", "tanah kusir",
+        "cinere", "depok", "sawangan", "margonda", "cimanggis", "limo", "beji", "pancoran mas", "sentul", "bogor", "cibubur", "bedahan", "beji timur", "gandul", "pangkalan jati", "krukut", "meruyung", "grogol", "mampang depok", "depok jaya", "sukmajaya", "tapos", "harjamukti", "bojonggede", "citayam", "sentul city", "tanah sareal", "bogor utara", "bogor selatan", "bogor timur", "bogor barat",
+        "bsd city", "bsd", "serpong", "alam sutera", "gading serpong", "karawaci", "ciputat", "pamulang", "bintaro jaya", "ciledug", "tangerang", "serpong utara", "bintaro sektor 1", "bintaro sektor 2", "bintaro sektor 3", "bintaro sektor 4", "bintaro sektor 5", "bintaro sektor 6", "bintaro sektor 7", "bintaro sektor 8", "bintaro sektor 9", "graha raya", "pondok cabe", "cirendeu", "rempoa", "jombang", "sawah baru", "serua", "setu", "cisauk", "pagedangan", "legok", "curug", "cikokol", "tangerang kota", "larangan", "pondok aren",
+        "puri indah", "kembangan", "kebon jeruk", "meruya", "tanjung duren", "tomang", "grogol", "slipi", "palmerah", "kalideres", "cengkareng", "meruya utara", "meruya selatan", "kembangan utara", "kembangan selatan", "permata buana", "taman aries", "intercon", "semesta", "kemanggisan", "jelambar", "kapuk",
+        "rawamangun", "duren sawit", "pulomas", "ciracas", "kramat jati", "makasar", "matraman", "pasar rebo", "cakung", "cipayung", "jatinegara", "kayu putih", "pondok kelapa", "pondok bambu", "klender", "condet", "halim", "cililitan",
+        "salemba", "tanah abang", "gambir", "kemayoran", "cempaka putih", "sawah besar", "cikini", "gondangdia", "senen", "benhil", "bendungan hilir", "petamburan",
+        "pantai indah kapuk", "pik", "kelapa gading", "pluit", "sunter", "ancol", "cilincing", "koja", "pademangan", "penjaringan", "pik 2", "muara karang",
+        "jatiasih", "tambun", "cikarang", "harapan indah", "summarecon bekasi", "bekasi", "grand wisata", "galaxy", "taman galaxy", "kemang pratama", "jatibening", "pondok gede"
+    )
+    val sortedLocations = locations.sortedByDescending { it.length }
+    for (loc in sortedLocations) {
+        if (textLower.contains(loc)) {
+            return loc.split(" ").joinToString(" ") { word ->
+                word.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
             }
-            append("\n")
-        }
-        
-        if (lainnyaList.isNotEmpty()) {
-            append("ℹ️ DETAIL KETERANGAN LAINNYA:\n")
-            lainnyaList.forEachIndexed { idx, item ->
-                append("${idx + 1}. ID: ${item.idListing} - ME: ${item.namaMe}\n")
-                if (item.catatan.isNotBlank()) append("   Catatan: ${item.catatan}\n")
-                append("   Link: https://raywhitecipete.net/ListingView/Detail/${item.idListing}\n")
-            }
-            append("\n")
         }
     }
+    return null
+}
+
+private fun toTitleCase(input: String): String {
+    if (input.isBlank()) return ""
+    return input.split(" ").joinToString(" ") { word ->
+        word.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+    }
+}
+
+private fun getListingLocation(
+    listing: MeetingListing,
+    titleMap: Map<String, String>,
+    descMap: Map<String, String>
+): String {
+    val cleanId = listing.idListing.trim()
+    if (cleanId.isNotBlank()) {
+        val title = titleMap[cleanId] ?: ""
+        val desc = descMap[cleanId] ?: ""
+        
+        val locFromTitle = extractLocationFromText(title)
+        if (locFromTitle != null) return locFromTitle
+        
+        val locFromDesc = extractLocationFromText(desc)
+        if (locFromDesc != null) return locFromDesc
+    }
+    
+    val locFromCatatan = extractLocationFromText(listing.catatan)
+    if (locFromCatatan != null) return locFromCatatan
+    
+    val locFromNamaMe = extractLocationFromText(listing.namaMe)
+    if (locFromNamaMe != null) return locFromNamaMe
+    
+    return if (listing.namaMe.isNotBlank()) toTitleCase(listing.namaMe) else "Jakarta Selatan"
+}
+
+private fun getSessionType(listing: MeetingListing): String {
+    val ket = listing.keterangan.lowercase()
+    val cat = listing.catatan.lowercase()
+    
+    val hasVideo = ket.contains("video") || cat.contains("video")
+    val hasDrone = ket.contains("drone") || cat.contains("drone")
+    
+    return when {
+        hasVideo && hasDrone -> "Foto + Video + Drone"
+        hasVideo -> "Foto + Video"
+        hasDrone -> "Foto + Drone"
+        else -> "Foto"
+    }
+}
+
+private fun formatToIndonesianDayDate(dateStr: String): String {
+    val parts = dateStr.split("-")
+    if (parts.size != 3) return dateStr
+    
+    val year = parts[0].toIntOrNull() ?: return dateStr
+    val month = parts[1].toIntOrNull() ?: return dateStr
+    val day = parts[2].toIntOrNull() ?: return dateStr
+    
+    val calendar = Calendar.getInstance().apply {
+        set(Calendar.YEAR, year)
+        set(Calendar.MONTH, month - 1)
+        set(Calendar.DAY_OF_MONTH, day)
+    }
+    
+    val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+    val indonesianDays = listOf("", "Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu")
+    val indonesianMonths = listOf(
+        "", "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+    )
+    
+    val dayName = indonesianDays.getOrNull(dayOfWeek) ?: ""
+    val monthName = indonesianMonths.getOrNull(month) ?: ""
+    
+    val dayFormatted = String.format(Locale.US, "%02d", day)
+    
+    return "$dayName, $dayFormatted-$monthName-$year"
 }
