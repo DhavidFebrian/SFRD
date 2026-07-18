@@ -437,7 +437,7 @@ object NewsletterDownloader {
             canvas.drawText(line2, 120f, 1510f, textPaint)
         }
 
-        canvas.drawText("Ray White Cipete", 120f, 1650f, subPaint)
+        // Ray White Cipete is already present in the template watermark - no need to draw it again
 
         template.recycle()
         return result
