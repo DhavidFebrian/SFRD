@@ -599,11 +599,12 @@ private fun calculateNewsletterTitle(dateStr: String): String {
         val endMonthName = SimpleDateFormat("MMMM", Locale("id", "ID")).format(sundayCal.time).uppercase()
         val yearStr = sundayCal.get(Calendar.YEAR)
         
-        return if (startMonthName == endMonthName) {
+        val rawTitle = if (startMonthName == endMonthName) {
             "HOT PROPERTY $startDay - $endDay $endMonthName $yearStr"
         } else {
             "HOT PROPERTY $startDay $startMonthName - $endDay $endMonthName $yearStr"
         }
+        return rawTitle.replace("\\b(20\\d{2})\\s+\\1\\b".toRegex(), "$1")
     } catch (e: Exception) {
         return "HOT PROPERTY"
     }

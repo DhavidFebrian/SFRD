@@ -409,7 +409,8 @@ object NewsletterDownloader {
             textSize = 60f // Perbesar teks subjudul ke 60f (dari 56f)
         }
 
-        val titleUpper = pdfTitle.uppercase()
+        val cleanedPdfTitle = pdfTitle.replace("\\b(20\\d{2})\\s+\\1\\b".toRegex(), "$1")
+        val titleUpper = cleanedPdfTitle.uppercase()
         var line1 = "HOT PROPERTY"
         var line2 = ""
         if (titleUpper.startsWith("HOT PROPERTY")) {
@@ -465,8 +466,8 @@ object NewsletterDownloader {
         includeCover: Boolean,
         listingIds: String
     ) {
-        val containerWidth = 819
-        val containerHeight = 1024
+        val containerWidth = 1638
+        val containerHeight = 2048
         var currentPageNumber = 1
 
         val newDoc = android.graphics.pdf.PdfDocument()
@@ -518,7 +519,7 @@ object NewsletterDownloader {
                 val origWidth = page.width
                 val origHeight = page.height
 
-                val scale = 2
+                val scale = 4
                 val bmpWidth = origWidth * scale
                 val bmpHeight = origHeight * scale
                 val pageBitmap = Bitmap.createBitmap(bmpWidth, bmpHeight, Bitmap.Config.ARGB_8888)
@@ -575,16 +576,16 @@ object NewsletterDownloader {
                     
                     val transparentPaint = Paint().apply {
                         color = Color.TRANSPARENT // Invisible
-                        textSize = 24f
+                        textSize = 48f
                         isAntiAlias = true
                         typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
                     }
                     
                     // Draw transparent URL link in multiple places to make the image area clickable
-                    newPage.canvas.drawText(linkUrl, 100f, 250f, transparentPaint)
-                    newPage.canvas.drawText(linkUrl, 100f, 400f, transparentPaint)
-                    newPage.canvas.drawText(linkUrl, 100f, 550f, transparentPaint)
-                    newPage.canvas.drawText(linkUrl, 100f, 700f, transparentPaint)
+                    newPage.canvas.drawText(linkUrl, 200f, 500f, transparentPaint)
+                    newPage.canvas.drawText(linkUrl, 200f, 800f, transparentPaint)
+                    newPage.canvas.drawText(linkUrl, 200f, 1100f, transparentPaint)
+                    newPage.canvas.drawText(linkUrl, 200f, 1400f, transparentPaint)
                 }
 
                 newDoc.finishPage(newPage)
