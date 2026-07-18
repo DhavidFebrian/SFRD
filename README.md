@@ -1,8 +1,8 @@
-# 📱 SFRD — Schedule Foto RWC (Version 8.6.3)
+# 📱 SFRD — Schedule Foto RWC (Version 8.6.4)
 
 <div align="center">
   <img src="https://img.shields.io/badge/Platform-Android-green?style=for-the-badge&logo=android" />
-  <img src="https://img.shields.io/badge/Version-8.6.3-blue?style=for-the-badge&logo=github" />
+  <img src="https://img.shields.io/badge/Version-8.6.4-blue?style=for-the-badge&logo=github" />
   <img src="https://img.shields.io/badge/Kotlin-2.2.10-purple?style=for-the-badge&logo=kotlin" />
   <img src="https://img.shields.io/badge/UI-Jetpack%20Compose%20%2F%20Material%203-blue?style=for-the-badge" />
   <img src="https://img.shields.io/badge/Backend-Google%20Apps%20Script%20%2F%20Sheets-orange?style=for-the-badge&logo=google-sheets" />
@@ -135,8 +135,8 @@ Sistem auto-update aplikasi ini berbasis integrasi API GitHub Releases. Agar tid
    Buka file [`app/build.gradle.kts`](file:///c:/Users/dhavi/antigravity/SFRD/app/build.gradle.kts), naikkan `versionCode` dan `versionName` di block `defaultConfig`:
    ```kotlin
    defaultConfig {
-       versionCode = 863    // Naikkan kode (misal 863)
-    versionName = "8.6.3" // Samakan dengan nama tag rilis target (misal 8.6.3)
+       versionCode = 864    // Naikkan kode (misal 864)
+    versionName = "8.6.4" // Samakan dengan nama tag rilis target (misal 8.6.4)
    }
    ```
 2. **Kompilasi APK**:  
@@ -149,12 +149,12 @@ Sistem auto-update aplikasi ini berbasis integrasi API GitHub Releases. Agar tid
 3. **Push Kode Terupdate ke GitHub**:
    ```bash
    git add .
-    git commit -m "Release version 8.6.3"
+    git commit -m "Release version 8.6.4"
    git push origin main
    ```
 4. **Buat Release di GitHub**:
    * Buka menu **Releases -> Draft a new release** di GitHub.
-    * Buat tag baru dengan nama tag yang sama persis seperti versi tadi (contoh: **`8.6.3`** atau **`v8.6.3`**).
+    * Buat tag baru dengan nama tag yang sama persis seperti versi tadi (contoh: **`8.6.4`** atau **`v8.6.4`**).
    * Unggah file `app-debug.apk` hasil build di atas ke kolom unggahan aset biner rilis.
    * Publish rilis tersebut. Aplikasi di seluruh handphone pengguna otomatis akan memunculkan dialog pop-up tengah untuk mengunduh update terbaru!
 

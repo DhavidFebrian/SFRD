@@ -394,19 +394,19 @@ object NewsletterDownloader {
         val templateDest = Rect(0, 0, template.width * 2, template.height * 2)
         canvas.drawBitmap(template, null, templateDest, filterPaint)
 
-        // 3. Clear old text area (2x coordinates)
-        val whitePaint = Paint().apply {
-            color = Color.WHITE
-            style = Paint.Style.FILL
-        }
-        canvas.drawRect(100f, 1240f, 1480f, 1700f, whitePaint)
-
-        // 4. Draw new text (2x sizes & coordinates)
+        // 3. Prepare paints with larger sizes (2x)
         val textPaint = Paint().apply {
             color = Color.BLACK
             isAntiAlias = true
             typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
-            textSize = 96f // 48f * 2
+            textSize = 112f // Perbesar teks judul ke 112f (dari 96f)
+        }
+
+        val subPaint = Paint().apply {
+            color = Color.parseColor("#333333")
+            isAntiAlias = true
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+            textSize = 60f // Perbesar teks subjudul ke 60f (dari 56f)
         }
 
         val titleUpper = pdfTitle.uppercase()
@@ -428,6 +428,21 @@ object NewsletterDownloader {
             }
         }
 
+        // Measure text width dynamically
+        val width1 = textPaint.measureText(line1)
+        val width2 = if (line2.isNotBlank()) textPaint.measureText(line2) else 0f
+        val width3 = subPaint.measureText("Ray White Cipete")
+        val maxWidth = maxOf(width1, width2, width3)
+        val rightBound = 120f + maxWidth + 60f // 120f start + maxWidth + padding
+
+        // 4. Clear text area with dynamically fitted white background box
+        val whitePaint = Paint().apply {
+            color = Color.WHITE
+            style = Paint.Style.FILL
+        }
+        canvas.drawRect(100f, 1240f, rightBound, 1700f, whitePaint)
+
+        // 5. Draw text
         if (line2.isBlank()) {
             canvas.drawText(line1, 120f, 1450f, textPaint)
         } else {
@@ -435,12 +450,6 @@ object NewsletterDownloader {
             canvas.drawText(line2, 120f, 1510f, textPaint)
         }
 
-        val subPaint = Paint().apply {
-            color = Color.parseColor("#333333")
-            isAntiAlias = true
-            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
-            textSize = 56f // 28f * 2
-        }
         canvas.drawText("Ray White Cipete", 120f, 1650f, subPaint)
 
         template.recycle()
@@ -540,7 +549,23 @@ object NewsletterDownloader {
                 // Draw centered content
                 val srcRect = Rect(0, 0, bmpWidth, bmpHeight)
                 val destRect = Rect(dx, dy, dx + drawWidth, dy + drawHeight)
-                newPage.canvas.drawBitmap(pageBitmap, srcRect, destRect, Paint(Paint.FILTER_BITMAP_FLAG))
+                val filterPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+                newPage.canvas.drawBitmap(pageBitmap, srcRect, destRect, filterPaint)
+
+                // Seamless 3:4 Aspect Ratio conversion:
+                // Stretch the left 1-pixel-wide edge column of the pageBitmap to cover the left empty margin (from 0 to dx)
+                if (dx > 0) {
+                    val srcRectLeft = Rect(0, 0, 1, bmpHeight)
+                    val destRectLeft = Rect(0, dy, dx, dy + drawHeight)
+                    newPage.canvas.drawBitmap(pageBitmap, srcRectLeft, destRectLeft, filterPaint)
+                }
+
+                // Stretch the right 1-pixel-wide edge column of the pageBitmap to cover the right empty margin (from dx + drawWidth to containerWidth)
+                if (dx + drawWidth < containerWidth) {
+                    val srcRectRight = Rect(bmpWidth - 1, 0, bmpWidth, bmpHeight)
+                    val destRectRight = Rect(dx + drawWidth, dy, containerWidth, dy + drawHeight)
+                    newPage.canvas.drawBitmap(pageBitmap, srcRectRight, destRectRight, filterPaint)
+                }
 
                 // Draw listing URL link transparently (recognized as clickable text by PDF viewers)
                 val listingId = idList.getOrNull(i)
