@@ -158,6 +158,21 @@ Sistem auto-update aplikasi ini berbasis integrasi API GitHub Releases. Agar tid
    * Unggah file `app-debug.apk` hasil build di atas ke kolom unggahan aset biner rilis.
    * Publish rilis tersebut. Aplikasi di seluruh handphone pengguna otomatis akan memunculkan dialog pop-up tengah untuk mengunduh update terbaru!
 
+## 📋 Riwayat Pembaruan (Changelog)
+
+### Versi 8.6.4 (Rilis Terbaru - 18 Juli 2026)
+1. **Pembaruan Layout Ringkasan Analisis (Jadwal Foto)**:
+   * Mengganti visual donut chart dan progress bar dengan daftar jadwal foto terperinci yang dikelompokkan secara kronologis berdasarkan tanggal (format hari Indonesia, misal: `Selasa, 02-Juni-2026`).
+   * Pengecekan lokasi secara cerdas berdasarkan kecocokan kata kunci pada judul/deskripsi properti, dengan fallback otomatis ke nama ME atau catatan jika ID listing tidak diisi.
+   * Penghitungan tipe sesi foto secara dinamis (`📸 Sesi Foto`, `📹 Sesi Video`, `🛸 Sesi Drone`) berdasarkan pendeteksian kata kunci `"video"` atau `"drone"` di kolom keterangan/catatan.
+2. **Pembaruan Format Sharing WhatsApp Jadwal Foto**:
+   * Penulisan judul laporan terpusat: `Update Foto Raffa - David Bulan [Bulan Tahun]`.
+   * Struktur list terformat rapi menampilkan nomor urut global, lokasi properti, tipe sesi, link detail portal properti, serta total summary pembagian sesi di bagian bawah.
+3. **Penyempurnaan Generator Newsletter PDF**:
+   * **Kotak Background Putih Dinamis**: Kotak putih di belakang judul newsletter pada halaman cover sekarang diukur secara dinamis (`Paint.measureText`) mengikuti panjang baris teks terpanjang (ditambah padding) sehingga terlihat pas dan rapi.
+   * **Ukuran Teks Cover Lebih Besar**: Judul diperbesar dari `96f` ke `112f` dan subjudul diperbesar dari `56f` ke `60f` untuk tampilan yang lebih premium.
+   * **Edge Border Stretching (Bebas Distorsi)**: Saat mengonversi rasio halaman PDF dari A4 ke 3:4 portrait Instagram, margin kosong di sebelah kiri dan kanan kini ditutupi sempurna dengan meregangkan pixel tepi gambar asli. Cara ini menghilangkan ruang kosong hitam/putih di samping secara seamless tanpa mendistorsi teks, layout properti di tengah, maupun letak koordinat link hyperlink aktif.
+
 ---
 
 ## 👨‍💻 Developer & Maintenance
