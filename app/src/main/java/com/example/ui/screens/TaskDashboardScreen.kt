@@ -7,6 +7,7 @@ import java.util.Calendar
 import java.util.Locale
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -651,7 +653,8 @@ fun TaskDashboardScreen(
                                             colors = OutlinedTextFieldDefaults.colors(
                                                 focusedBorderColor = MaterialTheme.colorScheme.primary,
                                                 unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                                                containerColor = MaterialTheme.colorScheme.surface
+                                                focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                                unfocusedContainerColor = MaterialTheme.colorScheme.surface
                                             )
                                         )
 
@@ -677,7 +680,8 @@ fun TaskDashboardScreen(
                                                     colors = OutlinedTextFieldDefaults.colors(
                                                         focusedBorderColor = MaterialTheme.colorScheme.primary,
                                                         unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                                                        containerColor = MaterialTheme.colorScheme.surface
+                                                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
                                                     ),
                                                     modifier = Modifier.menuAnchor().fillMaxWidth(),
                                                     textStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
@@ -756,7 +760,7 @@ fun TaskDashboardScreen(
                                                 modifier = Modifier
                                                     .size(48.dp)
                                                     .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f), RoundedCornerShape(10.dp))
-                                                    .border(BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)), RoundedCornerShape(10.dp))
+                                                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
                                                     .clickable { viewModel.fetchWeeklyMeetingIgListings(selectedUploadIgMonth) },
                                                 contentAlignment = Alignment.Center
                                             ) {
