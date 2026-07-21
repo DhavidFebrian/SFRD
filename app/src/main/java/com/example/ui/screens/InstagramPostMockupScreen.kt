@@ -1009,8 +1009,8 @@ private fun buildInstagramCaption(
     // 2. Select beautiful title, avoiding pure stats or numbers
     val title = selectPropertyTitle(scrapedTitle, judulTask, clean, lokasiVal)
 
-    // Contact info
-    val contactsStr = getInstagramCaptionContacts(namaMe)
+    // Contact info dynamically resolved from ME name or description scan
+    val contactsStr = getInstagramCaptionContacts(namaMe, rawDesc, scrapedTitle, judulTask)
 
     // Check if "Deskripsi Lengkap:" exists or fallback to standard specs
     val deskripsiLengkapIndex = clean.indexOf("Deskripsi Lengkap:", ignoreCase = true)
@@ -1123,14 +1123,41 @@ private fun buildInstagramCaption(
     }
 }
 
-private fun getInstagramCaptionContacts(namaMe: String): String {
-    val names = namaMe.split(Regex("\\s*(?:&|\\bdan\\b|\\band\\b|/|,)\\s*", RegexOption.IGNORE_CASE)).map { it.trim() }.filter { it.isNotEmpty() }
-    if (names.isEmpty()) {
-        return "CONTACT\nILHAM: 08561103735/@ilhamsraywhite\n\n"
+private fun resolveMarketingName(namaMe: String, rawDesc: String, scrapedTitle: String, judulTask: String): String {
+    val cleanInput = namaMe.trim()
+    if (cleanInput.isNotBlank() && !cleanInput.equals("Hubungi Agent", ignoreCase = true) && !cleanInput.equals("Unknown", ignoreCase = true)) {
+        val directContact = com.example.ui.findContact(cleanInput)
+        if (directContact != null) {
+            return directContact.nameKey.replaceFirstChar { it.uppercase() }
+        }
+        val matchedAgent = com.example.ui.AGENT_CONTACT_LIST.find { contact ->
+            cleanInput.lowercase().contains(contact.nameKey)
+        }
+        if (matchedAgent != null) {
+            return matchedAgent.nameKey.replaceFirstChar { it.uppercase() }
+        }
+        return cleanInput
     }
+
+    // Scan rawDesc, scrapedTitle, and judulTask for any agent from AGENT_CONTACT_LIST
+    val combinedText = "$rawDesc $scrapedTitle $judulTask".lowercase()
+    val matchedAgent = com.example.ui.AGENT_CONTACT_LIST.find { contact ->
+        combinedText.contains(contact.nameKey)
+    }
+    if (matchedAgent != null) {
+        return matchedAgent.nameKey.replaceFirstChar { it.uppercase() }
+    }
+
+    return cleanInput.ifBlank { "Mari" }
+}
+
+private fun getInstagramCaptionContacts(namaMe: String, rawDesc: String = "", scrapedTitle: String = "", judulTask: String = ""): String {
+    val resolvedMe = resolveMarketingName(namaMe, rawDesc, scrapedTitle, judulTask)
+    val names = resolvedMe.split(Regex("\\s*(?:&|\\bdan\\b|\\band\\b|/|,)\\s*", RegexOption.IGNORE_CASE)).map { it.trim() }.filter { it.isNotEmpty() }
     return buildString {
         append("CONTACT\n")
-        names.forEach { name ->
+        val effectiveNames = if (names.isEmpty()) listOf("Mari") else names
+        effectiveNames.forEach { name ->
             val contact = com.example.ui.findContact(name)
             if (contact != null) {
                 val igHandle = if (contact.instagram.isNotBlank()) {

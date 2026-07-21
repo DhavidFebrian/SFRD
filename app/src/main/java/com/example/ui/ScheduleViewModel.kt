@@ -1151,19 +1151,19 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                                 // Try to parse total listings count dynamically
                                 try {
                                     val textContent = doc.text()
-                                    val countRegex = """(?i)(\d{1,3}[.,]\d{3}|\d+)\s*(?:properti|properties|listings|listing|found|ditemukan)""".toRegex()
+                                    val countRegex = """(?i)(\d{1,3}(?:[.,]\d{3})+|\d{4,5})\s*(?:properti|properties|listings|listing|found|ditemukan|hot|total)""".toRegex()
                                     val match = countRegex.find(textContent)
                                     if (match != null) {
                                         val matchedStr = match.groupValues[1]
                                         val cleanNum = matchedStr.replace(".", "").replace(",", "").toIntOrNull()
-                                        if (cleanNum != null) {
+                                        if (cleanNum != null && cleanNum >= 100) {
                                             _totalWebHotListings.value = java.text.NumberFormat.getIntegerInstance(java.util.Locale("id", "ID")).format(cleanNum)
-                                        } else {
+                                        } else if (cleanNum != null) {
                                             _totalWebHotListings.value = matchedStr
                                         }
                                     } else {
-                                        val fourDigitRegex = """\b(2\d{3})\b""".toRegex()
-                                        val fallbackMatch = fourDigitRegex.find(textContent)
+                                        val multiDigitRegex = """\b([1-9]\d{3,4})\b""".toRegex()
+                                        val fallbackMatch = multiDigitRegex.find(textContent)
                                         if (fallbackMatch != null) {
                                             val cleanNum = fallbackMatch.groupValues[1].toInt()
                                             _totalWebHotListings.value = java.text.NumberFormat.getIntegerInstance(java.util.Locale("id", "ID")).format(cleanNum)

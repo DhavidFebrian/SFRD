@@ -1325,6 +1325,10 @@ fun AddMeetingListingDialog(
                                         Toast.makeText(context, "ID Listing tidak boleh kosong!", Toast.LENGTH_SHORT).show()
                                         return@Button
                                     }
+                                    if (selectedKeterangan.isBlank()) {
+                                        Toast.makeText(context, "Wajib isi/pilih Keterangan terlebih dahulu!", Toast.LENGTH_SHORT).show()
+                                        return@Button
+                                    }
                                     if (isDuplicateId) {
                                         Toast.makeText(context, "ID sudah di input ke meeting di tanggal ini!", Toast.LENGTH_SHORT).show()
                                         return@Button
@@ -1350,7 +1354,7 @@ fun AddMeetingListingDialog(
                                 },
                                 modifier = Modifier.weight(1.2f),
                                 shape = RoundedCornerShape(12.dp),
-                                enabled = !isLoading && !isDuplicateId
+                                enabled = !isLoading && !isDuplicateId && selectedKeterangan.isNotBlank()
                             ) {
                                 if (isLoading) {
                                     CircularProgressIndicator(
@@ -3807,6 +3811,10 @@ fun AutoScrapeWebDialog(
 
                                     Button(
                                         onClick = {
+                                            if (selectedKeterangan.isBlank()) {
+                                                Toast.makeText(context, "Wajib isi/pilih Keterangan terlebih dahulu!", Toast.LENGTH_SHORT).show()
+                                                return@Button
+                                            }
                                             if (isDuplicateActiveId) {
                                                 Toast.makeText(context, "ID sudah di input ke meeting di tanggal ini!", Toast.LENGTH_SHORT).show()
                                                 return@Button
@@ -3831,7 +3839,7 @@ fun AutoScrapeWebDialog(
                                         },
                                         modifier = Modifier.weight(1.2f),
                                         shape = RoundedCornerShape(12.dp),
-                                        enabled = !isSavingListing && !isDuplicateActiveId
+                                        enabled = !isSavingListing && !isDuplicateActiveId && selectedKeterangan.isNotBlank()
                                     ) {
                                         if (isSavingListing) {
                                             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
