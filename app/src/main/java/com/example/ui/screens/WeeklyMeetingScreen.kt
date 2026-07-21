@@ -3145,7 +3145,10 @@ fun AutoScrapeWebDialog(
                         onClick = { showAddManualDialog = true },
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
-                        shape = RoundedCornerShape(16.dp)
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .navigationBarsPadding()
+                            .padding(bottom = 72.dp, end = 8.dp)
                     ) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = "Tambah Manual")
                     }
