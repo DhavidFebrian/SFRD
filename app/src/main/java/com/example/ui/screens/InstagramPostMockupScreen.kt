@@ -1125,30 +1125,48 @@ private fun buildInstagramCaption(
 
 private fun resolveMarketingName(namaMe: String, rawDesc: String, scrapedTitle: String, judulTask: String): String {
     val cleanInput = namaMe.trim()
-    if (cleanInput.isNotBlank() && !cleanInput.equals("Hubungi Agent", ignoreCase = true) && !cleanInput.equals("Unknown", ignoreCase = true)) {
-        val directContact = com.example.ui.findContact(cleanInput)
-        if (directContact != null) {
-            return directContact.nameKey.replaceFirstChar { it.uppercase() }
-        }
-        val matchedAgent = com.example.ui.AGENT_CONTACT_LIST.find { contact ->
-            cleanInput.lowercase().contains(contact.nameKey)
-        }
-        if (matchedAgent != null) {
-            return matchedAgent.nameKey.replaceFirstChar { it.uppercase() }
-        }
-        return cleanInput
+    val combinedText = "$rawDesc $scrapedTitle $judulTask".lowercase()
+
+    // 1. Direct check if Mari or Mari Hariadi is explicitly mentioned
+    if (combinedText.contains("\\bmari\\b".toRegex()) || combinedText.contains("mari.raywhite") || combinedText.contains("08118087908")) {
+        return "Mari"
     }
 
-    // Scan rawDesc, scrapedTitle, and judulTask for any agent from AGENT_CONTACT_LIST
-    val combinedText = "$rawDesc $scrapedTitle $judulTask".lowercase()
+    // 2. Check cleanInput if it's a valid agent name and not Kebayoran/Hubungi Agent/Unknown
+    if (cleanInput.isNotBlank() && 
+        !cleanInput.equals("Hubungi Agent", ignoreCase = true) && 
+        !cleanInput.equals("Unknown", ignoreCase = true) &&
+        !cleanInput.contains("Kebayoran", ignoreCase = true)
+    ) {
+        val directContact = com.example.ui.findContact(cleanInput)
+        if (directContact != null && directContact.nameKey != "bayu") {
+            return directContact.nameKey.replaceFirstChar { it.uppercase() }
+        }
+        if (cleanInput.equals("bayu", ignoreCase = true)) {
+            // Confirm bayu is actually intended and not a location mismatch
+            if (combinedText.contains("\\bbayu\\b".toRegex())) {
+                return "Bayu"
+            }
+        } else {
+            val matchedAgent = com.example.ui.AGENT_CONTACT_LIST.find { contact ->
+                cleanInput.lowercase().contains(contact.nameKey)
+            }
+            if (matchedAgent != null) {
+                return matchedAgent.nameKey.replaceFirstChar { it.uppercase() }
+            }
+            return cleanInput
+        }
+    }
+
+    // 3. Scan combinedText for any agent from AGENT_CONTACT_LIST using strict word boundary (\b)
     val matchedAgent = com.example.ui.AGENT_CONTACT_LIST.find { contact ->
-        combinedText.contains(contact.nameKey)
+        Regex("\\b" + Regex.escape(contact.nameKey) + "\\b", RegexOption.IGNORE_CASE).containsMatchIn(combinedText)
     }
     if (matchedAgent != null) {
         return matchedAgent.nameKey.replaceFirstChar { it.uppercase() }
     }
 
-    return cleanInput.ifBlank { "Mari" }
+    return "Mari"
 }
 
 private fun getInstagramCaptionContacts(namaMe: String, rawDesc: String = "", scrapedTitle: String = "", judulTask: String = ""): String {

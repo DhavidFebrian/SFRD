@@ -101,7 +101,8 @@ fun findContact(meName: String): AgentContact? {
         
         val fallbackMatch = localList.find { contact ->
             val isOverlap = (contact.nameKey == "ayu" && cleanName.contains("bayu")) ||
-                            (contact.nameKey == "bayu" && cleanName.contains("ayu") && !cleanName.contains("bayu"))
+                            (contact.nameKey == "bayu" && cleanName.contains("ayu") && !cleanName.contains("bayu")) ||
+                            (contact.nameKey == "bayu" && cleanName.contains("kebayoran"))
             if (isOverlap) {
                 false
             } else {
@@ -126,10 +127,11 @@ fun findContact(meName: String): AgentContact? {
     }
     if (wordMatch != null) return wordMatch
 
-    // 3. Try fallback matches, but specifically prevent "ayu" and "bayu" overlap
+    // 3. Try fallback matches, but specifically prevent "ayu" and "bayu" overlap and "kebayoran" matching "bayu"
     return AGENT_CONTACT_LIST.find { contact ->
         val isOverlap = (contact.nameKey == "ayu" && cleanName.contains("bayu")) ||
-                        (contact.nameKey == "bayu" && cleanName.contains("ayu") && !cleanName.contains("bayu"))
+                        (contact.nameKey == "bayu" && cleanName.contains("ayu") && !cleanName.contains("bayu")) ||
+                        (contact.nameKey == "bayu" && cleanName.contains("kebayoran"))
         if (isOverlap) {
             false
         } else {
