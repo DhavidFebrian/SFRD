@@ -528,7 +528,10 @@ fun InputFormScreen(
                 val typeOptions = listOf(
                     "Foto",
                     "Foto + Video",
-                    "Foto + Drone"
+                    "Foto + Drone",
+                    "Done Foto",
+                    "Done Foto + Video",
+                    "Done Foto + Drone"
                 )
 
                 Box(modifier = Modifier.fillMaxWidth()) {
@@ -574,6 +577,57 @@ fun InputFormScreen(
                             )
                         }
                     }
+                }
+
+                // Checkbox Done Progress
+                val isDoneProgress = formType.startsWith("Done ")
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            val checked = !isDoneProgress
+                            val currentType = viewModel.formType.value
+                            if (checked) {
+                                if (currentType == "Foto") viewModel.formType.value = "Done Foto"
+                                else if (currentType == "Foto + Video" || currentType == "Foto & Video" || currentType == "Video") viewModel.formType.value = "Done Foto + Video"
+                                else if (currentType == "Foto + Drone" || currentType == "Drone") viewModel.formType.value = "Done Foto + Drone"
+                                else if (!currentType.startsWith("Done ")) viewModel.formType.value = "Done $currentType"
+                            } else {
+                                if (currentType == "Done Foto") viewModel.formType.value = "Foto"
+                                else if (currentType == "Done Foto + Video") viewModel.formType.value = "Foto + Video"
+                                else if (currentType == "Done Foto + Drone") viewModel.formType.value = "Foto + Drone"
+                                else if (currentType.startsWith("Done ")) viewModel.formType.value = currentType.removePrefix("Done ").trim()
+                            }
+                        }
+                        .padding(vertical = 4.dp, horizontal = 4.dp)
+                ) {
+                    Checkbox(
+                        checked = isDoneProgress,
+                        onCheckedChange = { checked ->
+                            val currentType = viewModel.formType.value
+                            if (checked) {
+                                if (currentType == "Foto") viewModel.formType.value = "Done Foto"
+                                else if (currentType == "Foto + Video" || currentType == "Foto & Video" || currentType == "Video") viewModel.formType.value = "Done Foto + Video"
+                                else if (currentType == "Foto + Drone" || currentType == "Drone") viewModel.formType.value = "Done Foto + Drone"
+                                else if (!currentType.startsWith("Done ")) viewModel.formType.value = "Done $currentType"
+                            } else {
+                                if (currentType == "Done Foto") viewModel.formType.value = "Foto"
+                                else if (currentType == "Done Foto + Video") viewModel.formType.value = "Foto + Video"
+                                else if (currentType == "Done Foto + Drone") viewModel.formType.value = "Foto + Drone"
+                                else if (currentType.startsWith("Done ")) viewModel.formType.value = currentType.removePrefix("Done ").trim()
+                            }
+                        },
+                        colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Done Progress",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))

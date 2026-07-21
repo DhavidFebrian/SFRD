@@ -961,7 +961,10 @@ fun PageEdit(
             val typeOptions = listOf(
                 "Foto",
                 "Foto + Video",
-                "Foto + Drone"
+                "Foto + Drone",
+                "Done Foto",
+                "Done Foto + Video",
+                "Done Foto + Drone"
             )
 
             Box(modifier = Modifier.fillMaxWidth()) {
@@ -1004,6 +1007,55 @@ fun PageEdit(
                         )
                     }
                 }
+            }
+
+            // Checkbox Done Progress
+            val isDoneProgress = type.startsWith("Done ")
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        val checked = !isDoneProgress
+                        if (checked) {
+                            if (type == "Foto") type = "Done Foto"
+                            else if (type == "Foto + Video" || type == "Foto & Video" || type == "Video") type = "Done Foto + Video"
+                            else if (type == "Foto + Drone" || type == "Drone") type = "Done Foto + Drone"
+                            else if (!type.startsWith("Done ")) type = "Done $type"
+                        } else {
+                            if (type == "Done Foto") type = "Foto"
+                            else if (type == "Done Foto + Video") type = "Foto + Video"
+                            else if (type == "Done Foto + Drone") type = "Foto + Drone"
+                            else if (type.startsWith("Done ")) type = type.removePrefix("Done ").trim()
+                        }
+                    }
+                    .padding(vertical = 4.dp, horizontal = 4.dp)
+            ) {
+                Checkbox(
+                    checked = isDoneProgress,
+                    onCheckedChange = { checked ->
+                        if (checked) {
+                            if (type == "Foto") type = "Done Foto"
+                            else if (type == "Foto + Video" || type == "Foto & Video" || type == "Video") type = "Done Foto + Video"
+                            else if (type == "Foto + Drone" || type == "Drone") type = "Done Foto + Drone"
+                            else if (!type.startsWith("Done ")) type = "Done $type"
+                        } else {
+                            if (type == "Done Foto") type = "Foto"
+                            else if (type == "Done Foto + Video") type = "Foto + Video"
+                            else if (type == "Done Foto + Drone") type = "Foto + Drone"
+                            else if (type.startsWith("Done ")) type = type.removePrefix("Done ").trim()
+                        }
+                    },
+                    colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "Done Progress",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
             }
 
             Spacer(modifier = Modifier.height(4.dp))

@@ -49,6 +49,7 @@ import java.util.*
 import androidx.compose.animation.core.*
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.graphics.Brush
+import com.example.util.JarvisVoiceManager
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -1137,6 +1138,10 @@ fun AddMeetingListingDialog(
     
     var isLoading by remember { mutableStateOf(false) }
 
+    var isVoiceListening by remember { mutableStateOf(false) }
+    var voiceStatusText by remember { mutableStateOf<String?>(null) }
+    var jarvisVoiceManager by remember { mutableStateOf<JarvisVoiceManager?>(null) }
+
     val listingImagesMap by viewModel.listingImagesMap.collectAsState()
     val listingImagesGalleryMap by viewModel.listingImagesGalleryMap.collectAsState()
     val listingTitleMap by viewModel.listingTitleMap.collectAsState()
@@ -1144,6 +1149,53 @@ fun AddMeetingListingDialog(
     val listingDescMap by viewModel.listingDescMap.collectAsState()
     val agentInfoMap by viewModel.agentInfoMap.collectAsState()
     val listingSoldMap by viewModel.listingSoldMap.collectAsState()
+    val existingMeetingListings by viewModel.meetingListings.collectAsState()
+
+    // Live constructed notes preview
+    val computedCatatan = remember(selectedEditOptions, inputJudul, catatanManual) {
+        val formattedOptions = if (selectedEditOptions.isNotEmpty()) "edit ${selectedEditOptions.joinToString(" ")}" else ""
+        val formattedJudul = if (inputJudul.isNotBlank()) "judul $inputJudul" else ""
+        listOf(formattedOptions, formattedJudul, catatanManual).filter { it.isNotBlank() }.joinToString(", ")
+    }
+
+    DisposableEffect(Unit) {
+        val manager = JarvisVoiceManager(
+            context = context,
+            onOptionRecognized = { option ->
+                selectedKeterangan = option
+                val currentCleanId = idListing.trim()
+                val isDup = currentCleanId.isNotBlank() && existingMeetingListings.any { it.idListing.trim().equals(currentCleanId, ignoreCase = true) }
+                if (currentCleanId.isNotBlank() && !isDup && !isLoading) {
+                    isLoading = true
+                    viewModel.addWeeklyMeetingListing(
+                        month = month,
+                        dateStr = dateStr,
+                        idListing = currentCleanId,
+                        namaMe = namaMe,
+                        keterangan = option,
+                        catatan = computedCatatan,
+                        onResult = { success, message ->
+                            isLoading = false
+                            (context as? android.app.Activity)?.runOnUiThread {
+                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                if (success) {
+                                    onDismiss()
+                                }
+                            }
+                        }
+                    )
+                }
+            },
+            onStateChanged = { listening, text ->
+                isVoiceListening = listening
+                voiceStatusText = text
+            }
+        )
+        jarvisVoiceManager = manager
+        onDispose {
+            manager.destroy()
+        }
+    }
 
     val addTemplates = listOf("ratio", "perspective", "remove object")
 
@@ -1162,6 +1214,9 @@ fun AddMeetingListingDialog(
     }
 
     val cleanId = idListing.trim()
+    val isDuplicateId = remember(cleanId, existingMeetingListings) {
+        cleanId.isNotBlank() && existingMeetingListings.any { it.idListing.trim().equals(cleanId, ignoreCase = true) }
+    }
     val isListingValid = cleanId.isNotBlank() && cleanId.length >= 3
     var isDescExpanded by remember(cleanId) { mutableStateOf(false) }
 
@@ -1173,13 +1228,6 @@ fun AddMeetingListingDialog(
     }
 
     val addOptions = listOf("HOT PROPERTY", "IG", "FOTO ULANG")
-
-    // Live constructed notes preview
-    val computedCatatan = remember(selectedEditOptions, inputJudul, catatanManual) {
-        val formattedOptions = if (selectedEditOptions.isNotEmpty()) "edit ${selectedEditOptions.joinToString(" ")}" else ""
-        val formattedJudul = if (inputJudul.isNotBlank()) "judul $inputJudul" else ""
-        listOf(formattedOptions, formattedJudul, catatanManual).filter { it.isNotBlank() }.joinToString(", ")
-    }
 
     Dialog(
         onDismissRequest = { if (!isLoading) onDismiss() },
@@ -1223,9 +1271,9 @@ fun AddMeetingListingDialog(
                         Row(
                             modifier = Modifier
                                 .navigationBarsPadding()
-                                .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 32.dp) // raised bottom padding!
+                                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 48.dp)
                                 .fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             OutlinedButton(
@@ -1236,10 +1284,49 @@ fun AddMeetingListingDialog(
                             ) {
                                 Text("Batal")
                             }
+
+                            OutlinedButton(
+                                onClick = {
+                                    if (isVoiceListening) {
+                                        jarvisVoiceManager?.stopListening()
+                                    } else {
+                                        jarvisVoiceManager?.startJarvisCommandFlow()
+                                    }
+                                },
+                                modifier = Modifier.weight(1.1f),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = if (isVoiceListening) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                    contentColor = if (isVoiceListening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                ),
+                                border = BorderStroke(1.dp, if (isVoiceListening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isVoiceListening) Icons.Default.Mic else Icons.Default.MicNone,
+                                        contentDescription = "Voice",
+                                        tint = if (isVoiceListening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = if (isVoiceListening) (voiceStatusText ?: "Voice") else "Voice",
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+
                             Button(
                                 onClick = {
                                     if (idListing.isBlank()) {
                                         Toast.makeText(context, "ID Listing tidak boleh kosong!", Toast.LENGTH_SHORT).show()
+                                        return@Button
+                                    }
+                                    if (isDuplicateId) {
+                                        Toast.makeText(context, "ID sudah di input ke meeting di tanggal ini!", Toast.LENGTH_SHORT).show()
                                         return@Button
                                     }
                                     isLoading = true
@@ -1263,7 +1350,7 @@ fun AddMeetingListingDialog(
                                 },
                                 modifier = Modifier.weight(1.2f),
                                 shape = RoundedCornerShape(12.dp),
-                                enabled = !isLoading
+                                enabled = !isLoading && !isDuplicateId
                             ) {
                                 if (isLoading) {
                                     CircularProgressIndicator(
@@ -1303,6 +1390,7 @@ fun AddMeetingListingDialog(
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f),
                             enabled = !isLoading,
+                            isError = isDuplicateId,
                             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                                 keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
                             )
@@ -1320,6 +1408,32 @@ fun AddMeetingListingDialog(
                             modifier = Modifier.weight(1f),
                             enabled = !isLoading
                         )
+                    }
+
+                    if (isDuplicateId) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.9f)),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = "Peringatan Duplicate",
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "ID $cleanId sudah di input ke meeting!",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
                     }
 
                     // ADD_KETERANGAN_MARKER
@@ -1876,6 +1990,7 @@ fun EditMeetingListingDialog(
     var catatanManual by remember { mutableStateOf("") }
     
     var isLoading by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     val listingImagesMap by viewModel.listingImagesMap.collectAsState()
     val listingImagesGalleryMap by viewModel.listingImagesGalleryMap.collectAsState()
@@ -1986,9 +2101,9 @@ fun EditMeetingListingDialog(
                         Row(
                             modifier = Modifier
                                 .navigationBarsPadding()
-                                .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 32.dp) // raised bottom padding!
+                                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 48.dp) // raised bottom padding!
                                 .fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             OutlinedButton(
@@ -1998,6 +2113,29 @@ fun EditMeetingListingDialog(
                                 enabled = !isLoading
                             ) {
                                 Text("Batal")
+                            }
+                            OutlinedButton(
+                                onClick = { showDeleteConfirmDialog = true },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                enabled = !isLoading,
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error
+                                ),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Hapus",
+                                        tint = MaterialTheme.colorScheme.error,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text("Hapus")
+                                }
                             }
                             Button(
                                 onClick = {
@@ -2609,6 +2747,66 @@ fun EditMeetingListingDialog(
                 onDismiss = { activePreviewImages = null }
             )
         }
+
+        if (showDeleteConfirmDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteConfirmDialog = false },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Hapus",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                },
+                title = {
+                    Text(
+                        text = "Hapus Data Meeting",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                },
+                text = {
+                    Text(
+                        text = "Apakah Anda yakin ingin menghapus data listing ${listing.idListing} dari meeting tanggal $dateStr?",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showDeleteConfirmDialog = false
+                            isLoading = true
+                            viewModel.deleteWeeklyMeetingListing(
+                                month = month,
+                                dateStr = dateStr,
+                                row = listing.no,
+                                colIndex = listing.colIndex,
+                                idListing = listing.idListing,
+                                onResult = { success, message ->
+                                    isLoading = false
+                                    (context as? android.app.Activity)?.runOnUiThread {
+                                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                        if (success) {
+                                            onDismiss()
+                                        }
+                                    }
+                                }
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        )
+                    ) {
+                        Text("Hapus")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteConfirmDialog = false }) {
+                        Text("Batal")
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -2947,8 +3145,7 @@ fun AutoScrapeWebDialog(
                         onClick = { showAddManualDialog = true },
                         containerColor = MaterialTheme.colorScheme.primary,
                         contentColor = MaterialTheme.colorScheme.onPrimary,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.padding(bottom = 32.dp)
+                        shape = RoundedCornerShape(16.dp)
                     ) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = "Tambah Manual")
                     }
@@ -2959,18 +3156,13 @@ fun AutoScrapeWebDialog(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
-                        .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 96.dp),
+                        .navigationBarsPadding()
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 68.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     val activeId = pendingList.firstOrNull()
 
                     if (activeId != null) {
-                        // Prefetch details
-                        LaunchedEffect(activeId) {
-                            viewModel.fetchListingImageIfNeeded(activeId)
-                            viewModel.fetchYearlyIgPostingHistory()
-                        }
-
                         val listingImagesMap by viewModel.listingImagesMap.collectAsState()
                         val listingImagesGalleryMap by viewModel.listingImagesGalleryMap.collectAsState()
                         val listingTitleMap by viewModel.listingTitleMap.collectAsState()
@@ -2983,10 +3175,14 @@ fun AutoScrapeWebDialog(
                         val price = listingPriceMap[activeId] ?: ""
                         val agentInfo = agentInfoMap[activeId]
 
+                        var selectedKeterangan by remember(activeId) { mutableStateOf("") }
+                        var isVoiceListening by remember { mutableStateOf(false) }
+                        var voiceStatusText by remember { mutableStateOf<String?>(null) }
+                        var jarvisVoiceManager by remember { mutableStateOf<JarvisVoiceManager?>(null) }
+
                         var namaMe by remember(activeId, agentInfo) {
                             mutableStateOf(agentInfo?.name ?: "")
                         }
-                        var selectedKeterangan by remember(activeId) { mutableStateOf("") }
                         var selectedEditOptions by remember(activeId) { mutableStateOf(emptySet<String>()) }
                         var inputJudul by remember(activeId) { mutableStateOf("") }
                         var catatanManual by remember(activeId) { mutableStateOf("") }
@@ -2997,6 +3193,53 @@ fun AutoScrapeWebDialog(
                             val formattedOptions = if (selectedEditOptions.isNotEmpty()) "edit ${selectedEditOptions.joinToString(" ")}" else ""
                             val formattedJudul = if (inputJudul.isNotBlank()) "judul $inputJudul" else ""
                             listOf(formattedOptions, formattedJudul, catatanManual).filter { it.isNotBlank() }.joinToString(", ")
+                        }
+
+                        DisposableEffect(activeId) {
+                            val manager = JarvisVoiceManager(
+                                context = context,
+                                onOptionRecognized = { option ->
+                                    selectedKeterangan = option
+                                    val cleanActiveId = activeId.trim()
+                                    val isDup = cleanActiveId.isNotBlank() && (
+                                        listings.any { it.idListing.trim().equals(cleanActiveId, ignoreCase = true) } ||
+                                        processedListings.any { it.first.trim().equals(cleanActiveId, ignoreCase = true) }
+                                    )
+                                    if (!isDup && !isSavingListing) {
+                                        isSavingListing = true
+                                        viewModel.addWeeklyMeetingListing(
+                                            month = month,
+                                            dateStr = dateStr,
+                                            idListing = activeId,
+                                            namaMe = namaMe,
+                                            keterangan = option,
+                                            catatan = computedCatatan,
+                                            onResult = { success, msg ->
+                                                isSavingListing = false
+                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                                if (success) {
+                                                    processedListings = processedListings + (activeId to "$namaMe ($option)")
+                                                    viewModel.removePendingScrapedListing(activeId)
+                                                }
+                                            }
+                                        )
+                                    }
+                                },
+                                onStateChanged = { listening, text ->
+                                    isVoiceListening = listening
+                                    voiceStatusText = text
+                                }
+                            )
+                            jarvisVoiceManager = manager
+                            onDispose {
+                                manager.destroy()
+                            }
+                        }
+
+                        // Prefetch details
+                        LaunchedEffect(activeId) {
+                            viewModel.fetchListingImageIfNeeded(activeId)
+                            viewModel.fetchYearlyIgPostingHistory()
                         }
 
                         Card(
@@ -3476,9 +3719,44 @@ fun AutoScrapeWebDialog(
                                     minLines = 2
                                 )
 
+                                val cleanActiveId = activeId.trim()
+                                val isDuplicateActiveId = remember(cleanActiveId, listings, processedListings) {
+                                    cleanActiveId.isNotBlank() && (
+                                        listings.any { it.idListing.trim().equals(cleanActiveId, ignoreCase = true) } ||
+                                        processedListings.any { it.first.trim().equals(cleanActiveId, ignoreCase = true) }
+                                    )
+                                }
+
+                                if (isDuplicateActiveId) {
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.9f)),
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Warning,
+                                                contentDescription = "Peringatan Duplicate",
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Text(
+                                                text = "ID $cleanActiveId sudah di input ke meeting!",
+                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onErrorContainer
+                                            )
+                                        }
+                                    }
+                                }
+
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     OutlinedButton(
                                         onClick = {
@@ -3490,8 +3768,46 @@ fun AutoScrapeWebDialog(
                                         Text("Abaikan")
                                     }
 
+                                    OutlinedButton(
+                                        onClick = {
+                                            if (isVoiceListening) {
+                                                jarvisVoiceManager?.stopListening()
+                                            } else {
+                                                jarvisVoiceManager?.startJarvisCommandFlow()
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1.1f),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            containerColor = if (isVoiceListening) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                            contentColor = if (isVoiceListening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        ),
+                                        border = BorderStroke(1.dp, if (isVoiceListening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isVoiceListening) Icons.Default.Mic else Icons.Default.MicNone,
+                                                contentDescription = "Voice",
+                                                tint = if (isVoiceListening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Text(
+                                                text = if (isVoiceListening) (voiceStatusText ?: "Voice") else "Voice",
+                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+
                                     Button(
                                         onClick = {
+                                            if (isDuplicateActiveId) {
+                                                Toast.makeText(context, "ID sudah di input ke meeting di tanggal ini!", Toast.LENGTH_SHORT).show()
+                                                return@Button
+                                            }
                                             isSavingListing = true
                                             viewModel.addWeeklyMeetingListing(
                                                 month = month,
@@ -3512,7 +3828,7 @@ fun AutoScrapeWebDialog(
                                         },
                                         modifier = Modifier.weight(1.2f),
                                         shape = RoundedCornerShape(12.dp),
-                                        enabled = !isSavingListing
+                                        enabled = !isSavingListing && !isDuplicateActiveId
                                     ) {
                                         if (isSavingListing) {
                                             CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)

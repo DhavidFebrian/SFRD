@@ -1303,6 +1303,85 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun deleteWeeklyMeetingListing(
+        month: String,
+        dateStr: String,
+        row: Int,
+        colIndex: Int,
+        idListing: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val baseUrl = appsScriptUrl.value
+        if (baseUrl.isBlank()) {
+            onResult(false, "URL Google Apps Script belum diatur di menu Setting.")
+            return
+        }
+
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val deleteReq = com.example.network.DeleteMeetingListingRequest(
+                    sheetName = month,
+                    date = dateStr,
+                    row = row,
+                    colIndex = colIndex,
+                    idListing = idListing
+                )
+                
+                var response = apiService.deleteMeetingListing(baseUrl, deleteReq)
+                if (response.status.lowercase() != "success") {
+                    val updateReq = com.example.network.UpdateMeetingDetailsRequest(
+                        sheetName = month,
+                        date = dateStr,
+                        row = row,
+                        colIndex = colIndex,
+                        idListing = "",
+                        namaMe = "",
+                        keterangan = "",
+                        catatan = ""
+                    )
+                    response = apiService.updateMeetingDetails(baseUrl, updateReq)
+                }
+                
+                if (response.status.lowercase() == "success") {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onResult(true, "Data listing berhasil dihapus!")
+                    }
+                    fetchMeetingListings(month, dateStr)
+                } else {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onResult(false, response.message)
+                    }
+                }
+            } catch (e: Exception) {
+                try {
+                    val updateReq = com.example.network.UpdateMeetingDetailsRequest(
+                        sheetName = month,
+                        date = dateStr,
+                        row = row,
+                        colIndex = colIndex,
+                        idListing = "",
+                        namaMe = "",
+                        keterangan = "",
+                        catatan = ""
+                    )
+                    val response = apiService.updateMeetingDetails(baseUrl, updateReq)
+                    if (response.status.lowercase() == "success") {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                            onResult(true, "Data listing berhasil dihapus!")
+                        }
+                        fetchMeetingListings(month, dateStr)
+                        return@launch
+                    }
+                } catch (ex: Exception) {
+                    // Ignore fallback error
+                }
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onResult(false, "Gagal menghapus data: ${e.localizedMessage ?: "Masalah koneksi"}")
+                }
+            }
+        }
+    }
+
     fun getAgentAvatarByName(name: String): String? {
         if (name.isBlank()) return null
         

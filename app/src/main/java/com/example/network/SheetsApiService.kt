@@ -91,6 +91,9 @@ interface SheetsApiService {
     suspend fun updateMeetingDetails(@Url url: String, @Body request: UpdateMeetingDetailsRequest): GeneralResponse
 
     @POST
+    suspend fun deleteMeetingListing(@Url url: String, @Body request: DeleteMeetingListingRequest): GeneralResponse
+
+    @POST
     suspend fun updateMeetingSchedule(@Url url: String, @Body request: UpdateMeetingScheduleRequest): GeneralResponse
 
     @GET
@@ -148,6 +151,16 @@ data class UpdateAbsensiResponse(
     @Json(name = "message") val message: String = "",
     @Json(name = "newRowTotal") val newRowTotal: Any? = null,
     @Json(name = "newColTotal") val newColTotal: Any? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class DeleteMeetingListingRequest(
+    @Json(name = "action") val action: String = "delete_weekly_meeting_listing",
+    @Json(name = "sheetName") val sheetName: String,
+    @Json(name = "date") val date: String,
+    @Json(name = "row") val row: Int,
+    @Json(name = "colIndex") val colIndex: Int,
+    @Json(name = "idListing") val idListing: String = ""
 )
 
 @JsonClass(generateAdapter = true)
