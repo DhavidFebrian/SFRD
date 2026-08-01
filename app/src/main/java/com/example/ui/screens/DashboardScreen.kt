@@ -289,7 +289,7 @@ fun DashboardScreen(
                             )
 
                             // Quick month selection options
-                            val months = listOf("Juni 2026", "Juli 2026")
+                            val months = listOf("Juni 2026", "Juli 2026", "Agustus 2026")
                             months.forEach { m ->
                                 val isSelected = activeMonth == m
                                 DropdownMenuItem(
@@ -554,7 +554,7 @@ fun DashboardScreen(
                         modifier = Modifier.padding(end = 4.dp)
                     )
                     
-                    listOf("Juni 2026", "Juli 2026").forEach { month ->
+                    listOf("Juni 2026", "Juli 2026", "Agustus 2026").forEach { month ->
                         val isSelected = activeMonth == month
                         val containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                         val contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant

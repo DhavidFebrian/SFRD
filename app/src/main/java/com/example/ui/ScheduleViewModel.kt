@@ -758,26 +758,46 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             _weeklyMeetingIgSyncStatus.value = SyncState.Loading
             try {
-                val sheetName = getWeeklyMeetingSheetNameForMonth(photoMonth)
-                val encodedSheet = java.net.URLEncoder.encode(sheetName, "UTF-8")
-                val separator = if (baseUrl.contains("?")) "&" else "?"
-                val url = "$baseUrl${separator}action=get_all_weekly_meeting_listings&sheetName=$encodedSheet"
-                val response = try {
-                    apiService.getMeetingListings(url)
-                } catch (e: Exception) {
-                    null
-                }
-
+                val isSemua = photoMonth.isBlank() || photoMonth.contains("Semua", ignoreCase = true)
                 val combinedListings = mutableListOf<com.example.network.MeetingListing>()
-                if (response != null && response.status.lowercase() == "success") {
-                    combinedListings.addAll(response.listings)
+                
+                if (isSemua) {
+                    val monthsToFetch = listOf("Juni 2026", "Juli 2026", "Agustus 2026")
+                    for (m in monthsToFetch) {
+                        try {
+                            val sheetName = getWeeklyMeetingSheetNameForMonth(m)
+                            val encodedSheet = java.net.URLEncoder.encode(sheetName, "UTF-8")
+                            val separator = if (baseUrl.contains("?")) "&" else "?"
+                            val url = "$baseUrl${separator}action=get_all_weekly_meeting_listings&sheetName=$encodedSheet"
+                            val response = apiService.getMeetingListings(url)
+                            if (response.status.lowercase() == "success") {
+                                combinedListings.addAll(response.listings)
+                            }
+                        } catch (e: Exception) {}
+                    }
+                } else {
+                    val sheetName = getWeeklyMeetingSheetNameForMonth(photoMonth)
+                    val encodedSheet = java.net.URLEncoder.encode(sheetName, "UTF-8")
+                    val separator = if (baseUrl.contains("?")) "&" else "?"
+                    val url = "$baseUrl${separator}action=get_all_weekly_meeting_listings&sheetName=$encodedSheet"
+                    val response = try {
+                        apiService.getMeetingListings(url)
+                    } catch (e: Exception) {
+                        null
+                    }
+                    if (response != null && response.status.lowercase() == "success") {
+                        combinedListings.addAll(response.listings)
+                    }
                 }
                 
-                val filtered = combinedListings.filter { 
+                // Deduplicate by ID Listing
+                val distinctListings = combinedListings.distinctBy { it.idListing }
+                val filtered = distinctListings.filter { 
                     it.keterangan.trim().equals("IG", ignoreCase = true) 
                 }
                 weeklyMeetingIgListings.value = filtered
-                _weeklyMeetingIgSyncStatus.value = SyncState.Success("Berhasil memuat ${filtered.size} postingan IG dari sheet $sheetName!")
+                val msg = if (isSemua) "Berhasil memuat ${filtered.size} postingan IG dari Semua Bulan!" else "Berhasil memuat ${filtered.size} postingan IG!"
+                _weeklyMeetingIgSyncStatus.value = SyncState.Success(msg)
                 fetchYearlyIgPostingHistory()
                 
                 filtered.forEach { listing ->
@@ -881,19 +901,9 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         }
         
         if (bestIndex == -1) {
-            var closestIndex = 0
-            var minDiff = Long.MAX_VALUE
-            for (i in dates.indices) {
-                try {
-                    val dateTime = sdf.parse(dates[i])?.time ?: 0L
-                    val diff = Math.abs(todayTime - dateTime)
-                    if (diff < minDiff) {
-                        minDiff = diff
-                        closestIndex = i
-                    }
-                } catch (e: Exception) {}
-            }
-            return closestIndex
+            // Today is before any meeting date in the list (e.g., today is Aug 1, first meeting is Aug 4).
+            // Default to index 0 (or previous meeting) rather than selecting a future meeting as if it occurred.
+            return 0
         }
         return bestIndex
     }

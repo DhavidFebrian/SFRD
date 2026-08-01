@@ -287,7 +287,7 @@ object NewsletterDownloader {
             for (i in 0 until pageCount) {
                 val page = pdfRenderer.openPage(i)
                 // Scale page resolution for higher clarity
-                val scale = 2
+                val scale = 1
                 val width = page.width * scale
                 val height = page.height * scale
                 val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -330,7 +330,7 @@ object NewsletterDownloader {
             val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
             if (uri != null) {
                 resolver.openOutputStream(uri)?.use { outputStream ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
                 }
             }
             return uri
@@ -341,7 +341,7 @@ object NewsletterDownloader {
             val file = File(dir, fileName)
             try {
                 FileOutputStream(file).use { outputStream ->
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
                 }
                 return FileProvider.getUriForFile(context, "com.example.fileprovider", file)
             } catch (e: Exception) {
@@ -505,7 +505,7 @@ object NewsletterDownloader {
                 val origWidth = page.width
                 val origHeight = page.height
 
-                val scale = 6
+                val scale = 2
                 val bmpWidth = origWidth * scale
                 val bmpHeight = origHeight * scale
                 val pageBitmap = Bitmap.createBitmap(bmpWidth, bmpHeight, Bitmap.Config.ARGB_8888)

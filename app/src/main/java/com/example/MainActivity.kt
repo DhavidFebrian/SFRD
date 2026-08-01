@@ -312,7 +312,7 @@ class MainActivity : ComponentActivity() {
                                             .padding(start = 16.dp, top = 4.dp, bottom = 4.dp)
                                             .fillMaxWidth()
                                     ) {
-                                        val months = listOf("Juni 2026", "Juli 2026")
+                                        val months = listOf("Juni 2026", "Juli 2026", "Agustus 2026")
                                         months.forEach { month ->
                                             val isSelected = activeMonth == month
                                             Surface(

@@ -661,7 +661,7 @@ fun WeeklyMeetingScreen(
                                         "Sudah Posting IG" to "✅ Sudah Posting IG",
                                         "Belum Posting IG" to "⏳ Belum Posting"
                                     )
-                                    items(filterOptions) { (filterKey, label) ->
+                                    items(filterOptions, key = { it.first }) { (filterKey, label) ->
                                         val isSelected = selectedFilter == filterKey
                                         FilterChip(
                                             selected = isSelected,
@@ -749,7 +749,10 @@ fun WeeklyMeetingScreen(
                                 }
                             } else {
                                 val chunkedListings = filteredListings.chunked(2)
-                                items(chunkedListings) { pair ->
+                                items(
+                                    items = chunkedListings,
+                                    key = { pair -> pair.map { it.idListing }.joinToString("-") }
+                                ) { pair ->
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()

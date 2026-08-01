@@ -45,6 +45,7 @@ fun AbsenWeeklyMeetingScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    var showFaceRecognition by remember { mutableStateOf(false) }
     val absensiData by viewModel.absensiData.collectAsStateWithLifecycle()
     val syncStatus by viewModel.absensiSyncStatus.collectAsStateWithLifecycle()
 
@@ -58,6 +59,7 @@ fun AbsenWeeklyMeetingScreen(
     var selectedMonthIndex by remember { mutableStateOf(Calendar.getInstance().get(Calendar.MONTH)) }
     var selectedDateIdx by remember { mutableStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
+    var showPinDialog by remember { mutableStateOf(false) }
 
     // Fetch data when selected month changes
     LaunchedEffect(selectedMonthIndex) {
@@ -90,6 +92,33 @@ fun AbsenWeeklyMeetingScreen(
         }
     }
 
+
+    // Show Face Recognition camera screen when active
+    if (showFaceRecognition) {
+        FaceRecognitionAbsensiScreen(
+            viewModel = viewModel,
+            selectedDateIdx = selectedDateIdx,
+            onBack = {
+                showFaceRecognition = false
+                viewModel.fetchAbsensiMeeting(selectedMonthIndex)
+            }
+        )
+        return
+    }
+
+    if (showPinDialog) {
+        FaceScanPinDialog(
+            onDismiss = { showPinDialog = false },
+            onPinSuccess = {
+                showPinDialog = false
+                context.getSharedPreferences("sfrd_prefs", android.content.Context.MODE_PRIVATE)
+                    .edit()
+                    .putBoolean("is_face_scan_unlocked", true)
+                    .apply()
+                showFaceRecognition = true
+            }
+        )
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -128,6 +157,28 @@ fun AbsenWeeklyMeetingScreen(
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
                 )
             }
+        },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = {
+                    val isUnlocked = context.getSharedPreferences("sfrd_prefs", android.content.Context.MODE_PRIVATE)
+                        .getBoolean("is_face_scan_unlocked", false)
+                    if (isUnlocked) {
+                        showFaceRecognition = true
+                    } else {
+                        showPinDialog = true
+                    }
+                },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.CameraAlt,
+                        contentDescription = null
+                    )
+                },
+                text = { Text("Face Scan", fontWeight = FontWeight.Bold) },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            )
         }
     ) { paddingValues ->
         Column(
@@ -151,6 +202,7 @@ fun AbsenWeeklyMeetingScreen(
                     .testTag("marketing_absensi_list"),
                 contentPadding = PaddingValues(bottom = 8.dp)
             ) {
+
                 // 1. Month Selector, Sync Status, and Search Bar (Scrollable Header Items)
                 item {
                     var showMonthDropdown by remember { mutableStateOf(false) }

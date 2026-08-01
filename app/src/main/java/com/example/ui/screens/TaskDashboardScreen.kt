@@ -42,6 +42,7 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.items
@@ -51,6 +52,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalDensity
 import kotlin.math.roundToInt
@@ -80,14 +82,23 @@ fun TaskDashboardScreen(
     val weeklyMeetingIgListings by viewModel.weeklyMeetingIgListings.collectAsState()
 
     val selectedMonth by viewModel.selectedMonth.collectAsState()
-    // Independent month for Upload IG tab — initialized from WeeklyMeeting selected month
-    var selectedUploadIgMonth by remember { mutableStateOf(selectedMonth) }
+    val defaultUploadIgMonth = remember {
+        val cal = Calendar.getInstance()
+        val yr = cal.get(Calendar.YEAR)
+        val mth = cal.get(Calendar.MONTH) // 0-indexed, August is 7
+        val day = cal.get(Calendar.DAY_OF_MONTH)
+        if (yr > 2026 || (yr == 2026 && mth > 7) || (yr == 2026 && mth == 7 && day >= 4)) {
+            "Agustus 2026"
+        } else {
+            "Juli 2026"
+        }
+    }
+    var selectedUploadIgMonth by remember { mutableStateOf(defaultUploadIgMonth) }
     val igSyncStatus by viewModel.weeklyMeetingIgSyncStatus.collectAsState()
 
-    // When user switches to Upload IG tab, sync the month from WeeklyMeeting selection
-    LaunchedEffect(selectedSubTab, selectedMonth) {
+    // Sync month selection when switching to Upload IG tab
+    LaunchedEffect(selectedSubTab) {
         if (selectedSubTab == 2) {
-            selectedUploadIgMonth = selectedMonth
             viewModel.fetchWeeklyMeetingIgListings(selectedUploadIgMonth)
         }
     }
@@ -214,16 +225,16 @@ fun TaskDashboardScreen(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            MediumTopAppBar(
+            TopAppBar(
                 title = {
                     Column {
                         Text(
-                            text = if (isUploadIgOnly) "Upload Instagram" else "Dashboard Task",
+                            text = if (selectedSubTab == 2 || isUploadIgOnly) "Upload Instagram" else "Dashboard Task",
                             fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleLarge
+                            style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = if (isUploadIgOnly) "Daftar postingan siap upload ke Instagram" else "Kelola tugas foto ulang dan editing foto RWC",
+                            text = if (selectedSubTab == 2 || isUploadIgOnly) "Daftar postingan siap upload ke Instagram" else "Kelola tugas foto ulang dan editing foto RWC",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -255,7 +266,7 @@ fun TaskDashboardScreen(
                         }
                     }
                 },
-                colors = TopAppBarDefaults.mediumTopAppBarColors(
+                colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )
@@ -474,7 +485,7 @@ fun TaskDashboardScreen(
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
-                                items(taskFotoUlangList) { item ->
+                                items(taskFotoUlangList, key = { it.id }) { item ->
                                     TaskFotoUlangCard(
                                         schedule = item,
                                         listingImagesMap = listingImagesMap,
@@ -500,7 +511,7 @@ fun TaskDashboardScreen(
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
-                                items(taskEditFotoList) { item ->
+                                items(taskEditFotoList, key = { it.id }) { item ->
                                     TaskEditFotoCard(
                                         task = item,
                                         listingImagesMap = listingImagesMap,
@@ -521,403 +532,411 @@ fun TaskDashboardScreen(
                     2 -> {
                         // Task Upload IG with 2 sub-pages (Belum Post & Sudah Post)
                         // Month selector for Upload IG
-                        val allIgMonths = listOf("Januari","Februari","Maret","April","Mei","Juni",
-                            "Juli","Agustus","September","Oktober","November","Desember")
-                        var igMonthExpanded by remember { mutableStateOf(false) }
+                            val allIgMonths = listOf("Januari","Februari","Maret","April","Mei","Juni",
+                                "Juli","Agustus","September","Oktober","November","Desember")
+                            var igMonthExpanded by remember { mutableStateOf(false) }
 
-                        // Belum Post: has jadwalPosting AND postingIg=false, sorted newest date first
-                        val unpostedList = remember(uploadIgList) {
-                            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-                            uploadIgList.filter { task ->
-                                val jadwal = task.jadwalPosting.trim()
-                                val hasJadwal = jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
-                                hasJadwal && !task.postingIg
-                            }.sortedWith(
-                                compareByDescending<com.example.data.EditFotoTask> { item ->
-                                    val norm = com.example.data.normalizeDate(item.jadwalPosting)
-                                    try { sdf.parse(norm)?.time ?: 0L } catch (e: Exception) { 0L }
-                                }.thenByDescending { it.no }
-                            )
-                        }
-                        // Sudah Post: has jadwalPosting AND postingIg=true, sorted newest date first
-                        val postedList = remember(uploadIgList) {
-                            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-                            uploadIgList.filter { task ->
-                                val jadwal = task.jadwalPosting.trim()
-                                val hasJadwal = jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
-                                hasJadwal && task.postingIg
-                            }.sortedWith(
-                                compareByDescending<com.example.data.EditFotoTask> { item ->
-                                    val norm = com.example.data.normalizeDate(item.jadwalPosting)
-                                    try { sdf.parse(norm)?.time ?: 0L } catch (e: Exception) { 0L }
-                                }.thenByDescending { it.no }
-                            )
-                        }
-                        
-                        val pagerState = rememberPagerState(pageCount = { 2 })
-                        val scope = rememberCoroutineScope()
-                        
-                        // Collapsing header states
-                        var headerHeight by remember { mutableStateOf(0) }
-                        var headerOffset by remember { mutableStateOf(0f) }
-                        
-                        val nestedScrollConnection = remember(headerHeight) {
-                            object : NestedScrollConnection {
-                                override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                                    val delta = available.y
-                                    val newOffset = headerOffset + delta
-                                    headerOffset = newOffset.coerceIn(-headerHeight.toFloat(), 0f)
-                                    return if (delta < 0 && headerOffset > -headerHeight) {
-                                        Offset(0f, delta)
-                                    } else {
-                                        Offset.Zero
+                            // Belum Post: has jadwalPosting AND postingIg=false, sorted newest date first
+                            val unpostedList = remember(uploadIgList) {
+                                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                                uploadIgList.filter { task ->
+                                    val jadwal = task.jadwalPosting.trim()
+                                    val hasJadwal = jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
+                                    hasJadwal && !task.postingIg
+                                }.sortedWith(
+                                    compareByDescending<com.example.data.EditFotoTask> { item ->
+                                        val norm = com.example.data.normalizeDate(item.jadwalPosting)
+                                        try { sdf.parse(norm)?.time ?: 0L } catch (e: Exception) { 0L }
+                                    }.thenByDescending { it.no }
+                                )
+                            }
+                            // Sudah Post: has jadwalPosting AND postingIg=true, sorted newest date first
+                            val postedList = remember(uploadIgList) {
+                                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                                uploadIgList.filter { task ->
+                                    val jadwal = task.jadwalPosting.trim()
+                                    val hasJadwal = jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
+                                    hasJadwal && task.postingIg
+                                }.sortedWith(
+                                    compareByDescending<com.example.data.EditFotoTask> { item ->
+                                        val norm = com.example.data.normalizeDate(item.jadwalPosting)
+                                        try { sdf.parse(norm)?.time ?: 0L } catch (e: Exception) { 0L }
+                                    }.thenByDescending { it.no }
+                                )
+                            }
+                            
+                            val pagerState = rememberPagerState(pageCount = { 2 })
+                            val scope = rememberCoroutineScope()
+                            val gridState0 = rememberLazyGridState()
+                            val gridState1 = rememberLazyGridState()
+                            var isUploadIgFilterExpanded by remember { mutableStateOf(false) }
+                             
+                             Column(
+                                 modifier = Modifier.fillMaxSize()
+                             ) {
+                                 // Toggle Button Row for Filter Card
+                                 Row(
+                                     modifier = Modifier
+                                         .fillMaxWidth()
+                                         .padding(horizontal = 16.dp, vertical = 4.dp),
+                                     verticalAlignment = Alignment.CenterVertically,
+                                     horizontalArrangement = Arrangement.Start
+                                 ) {
+                                     Surface(
+                                         onClick = { isUploadIgFilterExpanded = !isUploadIgFilterExpanded },
+                                         shape = RoundedCornerShape(10.dp),
+                                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
+                                     ) {
+                                         Row(
+                                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                             verticalAlignment = Alignment.CenterVertically,
+                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                         ) {
+                                             Icon(
+                                                 imageVector = Icons.Default.FilterList,
+                                                 contentDescription = null,
+                                                 tint = MaterialTheme.colorScheme.primary,
+                                                 modifier = Modifier.size(16.dp)
+                                             )
+                                             Text(
+                                                 text = if (isUploadIgFilterExpanded) "Sembunyikan Filter" else "Tampilkan Filter (Cari / Bulan / Tanggal)",
+                                                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                 color = MaterialTheme.colorScheme.primary
+                                             )
+                                             Icon(
+                                                 imageVector = if (isUploadIgFilterExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                                 contentDescription = null,
+                                                 tint = MaterialTheme.colorScheme.primary,
+                                                 modifier = Modifier.size(18.dp)
+                                             )
+                                         }
+                                     }
+                                 }
+
+                                 // Filter Card: Visible ONLY when manual toggle is expanded
+                                 AnimatedVisibility(
+                                     visible = isUploadIgFilterExpanded,
+                                     enter = expandVertically() + fadeIn(),
+                                     exit = shrinkVertically() + fadeOut()
+                                 ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(MaterialTheme.colorScheme.background)
+                                            .padding(vertical = 4.dp)
+                                    ) {
+                                        // Unified Premium Filter Card
+                                        val context = LocalContext.current
+                                    val calendar = Calendar.getInstance()
+                                    val dateCalendar = Calendar.getInstance().apply {
+                                        selectedUploadIgDateFilter?.let {
+                                            try {
+                                                time = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(it)!!
+                                            } catch (e: Exception) {}
+                                        }
                                     }
-                                }
-                                
-                                override fun onPostScroll(
-                                    consumed: Offset,
-                                    available: Offset,
-                                    source: NestedScrollSource
-                                ): Offset {
-                                    val delta = available.y
-                                    val newOffset = headerOffset + delta
-                                    headerOffset = newOffset.coerceIn(-headerHeight.toFloat(), 0f)
-                                    return Offset(0f, delta)
+                                    val datePickerDialog = DatePickerDialog(
+                                        context,
+                                        { _, year, month, dayOfMonth ->
+                                            val cal = Calendar.getInstance().apply { set(year, month, dayOfMonth) }
+                                            selectedUploadIgDateFilter = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+                                        },
+                                        dateCalendar.get(Calendar.YEAR),
+                                        dateCalendar.get(Calendar.MONTH),
+                                        dateCalendar.get(Calendar.DAY_OF_MONTH)
+                                    )
+
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                                        shape = RoundedCornerShape(16.dp),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            // 1. Search Bar
+                                            OutlinedTextField(
+                                                value = searchQuery,
+                                                onValueChange = { searchQuery = it },
+                                                placeholder = { Text("Cari listing (ID, ME)...", style = MaterialTheme.typography.bodyMedium) },
+                                                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                                                trailingIcon = {
+                                                    if (searchQuery.isNotEmpty()) {
+                                                        IconButton(onClick = { searchQuery = "" }) {
+                                                            Icon(Icons.Default.Close, contentDescription = "Hapus")
+                                                        }
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(12.dp),
+                                                singleLine = true,
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                                                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                                    unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                                                )
+                                            )
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                // 2. Month Selector
+                                                ExposedDropdownMenuBox(
+                                                    expanded = igMonthExpanded,
+                                                    onExpandedChange = { igMonthExpanded = it },
+                                                    modifier = Modifier.weight(1.3f)
+                                                ) {
+                                                    OutlinedTextField(
+                                                        value = selectedUploadIgMonth,
+                                                        onValueChange = {},
+                                                        readOnly = true,
+                                                        leadingIcon = { Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp)) },
+                                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = igMonthExpanded) },
+                                                        singleLine = true,
+                                                        shape = RoundedCornerShape(10.dp),
+                                                        colors = OutlinedTextFieldDefaults.colors(
+                                                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                                            unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                                                            focusedContainerColor = MaterialTheme.colorScheme.surface,
+                                                            unfocusedContainerColor = MaterialTheme.colorScheme.surface
+                                                        ),
+                                                        modifier = Modifier.menuAnchor().fillMaxWidth(),
+                                                        textStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
+                                                    )
+                                                    ExposedDropdownMenu(
+                                                        expanded = igMonthExpanded,
+                                                        onDismissRequest = { igMonthExpanded = false }
+                                                    ) {
+                                                        allIgMonths.forEach { m ->
+                                                            DropdownMenuItem(
+                                                                text = { Text(m, style = MaterialTheme.typography.bodyMedium) },
+                                                                onClick = {
+                                                                    selectedUploadIgMonth = m
+                                                                    igMonthExpanded = false
+                                                                }
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                // 3. Date Filter Chip
+                                                val dateText = selectedUploadIgDateFilter?.let {
+                                                    try {
+                                                        val d = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(it)
+                                                        SimpleDateFormat("d MMM", Locale("id", "ID")).format(d!!)
+                                                    } catch (e: Exception) {
+                                                        it
+                                                    }
+                                                } ?: "Pilih Tanggal"
+
+                                                val isDateFiltered = selectedUploadIgDateFilter != null
+
+                                                Button(
+                                                    onClick = { datePickerDialog.show() },
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = if (isDateFiltered) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                                        contentColor = if (isDateFiltered) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                                    ),
+                                                    border = BorderStroke(1.dp, if (isDateFiltered) Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    modifier = Modifier.weight(1.1f).height(48.dp),
+                                                    contentPadding = PaddingValues(horizontal = 6.dp)
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.Center,
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = if (isDateFiltered) Icons.Default.EventAvailable else Icons.Default.CalendarToday,
+                                                            contentDescription = null,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text(
+                                                            text = dateText,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis,
+                                                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
+                                                        )
+                                                        if (isDateFiltered) {
+                                                            Spacer(modifier = Modifier.width(4.dp))
+                                                            Icon(
+                                                                imageVector = Icons.Default.Close,
+                                                                contentDescription = "Clear",
+                                                                modifier = Modifier
+                                                                    .size(14.dp)
+                                                                    .clickable { selectedUploadIgDateFilter = null }
+                                                            )
+                                                        }
+                                                    }
+                                                }
+
+                                                // 4. Refresh Button
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(48.dp)
+                                                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f), RoundedCornerShape(10.dp))
+                                                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
+                                                        .clickable { viewModel.fetchWeeklyMeetingIgListings(selectedUploadIgMonth) },
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    if (igSyncStatus is SyncState.Loading) {
+                                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                                    } else {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Refresh,
+                                                            contentDescription = "Refresh",
+                                                            tint = MaterialTheme.colorScheme.primary,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
-                        }
-                        
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .nestedScroll(nestedScrollConnection)
-                        ) {
-                            // Header: Search ID, Date Filter, Month Selector
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .onGloballyPositioned { layoutCoordinates ->
-                                        headerHeight = layoutCoordinates.size.height
-                                    }
-                                    .offset { IntOffset(0, headerOffset.roundToInt()) }
-                                    .background(MaterialTheme.colorScheme.background)
-                                    .padding(vertical = 4.dp)
-                            ) {
-                                // Unified Premium Filter Card
-                                val context = LocalContext.current
-                                val calendar = Calendar.getInstance()
-                                val dateCalendar = Calendar.getInstance().apply {
-                                    selectedUploadIgDateFilter?.let {
-                                        try {
-                                            time = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(it)!!
-                                        } catch (e: Exception) {}
-                                    }
-                                }
-                                val datePickerDialog = DatePickerDialog(
-                                    context,
-                                    { _, year, month, dayOfMonth ->
-                                        val cal = Calendar.getInstance().apply { set(year, month, dayOfMonth) }
-                                        selectedUploadIgDateFilter = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
-                                    },
-                                    dateCalendar.get(Calendar.YEAR),
-                                    dateCalendar.get(Calendar.MONTH),
-                                    dateCalendar.get(Calendar.DAY_OF_MONTH)
-                                )
-
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 16.dp, vertical = 6.dp),
-                                    shape = RoundedCornerShape(16.dp),
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                
+                                // Body content: TabRow + HorizontalPager
+                                Column(
+                                    modifier = Modifier.fillMaxSize()
                                 ) {
-                                    Column(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    // Sub-tabs at the top
+                                    TabRow(
+                                        selectedTabIndex = pagerState.currentPage,
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                        contentColor = MaterialTheme.colorScheme.primary,
+                                        indicator = { tabPositions ->
+                                            if (pagerState.currentPage < tabPositions.size) {
+                                                TabRowDefaults.SecondaryIndicator(
+                                                    Modifier.tabIndicatorOffset(tabPositions[pagerState.currentPage]),
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
                                     ) {
-                                        // 1. Search Bar
-                                        OutlinedTextField(
-                                            value = searchQuery,
-                                            onValueChange = { searchQuery = it },
-                                            placeholder = { Text("Cari listing (ID, ME)...", style = MaterialTheme.typography.bodyMedium) },
-                                            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-                                            trailingIcon = {
-                                                if (searchQuery.isNotEmpty()) {
-                                                    IconButton(onClick = { searchQuery = "" }) {
-                                                        Icon(Icons.Default.Close, contentDescription = "Hapus")
-                                                    }
+                                        Tab(
+                                            selected = pagerState.currentPage == 0,
+                                            onClick = {
+                                                scope.launch {
+                                                    pagerState.animateScrollToPage(0)
                                                 }
                                             },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(12.dp),
-                                            singleLine = true,
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                                                focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                                unfocusedContainerColor = MaterialTheme.colorScheme.surface
-                                            )
-                                        )
-
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            // 2. Month Selector
-                                            ExposedDropdownMenuBox(
-                                                expanded = igMonthExpanded,
-                                                onExpandedChange = { igMonthExpanded = it },
-                                                modifier = Modifier.weight(1.3f)
-                                            ) {
-                                                OutlinedTextField(
-                                                    value = selectedUploadIgMonth,
-                                                    onValueChange = {},
-                                                    readOnly = true,
-                                                    leadingIcon = { Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp)) },
-                                                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = igMonthExpanded) },
-                                                    singleLine = true,
-                                                    shape = RoundedCornerShape(10.dp),
-                                                    colors = OutlinedTextFieldDefaults.colors(
-                                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                                                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                                                        unfocusedContainerColor = MaterialTheme.colorScheme.surface
-                                                    ),
-                                                    modifier = Modifier.menuAnchor().fillMaxWidth(),
-                                                    textStyle = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
-                                                )
-                                                ExposedDropdownMenu(
-                                                    expanded = igMonthExpanded,
-                                                    onDismissRequest = { igMonthExpanded = false }
-                                                ) {
-                                                    allIgMonths.forEach { m ->
-                                                        DropdownMenuItem(
-                                                            text = { Text(m, style = MaterialTheme.typography.bodyMedium) },
-                                                            onClick = {
-                                                                selectedUploadIgMonth = m
-                                                                igMonthExpanded = false
-                                                            }
-                                                        )
-                                                    }
-                                                }
-                                            }
-
-                                            // 3. Date Filter Chip
-                                            val dateText = selectedUploadIgDateFilter?.let {
-                                                try {
-                                                    val d = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(it)
-                                                    SimpleDateFormat("d MMM", Locale("id", "ID")).format(d!!)
-                                                } catch (e: Exception) {
-                                                    it
-                                                }
-                                            } ?: "Pilih Tanggal"
-
-                                            val isDateFiltered = selectedUploadIgDateFilter != null
-
-                                            Button(
-                                                onClick = { datePickerDialog.show() },
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = if (isDateFiltered) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-                                                    contentColor = if (isDateFiltered) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                                                ),
-                                                border = BorderStroke(1.dp, if (isDateFiltered) Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
-                                                shape = RoundedCornerShape(10.dp),
-                                                modifier = Modifier.weight(1.1f).height(48.dp),
-                                                contentPadding = PaddingValues(horizontal = 6.dp)
-                                            ) {
+                                            text = {
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.Center,
-                                                    modifier = Modifier.fillMaxWidth()
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                                 ) {
                                                     Icon(
-                                                        imageVector = if (isDateFiltered) Icons.Default.EventAvailable else Icons.Default.CalendarToday,
+                                                        imageVector = Icons.Default.CloudUpload,
                                                         contentDescription = null,
-                                                        modifier = Modifier.size(14.dp)
+                                                        modifier = Modifier.size(16.dp),
+                                                        tint = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                                                     )
-                                                    Spacer(modifier = Modifier.width(4.dp))
                                                     Text(
-                                                        text = dateText,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis,
-                                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
-                                                    )
-                                                    if (isDateFiltered) {
-                                                        Spacer(modifier = Modifier.width(4.dp))
-                                                        Icon(
-                                                            imageVector = Icons.Default.Close,
-                                                            contentDescription = "Clear",
-                                                            modifier = Modifier
-                                                                .size(14.dp)
-                                                                .clickable { selectedUploadIgDateFilter = null }
-                                                        )
-                                                    }
-                                                }
-                                            }
-
-                                            // 4. Refresh Button
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(48.dp)
-                                                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f), RoundedCornerShape(10.dp))
-                                                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
-                                                    .clickable { viewModel.fetchWeeklyMeetingIgListings(selectedUploadIgMonth) },
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                if (igSyncStatus is SyncState.Loading) {
-                                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                                } else {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Refresh,
-                                                        contentDescription = "Refresh",
-                                                        tint = MaterialTheme.colorScheme.primary,
-                                                        modifier = Modifier.size(20.dp)
+                                                        "Belum Post (${unpostedList.size})",
+                                                        fontWeight = FontWeight.Bold,
+                                                        style = MaterialTheme.typography.bodyMedium
                                                     )
                                                 }
                                             }
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            // Body content: TabRow + HorizontalPager
-                            val density = LocalDensity.current
-                            val headerHeightDp = remember(headerHeight) {
-                                with(density) { headerHeight.toDp() }
-                            }
-                            val headerOffsetDp = remember(headerOffset) {
-                                with(density) { headerOffset.toDp() }
-                            }
-                            
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(top = headerHeightDp + headerOffsetDp)
-                            ) {
-                                // Sub-tabs at the top
-                                TabRow(
-                                    selectedTabIndex = pagerState.currentPage,
-                                    containerColor = MaterialTheme.colorScheme.surface,
-                                    contentColor = MaterialTheme.colorScheme.primary,
-                                    indicator = { tabPositions ->
-                                        if (pagerState.currentPage < tabPositions.size) {
-                                            TabRowDefaults.SecondaryIndicator(
-                                                Modifier.tabIndicatorOffset(tabPositions[pagerState.currentPage]),
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                    }
-                                ) {
-                                    Tab(
-                                        selected = pagerState.currentPage == 0,
-                                        onClick = {
-                                            scope.launch {
-                                                pagerState.animateScrollToPage(0)
-                                            }
-                                        },
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.CloudUpload,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(16.dp),
-                                                    tint = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                                                )
-                                                Text(
-                                                    "Belum Post (${unpostedList.size})",
-                                                    fontWeight = FontWeight.Bold,
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                            }
-                                        }
-                                    )
-                                    Tab(
-                                        selected = pagerState.currentPage == 1,
-                                        onClick = {
-                                            scope.launch {
-                                                pagerState.animateScrollToPage(1)
-                                            }
-                                        },
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.CheckCircle,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(16.dp),
-                                                    tint = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-                                                )
-                                                Text(
-                                                    "Sudah Post (${postedList.size})",
-                                                    fontWeight = FontWeight.Bold,
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                            }
-                                        }
-                                    )
-                                }
-                                
-                                HorizontalPager(
-                                    state = pagerState,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxWidth()
-                                ) { page ->
-                                    val listToUse = if (page == 0) unpostedList else postedList
-                                    val emptyTitle = if (page == 0) "Tidak Ada Task Belum Post" else "Tidak Ada Task Sudah Post"
-                                    val emptySub = if (page == 0) "Semua tugas editing selesai telah diposting di Instagram." else "Belum ada postingan yang ditandai sudah diposting."
-                                    
-                                    if (listToUse.isEmpty()) {
-                                        EmptyStateTask(
-                                            title = emptyTitle,
-                                            subtitle = emptySub
                                         )
-                                    } else {
-                                        LazyVerticalGrid(
-                                            columns = GridCells.Fixed(2),
-                                            contentPadding = PaddingValues(12.dp),
-                                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                            modifier = Modifier.fillMaxSize()
-                                        ) {
-                                            items(listToUse) { item ->
-                                                val context = LocalContext.current
-                                                TaskUploadIgCard(
-                                                    task = item,
-                                                    listingImagesMap = listingImagesMap,
-                                                    listingSoldMap = listingSoldMap,
-                                                    listingTitleMap = listingTitleMap,
-                                                    listingDescMap = listingDescMap,
-                                                    listingPriceMap = listingPriceMap,
-                                                    schedules = schedules,
-                                                    onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, item.namaMe) },
-                                                    onTogglePosting = {
-                                                        val parts = item.source.split("|||")
-                                                        val date = parts.getOrNull(0) ?: ""
-                                                        val colIndex = parts.getOrNull(1)?.toIntOrNull() ?: 0
-                                                        viewModel.updateWeeklyMeetingIgPost(
-                                                            photoMonth = selectedMonth,
-                                                            dateStr = date,
-                                                            row = item.no,
-                                                            colIndex = colIndex,
-                                                            postingIg = !item.postingIg,
-                                                            onResult = { success, msg ->
-                                                                android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
-                                                            }
-                                                        )
-                                                    },
-                                                    onDelete = {},
-                                                    onClick = {
-                                                        selectedTaskForIgMockup = item
-                                                    }
-                                                )
+                                        Tab(
+                                            selected = pagerState.currentPage == 1,
+                                            onClick = {
+                                                scope.launch {
+                                                    pagerState.animateScrollToPage(1)
+                                                }
+                                            },
+                                            text = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.CheckCircle,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(16.dp),
+                                                        tint = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                                                    )
+                                                    Text(
+                                                        "Sudah Post (${postedList.size})",
+                                                        fontWeight = FontWeight.Bold,
+                                                        style = MaterialTheme.typography.bodyMedium
+                                                    )
+                                                }
+                                            }
+                                        )
+                                    }
+                                    
+                                    HorizontalPager(
+                                        state = pagerState,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .fillMaxWidth()
+                                    ) { page ->
+                                        val listToUse = if (page == 0) unpostedList else postedList
+                                        val emptyTitle = if (page == 0) "Tidak Ada Task Belum Post" else "Tidak Ada Task Sudah Post"
+                                        val emptySub = if (page == 0) "Semua tugas editing selesai telah diposting di Instagram." else "Belum ada postingan yang ditandai sudah diposting."
+                                        
+                                        if (listToUse.isEmpty()) {
+                                            EmptyStateTask(
+                                                title = emptyTitle,
+                                                subtitle = emptySub
+                                            )
+                                        } else {
+                                            LazyVerticalGrid(
+                                                columns = GridCells.Fixed(2),
+                                                state = if (page == 0) gridState0 else gridState1,
+                                                contentPadding = PaddingValues(12.dp),
+                                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                modifier = Modifier.fillMaxSize()
+                                            ) {
+                                                items(
+                                                    items = listToUse,
+                                                    key = { "${it.idListing}_${it.namaMe}_${it.jadwalPosting}_${it.no}_${it.source}_$page" }
+                                                ) { item ->
+                                                    val context = LocalContext.current
+                                                    TaskUploadIgCard(
+                                                        task = item,
+                                                        listingImagesMap = listingImagesMap,
+                                                        listingSoldMap = listingSoldMap,
+                                                        listingTitleMap = listingTitleMap,
+                                                        listingDescMap = listingDescMap,
+                                                        listingPriceMap = listingPriceMap,
+                                                        schedules = schedules,
+                                                        onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, item.namaMe) },
+                                                        onTogglePosting = {
+                                                            val parts = item.source.split("|||")
+                                                            val date = parts.getOrNull(0) ?: ""
+                                                            val colIndex = parts.getOrNull(1)?.toIntOrNull() ?: 0
+                                                            viewModel.updateWeeklyMeetingIgPost(
+                                                                photoMonth = selectedMonth,
+                                                                dateStr = date,
+                                                                row = item.no,
+                                                                colIndex = colIndex,
+                                                                postingIg = !item.postingIg,
+                                                                onResult = { success, msg ->
+                                                                    android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                                                                }
+                                                            )
+                                                        },
+                                                        onDelete = {},
+                                                        onClick = {
+                                                            selectedTaskForIgMockup = item
+                                                        }
+                                                    )
+                                                }
                                             }
                                         }
                                     }
@@ -926,8 +945,6 @@ fun TaskDashboardScreen(
                         }
                     }
                 }
-            }
-        }
 
         // Delete Confirmation Dialog for Schedule
         scheduleToDelete?.let { schedule ->
@@ -1018,6 +1035,7 @@ fun TaskDashboardScreen(
             )
         }
     }
+}
 }
 
 @Composable
@@ -2088,18 +2106,7 @@ private fun getScrapedOrFallbackLocation(
     val title = taskJudul
     val scrapedTitle = (listingTitleMap[cleanId] ?: "")
     
-    val locations = listOf(
-        "kebagusan", "cilandak", "cipete", "kemang", "jagakarsa", "pondok indah", "ampera", "kebayoran baru", "kebayoran lama", "kebayoran", "senopati", "bintaro", "tebet", "pejaten", "cilodong", "pasar minggu", "gandaria", "mampang prapatan", "mampang", "pancoran", "setiabudi", "kalibata", "ciganjur", "lenteng agung", "ragunan", "tanjung barat", "pesanggrahan", "cipulir", "pondok pinang", "lebak bulus", "fatmawati", "blok m", "radio dalam", "dharmawangsa", "darmawangsa", "panglima polim", "permata hijau", "senayan", "sudirman", "kuningan", "menteng", "prapanca", "wijaya", "cipete dalam", "cipete utara", "cipete selatan", "gandaria utara", "gandaria selatan", "pondok labu", "petukangan", "ulujami", "kebon baru", "manggarai", "pasar manggis", "karet semanggi", "karet pedurenan", "karet tengsin", "karet", "gatot subroto", "gatsu", "rasuna said", "mega kuningan", "scbd", "tebet barat", "tebet timur", "menteng dalam", "pengadegan", "pejaten barat", "pejaten timur", "jatipadang", "buncit", "warung buncit", "duren tiga", "bangka", "tendean", "kapten tendean", "petogogan", "melawai", "pulo", "cipulo", "kebayoran lama utara", "kebayoran lama selatan", "cilandak barat", "cilandak timur", "tanah kusir",
-        "cinere", "depok", "sawangan", "margonda", "cimanggis", "limo", "beji", "pancoran mas", "sentul", "bogor", "cibubur", "bedahan", "beji timur", "gandul", "pangkalan jati", "krukut", "meruyung", "grogol", "mampang depok", "depok jaya", "sukmajaya", "tapos", "harjamukti", "bojonggede", "citayam", "sentul city", "tanah sareal", "bogor utara", "bogor selatan", "bogor timur", "bogor barat",
-        "bsd city", "bsd", "serpong", "alam sutera", "gading serpong", "karawaci", "ciputat", "pamulang", "bintaro jaya", "ciledug", "tangerang", "serpong utara", "bintaro sektor 1", "bintaro sektor 2", "bintaro sektor 3", "bintaro sektor 4", "bintaro sektor 5", "bintaro sektor 6", "bintaro sektor 7", "bintaro sektor 8", "bintaro sektor 9", "graha raya", "pondok cabe", "cirendeu", "rempoa", "jombang", "sawah baru", "serua", "setu", "cisauk", "pagedangan", "legok", "curug", "cikokol", "tangerang kota", "larangan", "pondok aren",
-        "puri indah", "kembangan", "kebon jeruk", "meruya", "tanjung duren", "tomang", "grogol", "slipi", "palmerah", "kalideres", "cengkareng", "meruya utara", "meruya selatan", "kembangan utara", "kembangan selatan", "permata buana", "taman aries", "intercon", "semesta", "kemanggisan", "jelambar", "kapuk",
-        "rawamangun", "duren sawit", "pulomas", "ciracas", "kramat jati", "makasar", "matraman", "pasar rebo", "cakung", "cipayung", "jatinegara", "kayu putih", "pondok kelapa", "pondok bambu", "klender", "condet", "halim", "cililitan",
-        "salemba", "tanah abang", "gambir", "kemayoran", "cempaka putih", "sawah besar", "cikini", "gondangdia", "senen", "benhil", "bendungan hilir", "petamburan",
-        "pantai indah kapuk", "pik", "kelapa gading", "pluit", "sunter", "ancol", "cilincing", "koja", "pademangan", "penjaringan", "pik 2", "muara karang",
-        "jatiasih", "tambun", "cikarang", "harapan indah", "summarecon bekasi", "bekasi", "grand wisata", "galaxy", "taman galaxy", "kemang pratama", "jatibening", "pondok gede"
-    )
-    val sortedLocations = locations.sortedByDescending { it.length }
-    for (loc in sortedLocations) {
+    for (loc in SORTED_LOCATIONS) {
         if (descLower.contains(loc) || title.lowercase().contains(loc) || scrapedTitle.lowercase().contains(loc)) {
             return loc
         }
@@ -2117,7 +2124,6 @@ private fun toSentenceCase(input: String): String {
     if (trimmed.isEmpty()) return ""
     return trimmed.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale("id", "ID")) else it.toString() }
 }
-
 
 private fun getDisplayTitle(
     taskJudul: String,
@@ -2183,3 +2189,36 @@ private fun isLineJustNumbersOrStats(line: String): Boolean {
     return false
 }
 
+private val SORTED_LOCATIONS = listOf(
+    // South Jakarta (Jakarta Selatan)
+    "kebagusan", "cilandak", "cipete", "kemang", "jagakarsa", "pondok indah", "ampera", "kebayoran baru", "kebayoran lama", "kebayoran", "senopati", "bintaro", "tebet", "pejaten", "cilodong", "pasar minggu", "gandaria", "mampang prapatan", "mampang", "pancoran", "setiabudi", "kalibata", "ciganjur", "lenteng agung", "ragunan", "tanjung barat", "pesanggrahan", "cipulir", "pondok pinang", "lebak bulus", "fatmawati", "blok m", "radio dalam", "dharmawangsa", "darmawangsa", "panglima polim", "permata hijau", "senayan", "sudirman", "kuningan", "menteng", "prapanca", "wijaya", "cipete dalam", "cipete utara", "cipete selatan", "gandaria utara", "gandaria selatan", "pondok labu", "petukangan", "ulujami", "kebon baru", "manggarai", "pasar manggis", "karet semanggi", "karet pedurenan", "karet tengsin", "karet", "gatot subroto", "gatsu", "rasuna said", "mega kuningan", "scbd", "tebet barat", "tebet timur", "menteng dalam", "pengadegan", "pejaten barat", "pejaten timur", "jatipadang", "buncit", "warung buncit", "duren tiga", "bangka", "tendean", "kapten tendean", "petogogan", "melawai", "pulo", "cipulo", "kebayoran lama utara", "kebayoran lama selatan", "cilandak barat", "cilandak timur", "tanah kusir",
+    // Depok & Bogor
+    "cinere", "depok", "sawangan", "margonda", "cimanggis", "limo", "beji", "pancoran mas", "sentul", "bogor", "cibubur", "bedahan", "beji timur", "gandul", "pangkalan jati", "krukut", "meruyung", "grogol", "mampang depok", "depok jaya", "sukmajaya", "tapos", "harjamukti", "bojonggede", "citayam", "sentul city", "tanah sareal", "bogor utara", "bogor selatan", "bogor timur", "bogor barat",
+    // Tangerang / South Tangerang (Tangerang Selatan)
+    "bsd city", "bsd", "serpong", "alam sutera", "gading serpong", "karawaci", "ciputat", "pamulang", "bintaro jaya", "ciledug", "tangerang", "serpong utara", "bintaro sektor 1", "bintaro sektor 2", "bintaro sektor 3", "bintaro sektor 4", "bintaro sektor 5", "bintaro sektor 6", "bintaro sektor 7", "bintaro sektor 8", "bintaro sektor 9", "graha raya", "pondok cabe", "cirendeu", "rempoa", "jombang", "sawah baru", "serua", "setu", "cisauk", "pagedangan", "legok", "curug", "cikokol", "tangerang kota", "larangan", "pondok aren",
+    // West Jakarta (Jakarta Barat)
+    "puri indah", "kembangan", "kebon jeruk", "meruya", "tanjung duren", "tomang", "grogol", "slipi", "palmerah", "kalideres", "cengkareng", "meruya utara", "meruya selatan", "kembangan utara", "kembangan selatan", "permata buana", "taman aries", "intercon", "semesta", "kemanggisan", "jelambar", "kapuk",
+    // East Jakarta (Jakarta Timur)
+    "rawamangun", "duren sawit", "pulomas", "ciracas", "kramat jati", "makasar", "matraman", "pasar rebo", "cakung", "cipayung", "jatinegara", "kayu putih", "pondok kelapa", "pondok bambu", "klender", "condet", "halim", "cililitan",
+    // Central Jakarta (Jakarta Pusat)
+    "salemba", "tanah abang", "gambir", "kemayoran", "cempaka putih", "sawah besar", "cikini", "gondangdia", "senen", "benhil", "bendungan hilir", "petamburan",
+    // North Jakarta (Jakarta Utara)
+    "pantai indah kapuk", "pik", "kelapa gading", "pluit", "sunter", "ancol", "cilincing", "koja", "pademangan", "penjaringan", "pik 2", "muara karang",
+    // Bekasi
+    "jatiasih", "tambun", "cikarang", "harapan indah", "summarecon bekasi", "bekasi", "grand wisata", "galaxy", "taman galaxy", "kemang pratama", "jatibening", "pondok gede"
+).sortedByDescending { it.length }
+
+fun Modifier.dynamicTopPadding(topPaddingPx: () -> Int): Modifier = this.layout { measurable, constraints ->
+    val padding = topPaddingPx()
+    val newMaxHeight = (constraints.maxHeight - padding).coerceAtLeast(0)
+    val newMinHeight = constraints.minHeight.coerceAtMost(newMaxHeight)
+    val placeable = measurable.measure(
+        constraints.copy(
+            minHeight = newMinHeight,
+            maxHeight = newMaxHeight
+        )
+    )
+    layout(placeable.width, placeable.height + padding) {
+        placeable.placeRelative(0, padding)
+    }
+}

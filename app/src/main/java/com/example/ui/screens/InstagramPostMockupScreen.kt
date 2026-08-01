@@ -96,6 +96,10 @@ fun InstagramPostMockupScreen(
     var isSaved by remember { mutableStateOf(false) }
     var showWaChooserDialog by remember { mutableStateOf(false) }
 
+    var showRwcDownloadDialog by remember { mutableStateOf(false) }
+    var showWaBlastDialog by remember { mutableStateOf(false) }
+    var downloadedUris by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
+
     // Build the dynamic Instagram caption/description text
     val captionText = remember(rawDesc, cleanId, rawPrice, task.namaMe, task.judul, scrapedTitle) {
         buildInstagramCaption(rawDesc, cleanId, rawPrice, task.namaMe, task.judul, scrapedTitle)
@@ -581,14 +585,14 @@ fun InstagramPostMockupScreen(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    // Action buttons row (Copy text, Detail Listing)
+                    // Action buttons row (Copy text, Download Foto, Detail Listing)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        // Copy Description button
+                        // 1. Copy Description button
                         Button(
                             onClick = {
                                 val copyableText = captionText.removePrefix("raywhitecipete ").trim()
@@ -596,17 +600,39 @@ fun InstagramPostMockupScreen(
                                 Toast.makeText(context, "Deskripsi berhasil disalin ke clipboard!", Toast.LENGTH_SHORT).show()
                             },
                             modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 4.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF262626) // Soft IG gray-black button
                             ),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Salin Teks", color = Color.White, fontSize = 12.sp)
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Salin Teks", color = Color.White, fontSize = 11.sp)
                         }
 
-                        // Detail Listing button
+                        // 2. Download Foto button (Middle button for RWC portal Design 3 cover & images)
+                        Button(
+                            onClick = {
+                                if (cleanId.isNotBlank()) {
+                                    showRwcDownloadDialog = true
+                                } else {
+                                    Toast.makeText(context, "ID Listing tidak tersedia", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.weight(1.1f),
+                            contentPadding = PaddingValues(horizontal = 4.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF25D366) // WA Green theme matching Blast ke WA Group
+                            ),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Download Foto", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        // 3. Detail Listing button
                         Button(
                             onClick = {
                                 if (cleanId.isNotBlank()) {
@@ -622,14 +648,15 @@ fun InstagramPostMockupScreen(
                                 }
                             },
                             modifier = Modifier.weight(1f),
+                            contentPadding = PaddingValues(horizontal = 4.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF262626)
                             ),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Icon(Icons.Default.Info, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Detail Listing", color = Color.White, fontSize = 12.sp)
+                            Icon(Icons.Default.Info, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Detail Listing", color = Color.White, fontSize = 11.sp)
                         }
                     }
 
@@ -697,6 +724,36 @@ fun InstagramPostMockupScreen(
                 }
             }
         }
+    }
+
+    if (showRwcDownloadDialog) {
+        val initialHeadline = remember(task.judul, details) {
+            val loc = details["lokasi"] ?: ""
+            if (loc.isNotBlank() && !loc.equals("Kebayoran", ignoreCase = true) && !loc.equals("Unknown", ignoreCase = true)) {
+                loc
+            } else {
+                task.judul.ifBlank { details["title"] ?: "" }
+            }
+        }
+        RwcDesign3DownloadDialog(
+            listingId = cleanId,
+            initialCoverTitle = initialHeadline,
+            onDismiss = { showRwcDownloadDialog = false },
+            onDownloadSuccess = { uris, title ->
+                showRwcDownloadDialog = false
+                downloadedUris = uris
+                showWaBlastDialog = true
+            }
+        )
+    }
+
+    if (showWaBlastDialog) {
+        WaBlastPostDialog(
+            initialCaption = captionText,
+            downloadedUris = downloadedUris,
+            listingId = cleanId,
+            onDismiss = { showWaBlastDialog = false }
+        )
     }
 }
 
@@ -864,13 +921,22 @@ private fun formatBulletPoint(line: String): String {
     }
     cleanedLine = cleanedLine.replace("^\\d+[\\.\\)]\\s*".toRegex(), "").trim()
     
-    // Also remove trailing commas or semicolons
+    // Remove trailing commas or semicolons
     while (cleanedLine.endsWith(",") || cleanedLine.endsWith(";")) {
         cleanedLine = cleanedLine.substring(0, cleanedLine.length - 1).trim()
     }
     
     val lower = cleanedLine.lowercase()
     
+    // Check dimension pattern first (e.g. "Luas tanah 15x21" or "15 x 21" or "15x21 m")
+    val dimRegex = Regex("(?i)(?:luas\\s*tanah\\s*|dimensi\\s*)?(\\d+)\\s*[x×\\*]\\s*(\\d+)")
+    val dimMatch = dimRegex.find(cleanedLine)
+    if (dimMatch != null && (lower.contains("x") || lower.contains("×") || lower.contains("*") || lower.contains("dimensi"))) {
+        val w = dimMatch.groupValues[1]
+        val h = dimMatch.groupValues[2]
+        return "• Dimensi $w × $h meter"
+    }
+
     // Check for combined LT/LB line (e.g. LT/LB 936/600)
     val combinedLtLbRegex = Regex("(?i)\\b(?:lt\\s*/\\s*lb|luas\\s*tanah\\s*/\\s*luas\\s*bangunan|lt\\s*-\\s*lb)\\s*[:\\s-]*(\\d+)\\s*[\\s/-]+\\s*(\\d+)")
     val combinedLbLtRegex = Regex("(?i)\\b(?:lb\\s*/\\s*lt|luas\\s*bangunan\\s*/\\s*luas\\s*tanah|lb\\s*-\\s*lt)\\s*[:\\s-]*(\\d+)\\s*[\\s/-]+\\s*(\\d+)")
@@ -879,14 +945,14 @@ private fun formatBulletPoint(line: String): String {
     if (combinedLtLbMatch != null) {
         val ltVal = combinedLtLbMatch.groupValues[1]
         val lbVal = combinedLtLbMatch.groupValues[2]
-        return "• LT $ltVal m2\n• LB $lbVal m2"
+        return "• Luas Tanah : $ltVal m2\n• Luas Bangunan : $lbVal m2"
     }
     
     val combinedLbLtMatch = combinedLbLtRegex.find(lower)
     if (combinedLbLtMatch != null) {
         val lbVal = combinedLbLtMatch.groupValues[1]
         val ltVal = combinedLbLtMatch.groupValues[2]
-        return "• LT $ltVal m2\n• LB $lbVal m2"
+        return "• Luas Tanah : $ltVal m2\n• Luas Bangunan : $lbVal m2"
     }
     
     // 1. Luas Tanah (LT)
@@ -896,13 +962,13 @@ private fun formatBulletPoint(line: String): String {
             value = cleanedLine.replace("(?i)luas\\s*tanah".toRegex(), "").replace("(?i)lt".toRegex(), "").trim()
         }
         val digits = value.replace("[^\\d\\s\\+\\.,mMyY2²]".toRegex(), "").trim()
-        val displayVal = if (digits.isBlank()) "275" else digits
+        val displayVal = if (digits.isBlank()) "315" else digits
         var formattedVal = displayVal.replace("(?i)m2".toRegex(), "m2").replace("(?i)m²".toRegex(), "m2")
         if (!formattedVal.lowercase().endsWith("m2")) {
             formattedVal = "$formattedVal m2"
         }
         formattedVal = formattedVal.replace("\\s+".toRegex(), " ")
-        return "• LT $formattedVal"
+        return "• Luas Tanah : $formattedVal"
     }
     
     // 2. Luas Bangunan (LB)
@@ -912,56 +978,66 @@ private fun formatBulletPoint(line: String): String {
             value = cleanedLine.replace("(?i)luas\\s*bangunan".toRegex(), "").replace("(?i)lb".toRegex(), "").trim()
         }
         val digits = value.replace("[^\\d\\s\\+\\.,mMyY2²]".toRegex(), "").trim()
-        val displayVal = if (digits.isBlank()) "360" else digits
+        val displayVal = if (digits.isBlank()) "190" else digits
         var formattedVal = displayVal.replace("(?i)m2".toRegex(), "m2").replace("(?i)m²".toRegex(), "m2")
         if (!formattedVal.lowercase().endsWith("m2")) {
             formattedVal = "$formattedVal m2"
         }
         formattedVal = formattedVal.replace("\\s+".toRegex(), " ")
-        return "• LB $formattedVal"
+        return "• Luas Bangunan : $formattedVal"
+    }
+
+    // 3. Menghadap
+    if (lower.startsWith("menghadap")) {
+        var value = cleanedLine.substringAfter(":").trim()
+        if (value.isBlank() || value == cleanedLine) {
+            value = cleanedLine.replace("(?i)menghadap(?:\\s*ke\\s*arah)?".toRegex(), "").trim()
+        }
+        val direction = value.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() }
+        return "• Menghadap ke Arah : ${direction.ifBlank { "Barat" }}"
     }
     
-    // 3. Kamar Tidur (KT)
+    // 4. Kamar Tidur (KT)
     if (lower.startsWith("kamar tidur") || lower.startsWith("kt")) {
         var value = cleanedLine.substringAfter(":").trim()
         if (value.isBlank() || value == cleanedLine) {
             value = cleanedLine.replace("(?i)kamar\\s*tidur".toRegex(), "").replace("(?i)kt".toRegex(), "").trim()
         }
         val formatted = value.replace("\\s+".toRegex(), " ")
-        return "• KT ${formatted.ifBlank { "4+1" }}"
+        return "• Kamar Tidur : ${formatted.ifBlank { "4" }}"
     }
     
-    // 4. Kamar Mandi (KM)
+    // 5. Kamar Mandi (KM)
     if (lower.startsWith("kamar mandi") || lower.startsWith("km")) {
         var value = cleanedLine.substringAfter(":").trim()
         if (value.isBlank() || value == cleanedLine) {
             value = cleanedLine.replace("(?i)kamar\\s*mandi".toRegex(), "").replace("(?i)km".toRegex(), "").trim()
         }
         val formatted = value.replace("\\s+".toRegex(), " ")
-        return "• KM ${formatted.ifBlank { "3+1" }}"
+        return "• Kamar Mandi : ${formatted.ifBlank { "3" }}"
     }
     
-    // 5. Garasi
+    // 6. Garasi
     if (lower.startsWith("garasi")) {
         var value = cleanedLine.substringAfter(":").trim()
         if (value.isBlank() || value == cleanedLine) {
             value = cleanedLine.replace("(?i)garasi".toRegex(), "").trim()
         }
         val digits = value.replace("[^\\d\\s\\+]".toRegex(), "").trim()
-        return "• Garasi ${digits.ifBlank { "1" }} Mobil"
+        return "• Garasi : ${digits.ifBlank { "2" }}"
     }
     
-    // 6. Carport
+    // 7. Carport
     if (lower.startsWith("carport")) {
         var value = cleanedLine.substringAfter(":").trim()
         if (value.isBlank() || value == cleanedLine) {
             value = cleanedLine.replace("(?i)carport".toRegex(), "").trim()
         }
         val digits = value.replace("[^\\d\\s\\+]".toRegex(), "").trim()
-        return "• Carport ${digits.ifBlank { "2" }} Mobil"
+        return "• Carport : ${digits.ifBlank { "2" }}"
     }
     
-    // 7. Sertifikat
+    // 8. Sertifikat
     if (lower.startsWith("sertifikat") || lower.startsWith("shm")) {
         var value = cleanedLine.substringAfter(":").trim()
         if (value.isBlank() || value == cleanedLine) {
@@ -969,12 +1045,12 @@ private fun formatBulletPoint(line: String): String {
         }
         val upperVal = value.uppercase()
         if (upperVal.contains("SHM") || upperVal.contains("HAK MILIK") || upperVal.isBlank()) {
-            return "• SHM & IMB Lengkap"
+            return "• Sertifikat : SHM"
         }
-        return "• Sertifikat $value"
+        return "• Sertifikat : $value"
     }
     
-    // Fallback: capitalize words nicely
+    // Fallback: format line nicely
     val words = cleanedLine.split("\\s+".toRegex()).map { word ->
         if (word.lowercase() == "dan" || word.lowercase() == "di" || word.lowercase() == "area" || word.lowercase() == "ke") {
             word.lowercase()
@@ -1002,66 +1078,43 @@ private fun buildInstagramCaption(
         .replace("<[^>]*>".toRegex(), "")
         .trim()
 
-    // Find location for title generation if needed
     val descLower = clean.lowercase()
     val lokasiVal = extractPropertyLocation(descLower, judulTask.lowercase(), scrapedTitle.lowercase())
-
-    // 2. Select beautiful title, avoiding pure stats or numbers
     val title = selectPropertyTitle(scrapedTitle, judulTask, clean, lokasiVal)
 
-    // Contact info dynamically resolved from ME name or description scan
+    // Multi-contact resolver
     val contactsStr = getInstagramCaptionContacts(namaMe, rawDesc, scrapedTitle, judulTask)
 
-    // Check if "Deskripsi Lengkap:" exists or fallback to standard specs
-    val deskripsiLengkapIndex = clean.indexOf("Deskripsi Lengkap:", ignoreCase = true)
-    val withSpecIndex = clean.indexOf("Dengan Spek Sebagai Berikut", ignoreCase = true)
-    
-    val targetText = if (deskripsiLengkapIndex != -1) {
-        clean.substring(deskripsiLengkapIndex + "Deskripsi Lengkap:".length).trim()
-    } else if (withSpecIndex != -1) {
-        val afterSpec = clean.substring(withSpecIndex + "Dengan Spek Sebagai Berikut".length).trim()
-        if (afterSpec.startsWith(":")) {
-            afterSpec.substring(1).trim()
-        } else {
-            afterSpec
-        }
-    } else {
-        clean
-    }
-
-    val rawLines = targetText.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-    val processedLines = mutableListOf<String>()
-    for (line in rawLines) {
-        if (line.contains(",")) {
-            val lowerLine = line.lowercase()
-            val containsMultipleSpecs = (
-                (lowerLine.contains("luas tanah") || lowerLine.contains("lt")) && (lowerLine.contains("luas bangunan") || lowerLine.contains("lb"))
-            ) || (
-                (lowerLine.contains("kt") || lowerLine.contains("kamar tidur")) && (lowerLine.contains("km") || lowerLine.contains("kamar mandi"))
-            ) || (
-                lowerLine.contains(Regex("\\bkt\\b|\\bkm\\b|\\blt\\b|\\blb\\b")) && lowerLine.count { it == ',' } >= 1
-            )
-            
-            if (containsMultipleSpecs) {
-                val parts = line.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-                processedLines.addAll(parts)
-            } else {
-                processedLines.add(line)
-            }
-        } else {
-            processedLines.add(line)
-        }
-    }
-
+    // Extract specs from BOTH "Dengan Spek Sebagai Berikut" and "Deskripsi Lengkap"
     val parsedBulletPoints = mutableListOf<String>()
-    
+    val linesToProcess = mutableListOf<String>()
+
+    val specSectionIndex = clean.indexOf("Dengan Spek Sebagai Berikut", ignoreCase = true)
+    val deskripsiLengkapIndex = clean.indexOf("Deskripsi Lengkap:", ignoreCase = true)
+
+    if (specSectionIndex != -1) {
+        val specText = if (deskripsiLengkapIndex > specSectionIndex) {
+            clean.substring(specSectionIndex, deskripsiLengkapIndex)
+        } else {
+            clean.substring(specSectionIndex)
+        }
+        specText.split("\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach { linesToProcess.add(it) }
+    }
+
+    if (deskripsiLengkapIndex != -1) {
+        val deskripsiText = clean.substring(deskripsiLengkapIndex + "Deskripsi Lengkap:".length)
+        deskripsiText.split("\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach { linesToProcess.add(it) }
+    }
+
+    if (linesToProcess.isEmpty()) {
+        clean.split("\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach { linesToProcess.add(it) }
+    }
+
     var stopParsing = false
-    for (line in processedLines) {
+    for (line in linesToProcess) {
         if (stopParsing) break
-        
         val lower = line.lowercase()
-        
-        // Stop indicators: only links, copyright, or agent/broker promo sections
+
         if (lower.contains("http://") || lower.contains("https://") ||
             lower.contains("wa.me") || lower.contains("copyright") ||
             lower.contains("ray white") || lower.contains("hubungi kami") ||
@@ -1070,8 +1123,7 @@ private fun buildInstagramCaption(
             stopParsing = true
             continue
         }
-        
-        // Skip headers, duplicates, etc.
+
         if (lower.startsWith("dengan spek") || 
             lower.startsWith("listing id:") || 
             lower.contains("deskripsi lengkap") ||
@@ -1081,32 +1133,29 @@ private fun buildInstagramCaption(
             lower.startsWith("harga") ||
             line.equals(title, ignoreCase = true) ||
             isLineJustNumbersOrStats(line) ||
-            line.matches("^\\d+$".toRegex()) // ignores single ID number line
+            line.matches("^\\d+$".toRegex())
         ) {
             continue
         }
-        
+
         val formatted = formatBulletPoint(line)
-        if (formatted.isNotEmpty()) {
+        if (formatted.isNotEmpty() && !parsedBulletPoints.contains(formatted)) {
             parsedBulletPoints.add(formatted)
         }
     }
 
-    // Fallback if parsing didn't find any bullet points (extremely safe)
     if (parsedBulletPoints.isEmpty()) {
         val details = parsePropertyDetails(rawDesc, idListing, rawPrice, judulTask, scrapedTitle)
-        parsedBulletPoints.add("• LT ${details["lt"]} m2")
-        parsedBulletPoints.add("• LB ${details["lb"]} m2")
-        parsedBulletPoints.add("• KT ${details["kt"]}")
-        parsedBulletPoints.add("• KM ${details["km"]}")
-        parsedBulletPoints.add("• Garasi ${details["garasi"]}")
-        parsedBulletPoints.add("• Carport ${details["carport"]}")
-        parsedBulletPoints.add("• ${details["swimming_pool"]}")
-        parsedBulletPoints.add("• ${details["security"]}")
+        parsedBulletPoints.add("• Luas Tanah : ${details["lt"]} m2")
+        parsedBulletPoints.add("• Luas Bangunan : ${details["lb"]} m2")
+        parsedBulletPoints.add("• Kamar Tidur : ${details["kt"]}")
+        parsedBulletPoints.add("• Kamar Mandi : ${details["km"]}")
+        parsedBulletPoints.add("• Garasi : ${details["garasi"]}")
+        parsedBulletPoints.add("• Carport : ${details["carport"]}")
         parsedBulletPoints.add("• ${details["sertifikat"]}")
     }
 
-    // Build final caption
+    // Build final caption without "Nego"
     val category = getListingCategory(rawPrice)
     return buildString {
         append("raywhitecipete $category ID $idListing\n\n")
@@ -1116,7 +1165,7 @@ private fun buildInstagramCaption(
         append("\n")
         
         val displayPrice = formatPriceCompact(rawPrice.ifBlank { "Hubungi Agent" })
-        append("$displayPrice Nego\n\n")
+        append("$displayPrice\n\n") // "Nego" REMOVED
         
         append(contactsStr)
         append("DM US FOR MORE INFORMATION")
@@ -1170,25 +1219,45 @@ private fun resolveMarketingName(namaMe: String, rawDesc: String, scrapedTitle: 
 }
 
 private fun getInstagramCaptionContacts(namaMe: String, rawDesc: String = "", scrapedTitle: String = "", judulTask: String = ""): String {
-    val resolvedMe = resolveMarketingName(namaMe, rawDesc, scrapedTitle, judulTask)
-    val names = resolvedMe.split(Regex("\\s*(?:&|\\bdan\\b|\\band\\b|/|,)\\s*", RegexOption.IGNORE_CASE)).map { it.trim() }.filter { it.isNotEmpty() }
+    val combinedText = "$namaMe $rawDesc $scrapedTitle $judulTask".lowercase()
+    val matchedContacts = mutableListOf<com.example.ui.AgentContact>()
+
+    // 1. Scan AGENT_CONTACT_LIST for ALL agents mentioned in text
+    com.example.ui.AGENT_CONTACT_LIST.forEach { contact ->
+        val key = contact.nameKey.lowercase()
+        if (key == "bayu") {
+            if (combinedText.contains("\\bbayu\\b".toRegex())) matchedContacts.add(contact)
+        } else if (key == "mari") {
+            if (combinedText.contains("\\bmari\\b".toRegex()) || combinedText.contains("mari.raywhite") || combinedText.contains("08118087908")) {
+                matchedContacts.add(contact)
+            }
+        } else {
+            if (combinedText.contains("\\b${Regex.escape(key)}\\b".toRegex())) {
+                matchedContacts.add(contact)
+            }
+        }
+    }
+
+    // 2. Fallback to namaMe input if no agents matched from full text
+    if (matchedContacts.isEmpty()) {
+        val directName = namaMe.trim()
+        val direct = com.example.ui.findContact(directName)
+        if (direct != null) {
+            matchedContacts.add(direct)
+        } else {
+            com.example.ui.findContact("Mari")?.let { matchedContacts.add(it) }
+        }
+    }
+
     return buildString {
         append("CONTACT\n")
-        val effectiveNames = if (names.isEmpty()) listOf("Mari") else names
-        effectiveNames.forEach { name ->
-            val contact = com.example.ui.findContact(name)
-            if (contact != null) {
-                val igHandle = if (contact.instagram.isNotBlank()) {
-                    val cleanIg = contact.instagram.removePrefix("@")
-                    "/@$cleanIg"
-                } else {
-                    ""
-                }
-                val contactName = contact.nameKey.uppercase()
-                append("$contactName: ${contact.phone}$igHandle\n")
-            } else {
-                append("${name.uppercase()}: Hubungi Agent\n")
-            }
+        matchedContacts.distinctBy { it.nameKey.lowercase() }.forEach { contact ->
+            val igHandle = if (contact.instagram.isNotBlank()) {
+                val cleanIg = contact.instagram.removePrefix("@")
+                "/@$cleanIg"
+            } else ""
+            val contactName = contact.nameKey.uppercase()
+            append("$contactName: ${contact.phone}$igHandle\n")
         }
         append("\n")
     }
@@ -1312,33 +1381,13 @@ private fun formatSinglePriceCompact(raw: String): String {
 }
 
 private fun extractPropertyLocation(descLower: String, titleLower: String, scrapedTitleLower: String): String {
-    val locations = listOf(
-        // South Jakarta (Jakarta Selatan)
-        "kebagusan", "cilandak", "cipete", "kemang", "jagakarsa", "pondok indah", "ampera", "kebayoran baru", "kebayoran lama", "kebayoran", "senopati", "bintaro", "tebet", "pejaten", "cilodong", "pasar minggu", "gandaria", "mampang prapatan", "mampang", "pancoran", "setiabudi", "kalibata", "ciganjur", "lenteng agung", "ragunan", "tanjung barat", "pesanggrahan", "cipulir", "pondok pinang", "lebak bulus", "fatmawati", "blok m", "radio dalam", "dharmawangsa", "darmawangsa", "panglima polim", "permata hijau", "senayan", "sudirman", "kuningan", "menteng", "prapanca", "wijaya", "cipete dalam", "cipete utara", "cipete selatan", "gandaria utara", "gandaria selatan", "pondok labu", "petukangan", "ulujami", "kebon baru", "manggarai", "pasar manggis", "karet semanggi", "karet pedurenan", "karet tengsin", "karet", "gatot subroto", "gatsu", "rasuna said", "mega kuningan", "scbd", "tebet barat", "tebet timur", "menteng dalam", "pengadegan", "pejaten barat", "pejaten timur", "jatipadang", "buncit", "warung buncit", "duren tiga", "bangka", "tendean", "kapten tendean", "petogogan", "melawai", "pulo", "cipulo", "kebayoran lama utara", "kebayoran lama selatan", "cilandak barat", "cilandak timur", "tanah kusir",
-        // Depok & Bogor
-        "cinere", "depok", "sawangan", "margonda", "cimanggis", "limo", "beji", "pancoran mas", "sentul", "bogor", "cibubur", "bedahan", "beji timur", "gandul", "pangkalan jati", "krukut", "meruyung", "grogol", "mampang depok", "depok jaya", "sukmajaya", "tapos", "harjamukti", "bojonggede", "citayam", "sentul city", "tanah sareal", "bogor utara", "bogor selatan", "bogor timur", "bogor barat",
-        // Tangerang / South Tangerang (Tangerang Selatan)
-        "bsd city", "bsd", "serpong", "alam sutera", "gading serpong", "karawaci", "ciputat", "pamulang", "bintaro jaya", "ciledug", "tangerang", "serpong utara", "bintaro sektor 1", "bintaro sektor 2", "bintaro sektor 3", "bintaro sektor 4", "bintaro sektor 5", "bintaro sektor 6", "bintaro sektor 7", "bintaro sektor 8", "bintaro sektor 9", "graha raya", "pondok cabe", "cirendeu", "rempoa", "jombang", "sawah baru", "serua", "setu", "cisauk", "pagedangan", "legok", "curug", "cikokol", "tangerang kota", "larangan", "pondok aren",
-        // West Jakarta (Jakarta Barat)
-        "puri indah", "kembangan", "kebon jeruk", "meruya", "tanjung duren", "tomang", "grogol", "slipi", "palmerah", "kalideres", "cengkareng", "meruya utara", "meruya selatan", "kembangan utara", "kembangan selatan", "permata buana", "taman aries", "intercon", "semesta", "kemanggisan", "jelambar", "kapuk",
-        // East Jakarta (Jakarta Timur)
-        "rawamangun", "duren sawit", "pulomas", "ciracas", "kramat jati", "makasar", "matraman", "pasar rebo", "cakung", "cipayung", "jatinegara", "kayu putih", "pondok kelapa", "pondok bambu", "klender", "condet", "halim", "cililitan",
-        // Central Jakarta (Jakarta Pusat)
-        "salemba", "tanah abang", "gambir", "kemayoran", "cempaka putih", "sawah besar", "cikini", "gondangdia", "senen", "benhil", "bendungan hilir", "petamburan",
-        // North Jakarta (Jakarta Utara)
-        "pantai indah kapuk", "pik", "kelapa gading", "pluit", "sunter", "ancol", "cilincing", "koja", "pademangan", "penjaringan", "pik 2", "muara karang",
-        // Bekasi
-        "jatiasih", "tambun", "cikarang", "harapan indah", "summarecon bekasi", "bekasi", "grand wisata", "galaxy", "taman galaxy", "kemang pratama", "jatibening", "pondok gede"
-    )
-    val sortedLocations = locations.sortedByDescending { it.length }
-
-    for (loc in sortedLocations) {
+    for (loc in SORTED_LOCATIONS) {
         if (titleLower.contains(loc) || scrapedTitleLower.contains(loc)) {
             return loc.uppercase()
         }
     }
 
-    for (loc in sortedLocations) {
+    for (loc in SORTED_LOCATIONS) {
         if (descLower.contains(loc)) {
             return loc.uppercase()
         }
@@ -1346,3 +1395,22 @@ private fun extractPropertyLocation(descLower: String, titleLower: String, scrap
 
     return "JAKARTA SELATAN"
 }
+
+private val SORTED_LOCATIONS = listOf(
+    // South Jakarta (Jakarta Selatan)
+    "kebagusan", "cilandak", "cipete", "kemang", "jagakarsa", "pondok indah", "ampera", "kebayoran baru", "kebayoran lama", "kebayoran", "senopati", "bintaro", "tebet", "pejaten", "cilodong", "pasar minggu", "gandaria", "mampang prapatan", "mampang", "pancoran", "setiabudi", "kalibata", "ciganjur", "lenteng agung", "ragunan", "tanjung barat", "pesanggrahan", "cipulir", "pondok pinang", "lebak bulus", "fatmawati", "blok m", "radio dalam", "dharmawangsa", "darmawangsa", "panglima polim", "permata hijau", "senayan", "sudirman", "kuningan", "menteng", "prapanca", "wijaya", "cipete dalam", "cipete utara", "cipete selatan", "gandaria utara", "gandaria selatan", "pondok labu", "petukangan", "ulujami", "kebon baru", "manggarai", "pasar manggis", "karet semanggi", "karet pedurenan", "karet tengsin", "karet", "gatot subroto", "gatsu", "rasuna said", "mega kuningan", "scbd", "tebet barat", "tebet timur", "menteng dalam", "pengadegan", "pejaten barat", "pejaten timur", "jatipadang", "buncit", "warung buncit", "duren tiga", "bangka", "tendean", "kapten tendean", "petogogan", "melawai", "pulo", "cipulo", "kebayoran lama utara", "kebayoran lama selatan", "cilandak barat", "cilandak timur", "tanah kusir",
+    // Depok & Bogor
+    "cinere", "depok", "sawangan", "margonda", "cimanggis", "limo", "beji", "pancoran mas", "sentul", "bogor", "cibubur", "bedahan", "beji timur", "gandul", "pangkalan jati", "krukut", "meruyung", "grogol", "mampang depok", "depok jaya", "sukmajaya", "tapos", "harjamukti", "bojonggede", "citayam", "sentul city", "tanah sareal", "bogor utara", "bogor selatan", "bogor timur", "bogor barat",
+    // Tangerang / South Tangerang (Tangerang Selatan)
+    "bsd city", "bsd", "serpong", "alam sutera", "gading serpong", "karawaci", "ciputat", "pamulang", "bintaro jaya", "ciledug", "tangerang", "serpong utara", "bintaro sektor 1", "bintaro sektor 2", "bintaro sektor 3", "bintaro sektor 4", "bintaro sektor 5", "bintaro sektor 6", "bintaro sektor 7", "bintaro sektor 8", "bintaro sektor 9", "graha raya", "pondok cabe", "cirendeu", "rempoa", "jombang", "sawah baru", "serua", "setu", "cisauk", "pagedangan", "legok", "curug", "cikokol", "tangerang kota", "larangan", "pondok aren",
+    // West Jakarta (Jakarta Barat)
+    "puri indah", "kembangan", "kebon jeruk", "meruya", "tanjung duren", "tomang", "grogol", "slipi", "palmerah", "kalideres", "cengkareng", "meruya utara", "meruya selatan", "kembangan utara", "kembangan selatan", "permata buana", "taman aries", "intercon", "semesta", "kemanggisan", "jelambar", "kapuk",
+    // East Jakarta (Jakarta Timur)
+    "rawamangun", "duren sawit", "pulomas", "ciracas", "kramat jati", "makasar", "matraman", "pasar rebo", "cakung", "cipayung", "jatinegara", "kayu putih", "pondok kelapa", "pondok bambu", "klender", "condet", "halim", "cililitan",
+    // Central Jakarta (Jakarta Pusat)
+    "salemba", "tanah abang", "gambir", "kemayoran", "cempaka putih", "sawah besar", "cikini", "gondangdia", "senen", "benhil", "bendungan hilir", "petamburan",
+    // North Jakarta (Jakarta Utara)
+    "pantai indah kapuk", "pik", "kelapa gading", "pluit", "sunter", "ancol", "cilincing", "koja", "pademangan", "penjaringan", "pik 2", "muara karang",
+    // Bekasi
+    "jatiasih", "tambun", "cikarang", "harapan indah", "summarecon bekasi", "bekasi", "grand wisata", "galaxy", "taman galaxy", "kemang pratama", "jatibening", "pondok gede"
+).sortedByDescending { it.length }

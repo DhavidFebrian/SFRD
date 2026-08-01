@@ -85,7 +85,7 @@ class BackgroundSyncService : Service() {
                         
                         // 1. Sync schedules for all months
                         try {
-                            val months = listOf("Juni 2026", "Juli 2026")
+                            val months = listOf("Juni 2026", "Juli 2026", "Agustus 2026")
                             val parsedSchedules = mutableListOf<com.example.data.Schedule>()
                             val parsedEditFotoTasks = mutableListOf<com.example.data.EditFotoTask>()
                             val moshiObj = Moshi.Builder()
