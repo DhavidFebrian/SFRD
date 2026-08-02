@@ -110,6 +110,7 @@ fun DashboardScreen(
 
     val selectedCategory by viewModel.selectedCategory.collectAsStateWithLifecycle()
     val unreadCount by viewModel.unreadChatCount.collectAsStateWithLifecycle()
+    val uiLayoutMode by viewModel.uiLayoutMode.collectAsStateWithLifecycle()
     var selectedScheduleForDetail by remember { mutableStateOf<Schedule?>(null) }
     var selectedScheduleForFollowUp by remember { mutableStateOf<Schedule?>(null) }
     var scheduleToDeleteInDashboard by remember { mutableStateOf<Schedule?>(null) }
@@ -535,6 +536,8 @@ fun DashboardScreen(
                         }
                     }
                 }
+
+                // Clean Dashboard layout
 
                 // 1. Month Switcher (Ultra-easy for the user to see and switch months directly from Dashboard!)
                 val activeMonth by viewModel.selectedMonth.collectAsStateWithLifecycle()

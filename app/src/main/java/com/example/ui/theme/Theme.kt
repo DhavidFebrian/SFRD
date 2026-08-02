@@ -90,6 +90,46 @@ private val LightColorScheme =
     outlineVariant = androidx.compose.ui.graphics.Color(0xFFE2E8F0)
   )
 
+private val AuroraCyberColorScheme = darkColorScheme(
+    primary = androidx.compose.ui.graphics.Color(0xFF06B6D4), // Electric Cyan
+    onPrimary = androidx.compose.ui.graphics.Color(0xFF042F2C),
+    primaryContainer = androidx.compose.ui.graphics.Color(0xFF092534), // Deep Cyber Navy
+    onPrimaryContainer = androidx.compose.ui.graphics.Color(0xFFF8FAFC),
+    secondary = androidx.compose.ui.graphics.Color(0xFF3B82F6), // Sapphire Blue
+    onSecondary = androidx.compose.ui.graphics.Color(0xFF1E3A8A),
+    secondaryContainer = androidx.compose.ui.graphics.Color(0xFF132F4C),
+    onSecondaryContainer = androidx.compose.ui.graphics.Color(0xFFF8FAFC),
+    tertiary = androidx.compose.ui.graphics.Color(0xFF6366F1), // Indigo Accent
+    background = androidx.compose.ui.graphics.Color(0xFF0B1329), // Deep Obsidian Aurora
+    surface = androidx.compose.ui.graphics.Color(0xFF0B1329),
+    surfaceVariant = androidx.compose.ui.graphics.Color(0xFF0F172A),
+    onBackground = androidx.compose.ui.graphics.Color(0xFFF8FAFC),
+    onSurface = androidx.compose.ui.graphics.Color(0xFFF8FAFC),
+    onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFF94A3B8),
+    outline = androidx.compose.ui.graphics.Color(0xFF1E293B),
+    outlineVariant = androidx.compose.ui.graphics.Color(0xFF1E293B)
+)
+
+private val SunsetCoralColorScheme = darkColorScheme(
+    primary = androidx.compose.ui.graphics.Color(0xFFF97316), // Sunset Orange / Peach
+    onPrimary = androidx.compose.ui.graphics.Color(0xFF431407),
+    primaryContainer = androidx.compose.ui.graphics.Color(0xFF2C1307), // Deep Copper
+    onPrimaryContainer = androidx.compose.ui.graphics.Color(0xFFF8FAFC),
+    secondary = androidx.compose.ui.graphics.Color(0xFFEC4899), // Coral Pink
+    onSecondary = androidx.compose.ui.graphics.Color(0xFF831843),
+    secondaryContainer = androidx.compose.ui.graphics.Color(0xFF3B1527),
+    onSecondaryContainer = androidx.compose.ui.graphics.Color(0xFFF8FAFC),
+    tertiary = androidx.compose.ui.graphics.Color(0xFFF43F5E), // Rose Accent
+    background = androidx.compose.ui.graphics.Color(0xFF190D0E), // Obsidian Coral Charcoal
+    surface = androidx.compose.ui.graphics.Color(0xFF190D0E),
+    surfaceVariant = androidx.compose.ui.graphics.Color(0xFF231215),
+    onBackground = androidx.compose.ui.graphics.Color(0xFFF8FAFC),
+    onSurface = androidx.compose.ui.graphics.Color(0xFFF8FAFC),
+    onSurfaceVariant = androidx.compose.ui.graphics.Color(0xFF94A3B8),
+    outline = androidx.compose.ui.graphics.Color(0xFF381A1F),
+    outlineVariant = androidx.compose.ui.graphics.Color(0xFF381A1F)
+)
+
 @Composable
 fun MyApplicationTheme(
   darkTheme: Boolean = isSystemInDarkTheme(),
@@ -102,6 +142,8 @@ fun MyApplicationTheme(
     when (themeStyle) {
       "NEON_AMETHYST" -> NeonAmethystColorScheme
       "FOREST_EMERALD" -> ForestEmeraldColorScheme
+      "AURORA_CYBER" -> AuroraCyberColorScheme
+      "SUNSET_CORAL" -> SunsetCoralColorScheme
       else -> CosmicSlateColorScheme
     }
   } else {

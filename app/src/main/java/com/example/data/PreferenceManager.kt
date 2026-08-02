@@ -92,6 +92,14 @@ class PreferenceManager(context: Context) {
         get() = prefs.getString("selected_theme_style", "COSMIC_SLATE") ?: "COSMIC_SLATE"
         set(value) = prefs.edit().putString("selected_theme_style", value).apply()
 
+    var uiLayoutMode: String
+        get() = prefs.getString("ui_layout_mode", "MODERN_PRO") ?: "MODERN_PRO"
+        set(value) = prefs.edit().putString("ui_layout_mode", value).apply()
+
+    var isNotificationsEnabled: Boolean
+        get() = prefs.getBoolean("is_notifications_enabled", true)
+        set(value) = prefs.edit().putBoolean("is_notifications_enabled", value).apply()
+
     var formatDone: String
         get() = prefs.getString("format_done", "") ?: ""
         set(value) = prefs.edit().putString("format_done", value).apply()
@@ -139,9 +147,9 @@ class PreferenceManager(context: Context) {
 
     /**
      * Returns true if the cached data for [id] is older than [maxAgeMs] milliseconds.
-     * Default: 24 hours (86_400_000 ms). Used to determine if photos/details need refresh.
+     * Default: 5 minutes (300_000 ms) for real-time web sync without UI lag.
      */
-    fun isListingCacheStale(id: String, maxAgeMs: Long = 24L * 60 * 60 * 1000): Boolean {
+    fun isListingCacheStale(id: String, maxAgeMs: Long = 5L * 60 * 1000): Boolean {
         val savedTime = getListingCacheTime(id)
         if (savedTime == 0L) return true // never cached
         return (System.currentTimeMillis() - savedTime) > maxAgeMs

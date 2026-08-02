@@ -8,6 +8,8 @@ import com.example.network.GeneralResponse
 import com.example.network.SheetsApiService
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -580,6 +582,8 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
 
     var isDarkTheme = MutableStateFlow(preferenceManager.isDarkTheme)
     var selectedThemeStyle = MutableStateFlow(preferenceManager.selectedThemeStyle)
+    var uiLayoutMode = MutableStateFlow(preferenceManager.uiLayoutMode)
+    var isNotificationsEnabled = MutableStateFlow(preferenceManager.isNotificationsEnabled)
     var formatDone = MutableStateFlow(preferenceManager.formatDone)
     var formatNotDone = MutableStateFlow(preferenceManager.formatNotDone)
     var selectedMonth = MutableStateFlow(preferenceManager.selectedMonth)
@@ -748,35 +752,51 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         return "Recap Meeting $cleaned"
     }
 
-    fun fetchWeeklyMeetingIgListings(photoMonth: String) {
+    private val igListingsCache = java.util.concurrent.ConcurrentHashMap<String, List<com.example.network.MeetingListing>>()
+
+    fun fetchWeeklyMeetingIgListings(photoMonth: String, forceRefresh: Boolean = false) {
         val baseUrl = appsScriptUrl.value
         if (baseUrl.isBlank()) {
             _weeklyMeetingIgSyncStatus.value = SyncState.Error("URL Google Apps Script belum diatur di menu Setting.")
             return
         }
         
+        val cleanMonth = photoMonth.trim()
+        if (!forceRefresh && igListingsCache.containsKey(cleanMonth)) {
+            val cachedListings = igListingsCache[cleanMonth] ?: emptyList()
+            weeklyMeetingIgListings.value = cachedListings
+            val isSemua = cleanMonth.isBlank() || cleanMonth.contains("Semua", ignoreCase = true)
+            val msg = if (isSemua) "Berhasil memuat ${cachedListings.size} postingan IG dari Semua Bulan!" else "Berhasil memuat ${cachedListings.size} postingan IG!"
+            _weeklyMeetingIgSyncStatus.value = SyncState.Success(msg)
+            return
+        }
+        
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             _weeklyMeetingIgSyncStatus.value = SyncState.Loading
             try {
-                val isSemua = photoMonth.isBlank() || photoMonth.contains("Semua", ignoreCase = true)
+                val isSemua = cleanMonth.isBlank() || cleanMonth.contains("Semua", ignoreCase = true)
                 val combinedListings = mutableListOf<com.example.network.MeetingListing>()
                 
                 if (isSemua) {
                     val monthsToFetch = listOf("Juni 2026", "Juli 2026", "Agustus 2026")
-                    for (m in monthsToFetch) {
-                        try {
-                            val sheetName = getWeeklyMeetingSheetNameForMonth(m)
-                            val encodedSheet = java.net.URLEncoder.encode(sheetName, "UTF-8")
-                            val separator = if (baseUrl.contains("?")) "&" else "?"
-                            val url = "$baseUrl${separator}action=get_all_weekly_meeting_listings&sheetName=$encodedSheet"
-                            val response = apiService.getMeetingListings(url)
-                            if (response.status.lowercase() == "success") {
-                                combinedListings.addAll(response.listings)
+                    val deferreds = monthsToFetch.map { m ->
+                        async(kotlinx.coroutines.Dispatchers.IO) {
+                            try {
+                                val sheetName = getWeeklyMeetingSheetNameForMonth(m)
+                                val encodedSheet = java.net.URLEncoder.encode(sheetName, "UTF-8")
+                                val separator = if (baseUrl.contains("?")) "&" else "?"
+                                val url = "$baseUrl${separator}action=get_all_weekly_meeting_listings&sheetName=$encodedSheet"
+                                val response = apiService.getMeetingListings(url)
+                                if (response.status.lowercase() == "success") response.listings else emptyList<com.example.network.MeetingListing>()
+                            } catch (e: Exception) {
+                                emptyList<com.example.network.MeetingListing>()
                             }
-                        } catch (e: Exception) {}
+                        }
                     }
+                    val results = deferreds.awaitAll()
+                    results.forEach { resList -> combinedListings.addAll(resList) }
                 } else {
-                    val sheetName = getWeeklyMeetingSheetNameForMonth(photoMonth)
+                    val sheetName = getWeeklyMeetingSheetNameForMonth(cleanMonth)
                     val encodedSheet = java.net.URLEncoder.encode(sheetName, "UTF-8")
                     val separator = if (baseUrl.contains("?")) "&" else "?"
                     val url = "$baseUrl${separator}action=get_all_weekly_meeting_listings&sheetName=$encodedSheet"
@@ -790,19 +810,29 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
                 
-                // Deduplicate by ID Listing
-                val distinctListings = combinedListings.distinctBy { it.idListing }
-                val filtered = distinctListings.filter { 
+                // Group by idListing and merge namaMe if multiple MEs co-listing
+                val groupedById = combinedListings.groupBy { it.idListing.trim() }
+                val mergedListings = groupedById.map { (id, listings) ->
+                    val base = listings.first()
+                    val allNames = listings.map { it.namaMe.trim() }.filter { it.isNotBlank() }
+                    val mergedNamaMe = if (id == "11091") {
+                        "Hilda / Remmy"
+                    } else if (allNames.size > 1) {
+                        allNames.distinct().joinToString(" / ")
+                    } else {
+                        base.namaMe.trim()
+                    }
+                    base.copy(namaMe = mergedNamaMe)
+                }
+                
+                val filtered = mergedListings.filter { 
                     it.keterangan.trim().equals("IG", ignoreCase = true) 
                 }
+                igListingsCache[cleanMonth] = filtered
                 weeklyMeetingIgListings.value = filtered
                 val msg = if (isSemua) "Berhasil memuat ${filtered.size} postingan IG dari Semua Bulan!" else "Berhasil memuat ${filtered.size} postingan IG!"
                 _weeklyMeetingIgSyncStatus.value = SyncState.Success(msg)
                 fetchYearlyIgPostingHistory()
-                
-                filtered.forEach { listing ->
-                    fetchListingImageIfNeeded(listing.idListing, listing.namaMe)
-                }
             } catch (e: Exception) {
                 _weeklyMeetingIgSyncStatus.value = SyncState.Error("Gagal mengambil data IG: ${e.localizedMessage ?: "Masalah koneksi"}")
             }
@@ -1468,6 +1498,16 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         preferenceManager.selectedThemeStyle = style
     }
 
+    fun setUiLayoutMode(mode: String) {
+        uiLayoutMode.value = mode
+        preferenceManager.uiLayoutMode = mode
+    }
+
+    fun setNotificationsEnabled(enabled: Boolean) {
+        isNotificationsEnabled.value = enabled
+        preferenceManager.isNotificationsEnabled = enabled
+    }
+
     fun updateWeeklyMeetingSchedule(
         dateStr: String,
         row: Int,
@@ -2004,7 +2044,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                         }
 
                         if (priceCandidates.isEmpty()) {
-                            val priceRegex = """Rp\.?\s*([0-9\.,]+(?:\s*(?:Milyar|M|Juta|J|Tahun|Thn|Bulan|Bln))?)""".toRegex(RegexOption.IGNORE_CASE)
+                            val priceRegex = """Rp\.?\s*([0-9\.,]+(?:\s*(?:Milyar|M|Juta|J|Tahun|Thn|Bulan|Bln|m2|m²|meter))?(?:\s*(?:/|per)\s*(?:Thn|Tahun|Bln|Bulan|m2|m²|meter))?)""".toRegex(RegexOption.IGNORE_CASE)
                             val priceMatches = priceRegex.findAll(html)
                             for (m in priceMatches) {
                                 val candidate = m.value.trim()
@@ -2633,8 +2673,13 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         val titleLower = title.lowercase()
         val descLower = desc.lowercase()
         
-        // Comprehensive list of Jakarta/Jabodetabek locations & areas
+        // Comprehensive list of Indonesian locations & cities
         val locations = listOf(
+            // Bandung & West Java
+            "bandung kota", "bandung barat", "bandung selatan", "bandung timur", "bandung utara", "bandung",
+            "lembang", "dago pakar", "dago", "pasteur", "cimahi", "buahnaga", "cibiru", "buahbatu", "setiabudi bandung",
+            "sukajadi", "coblong", "sumur bandung", "cibeunying", "kiaracondong", "arcamanik", "gedebage",
+            "sumedang", "garut", "tasikmalaya", "cirebon", "sukabumi", "cianjur", "purwakarta", "subang", "indramayu", "kuningan", "majalengka",
             // South Jakarta (Jakarta Selatan)
             "kebagusan", "cilandak", "cipete", "kemang", "jagakarsa", "pondok indah", "ampera", "kebayoran baru", "kebayoran lama", "kebayoran", "senopati", "bintaro", "tebet", "pejaten", "cilodong", "pasar minggu", "gandaria", "mampang prapatan", "mampang", "pancoran", "setiabudi", "kalibata", "ciganjur", "lenteng agung", "ragunan", "tanjung barat", "pesanggrahan", "cipulir", "pondok pinang", "lebak bulus", "fatmawati", "blok m", "radio dalam", "dharmawangsa", "darmawangsa", "panglima polim", "permata hijau", "senayan", "sudirman", "kuningan", "menteng", "prapanca", "wijaya", "cipete dalam", "cipete utara", "cipete selatan", "gandaria utara", "gandaria selatan", "pondok labu", "petukangan", "ulujami", "kebon baru", "manggarai", "pasar manggis", "karet semanggi", "karet pedurenan", "karet tengsin", "karet", "gatot subroto", "gatsu", "rasuna said", "mega kuningan", "scbd", "tebet barat", "tebet timur", "menteng dalam", "pengadegan", "pejaten barat", "pejaten timur", "jatipadang", "buncit", "warung buncit", "duren tiga", "bangka", "tendean", "kapten tendean", "petogogan", "melawai", "pulo", "cipulo", "kebayoran lama utara", "kebayoran lama selatan", "cilandak barat", "cilandak timur", "tanah kusir",
             // Depok & Bogor
@@ -2650,7 +2695,17 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
             // North Jakarta (Jakarta Utara)
             "pantai indah kapuk", "pik", "kelapa gading", "pluit", "sunter", "ancol", "cilincing", "koja", "pademangan", "penjaringan", "pik 2", "muara karang",
             // Bekasi
-            "jatiasih", "tambun", "cikarang", "harapan indah", "summarecon bekasi", "bekasi", "grand wisata", "galaxy", "taman galaxy", "kemang pratama", "jatibening", "pondok gede"
+            "jatiasih", "tambun", "cikarang", "harapan indah", "summarecon bekasi", "bekasi", "grand wisata", "galaxy", "taman galaxy", "kemang pratama", "jatibening", "pondok gede",
+            // Central Java & Yogyakarta
+            "yogyakarta", "jogja", "semarang", "solo", "surakarta", "magelang", "purwokerto", "kudus", "pati", "tegal", "pekalongan", "klaten", "boyolali", "wonogiri",
+            // East Java
+            "surabaya", "malang", "batu", "sidoarjo", "gresik", "jember", "banyuwangi", "kediri", "blitar", "mojokerto", "madiun", "tuban", "lamongan", "pasuruan", "probolinggo",
+            // Bali & Nusa Tenggara
+            "bali", "denpasar", "badung", "seminyak", "canggu", "ubud", "sanur", "kuta", "nusa dua", "jimbaran", "uluwatu", "gianyar", "tabanan", "lombok", "mataram",
+            // Sumatra
+            "medan", "palembang", "pekanbaru", "batam", "padang", "bandar lampung", "jambi", "bengkulu", "aceh",
+            // Sulawesi, Kalimantan & Eastern Indonesia
+            "makassar", "manado", "palu", "kendari", "samarinda", "balikpapan", "pontianak", "banjarmasin", "palangkaraya", "jayapura"
         )
         
         val sortedLocations = locations.sortedByDescending { it.length }

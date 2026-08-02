@@ -1598,9 +1598,122 @@ function getIndonesianDayName(dayNum) {
                             .verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(20.dp)
                     ) {
+                        // 0. UI Layout Mode Configuration
+                        val currentUiMode by viewModel.uiLayoutMode.collectAsStateWithLifecycle()
+
+                        Text(
+                            text = "GAYA DESIGN & LAYOUT UI",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = "Pilih tampilan desain UI yang ingin Anda gunakan. Opsi ini dapat diganti kapan saja tanpa kehilangan data:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    val isClassic = currentUiMode == "CLASSIC"
+                                    val isModern = currentUiMode == "MODERN_PRO"
+
+                                    // Classic Option
+                                    Surface(
+                                        onClick = { viewModel.setUiLayoutMode("CLASSIC") },
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = if (isClassic) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                        border = BorderStroke(
+                                            width = if (isClassic) 2.dp else 1.dp,
+                                            color = if (isClassic) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                        ),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(14.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.PhoneAndroid,
+                                                contentDescription = "Klasik",
+                                                tint = if (isClassic) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Text(
+                                                text = "Desain Klasik",
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontWeight = if (isClassic) FontWeight.Bold else FontWeight.Normal
+                                                ),
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "Tampilan Original",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.outline,
+                                                fontSize = 10.sp
+                                            )
+                                        }
+                                    }
+
+                                    // Modern Pro Option
+                                    Surface(
+                                        onClick = { viewModel.setUiLayoutMode("MODERN_PRO") },
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = if (isModern) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                        border = BorderStroke(
+                                            width = if (isModern) 2.dp else 1.dp,
+                                            color = if (isModern) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                        ),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(14.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.AutoAwesome,
+                                                contentDescription = "Modern Pro",
+                                                tint = if (isModern) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                            Text(
+                                                text = "Modern Pro",
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    fontWeight = if (isModern) FontWeight.Bold else FontWeight.Normal
+                                                ),
+                                                textAlign = TextAlign.Center
+                                            )
+                                            Text(
+                                                text = "Glassmorphic UI",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
                         // 1. Theme Configuration
                         Text(
-                            text = "TEMA TAMPILAN",
+                            text = "TEMA WARNA",
                             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold, letterSpacing = 1.sp),
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -1671,46 +1784,61 @@ function getIndonesianDayName(dayNum) {
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    Row(
+                                    Column(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         val styleOptions = listOf(
                                             Triple("COSMIC_SLATE", "Cosmic Slate", androidx.compose.ui.graphics.Color(0xFFF59E0B)),
                                             Triple("NEON_AMETHYST", "Neon Amethyst", androidx.compose.ui.graphics.Color(0xFFD946EF)),
-                                            Triple("FOREST_EMERALD", "Forest Emerald", androidx.compose.ui.graphics.Color(0xFF10B981))
+                                            Triple("FOREST_EMERALD", "Forest Emerald", androidx.compose.ui.graphics.Color(0xFF10B981)),
+                                            Triple("AURORA_CYBER", "Aurora Cyber", androidx.compose.ui.graphics.Color(0xFF06B6D4)),
+                                            Triple("SUNSET_CORAL", "Sunset Coral", androidx.compose.ui.graphics.Color(0xFFF97316))
                                         )
-                                        styleOptions.forEach { (styleKey, styleName, indicatorColor) ->
-                                            val isSelected = selectedThemeStyle == styleKey
-                                            Surface(
-                                                onClick = { viewModel.setThemeStyle(styleKey) },
-                                                shape = RoundedCornerShape(20.dp),
-                                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                                                border = BorderStroke(
-                                                    width = 1.dp,
-                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                                                ),
-                                                modifier = Modifier.weight(1f)
+                                        styleOptions.chunked(3).forEach { chunk ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.Center
-                                                ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(8.dp)
-                                                            .background(indicatorColor, androidx.compose.foundation.shape.CircleShape)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    Text(
-                                                        text = styleName,
-                                                        style = MaterialTheme.typography.bodySmall.copy(
-                                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                            fontSize = 11.sp
+                                                chunk.forEach { (styleKey, styleName, indicatorColor) ->
+                                                    val isSelected = selectedThemeStyle == styleKey
+                                                    Surface(
+                                                        onClick = { viewModel.setThemeStyle(styleKey) },
+                                                        shape = RoundedCornerShape(20.dp),
+                                                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                                        border = BorderStroke(
+                                                            width = 1.dp,
+                                                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
                                                         ),
-                                                        maxLines = 1
-                                                    )
+                                                        modifier = Modifier.weight(1f)
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.Center
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(8.dp)
+                                                                    .background(indicatorColor, androidx.compose.foundation.shape.CircleShape)
+                                                            )
+                                                            Spacer(modifier = Modifier.width(6.dp))
+                                                            Text(
+                                                                text = styleName,
+                                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                                    fontSize = 11.sp
+                                                                ),
+                                                                maxLines = 1
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                                // Fill empty space if row has fewer than 3 items
+                                                if (chunk.size < 3) {
+                                                    repeat(3 - chunk.size) {
+                                                        Spacer(modifier = Modifier.weight(1f))
+                                                    }
                                                 }
                                             }
                                         }

@@ -225,6 +225,7 @@ class BackgroundSyncService : Service() {
     }
 
     private fun showChatNotification(message: ChatMessage) {
+        if (!preferenceManager.isNotificationsEnabled) return
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = "chat_messages_channel"
 

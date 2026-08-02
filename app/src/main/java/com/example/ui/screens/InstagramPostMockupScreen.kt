@@ -798,6 +798,10 @@ private fun parsePropertyDetails(rawDesc: String, idListing: String, rawPrice: S
         }
     }
     details["harga"] = displayPrice
+        .replace("(?i)\\bper\\s*meter\\b".toRegex(), "/ m2")
+        .replace("(?i)\\bper\\s*m2\\b".toRegex(), "/ m2")
+        .replace("(?i)\\bper\\s*m²\\b".toRegex(), "/ m2")
+        .replace("(?i)/\\s*meter\\b".toRegex(), "/ m2")
 
     // Support combined LT/LB parsing (e.g. LT/LB 936/600 or LT/LB 936 / 600 or LT/LB : 936/600)
     val combinedLtLbRegex = Regex("(?i)\\b(?:lt\\s*/\\s*lb|luas\\s*tanah\\s*/\\s*luas\\s*bangunan|lt\\s*-\\s*lb)\\s*[:\\s-]*(\\d+)\\s*[\\s/-]+\\s*(\\d+)")
@@ -882,14 +886,14 @@ private fun isLineJustNumbersOrStats(line: String): Boolean {
     return false
 }
 
-// Select a valid property title, ensuring it's never just numbers
+// Select a valid property title, ensuring it's never just numbers or status tags (like "IG", "HOT PROPERTY")
 private fun selectPropertyTitle(scrapedTitle: String, judulTask: String, cleanDesc: String, lokasi: String): String {
     var title = scrapedTitle.replace("<[^>]*>".toRegex(), "").trim()
-    if (title.isNotBlank() && !isLineJustNumbersOrStats(title)) {
+    if (title.isNotBlank() && !isLineJustNumbersOrStats(title) && !isStatusTagText(title)) {
         return title
     }
     title = judulTask.replace("<[^>]*>".toRegex(), "").trim()
-    if (title.isNotBlank() && !isLineJustNumbersOrStats(title)) {
+    if (title.isNotBlank() && !isLineJustNumbersOrStats(title) && !isStatusTagText(title)) {
         return title
     }
     val fallbackLines = cleanDesc.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
@@ -1139,8 +1143,30 @@ private fun buildInstagramCaption(
         }
 
         val formatted = formatBulletPoint(line)
-        if (formatted.isNotEmpty() && !parsedBulletPoints.contains(formatted)) {
-            parsedBulletPoints.add(formatted)
+        if (formatted.isNotEmpty()) {
+            val cleanFormatted = formatted.removePrefix("•").trim()
+            val specKey = if (cleanFormatted.contains(":")) cleanFormatted.substringBefore(":").trim().lowercase() else cleanFormatted.lowercase()
+            
+            val isKnownSpecKey = specKey in setOf(
+                "luas tanah", "luas bangunan", "lt", "lb", 
+                "kamar tidur", "kt", "kamar mandi", "km", 
+                "garasi", "carport", "sertifikat", "shm", "menghadap ke arah", "menghadap"
+            )
+            
+            val existingKeys = parsedBulletPoints.map { 
+                val c = it.removePrefix("•").trim()
+                if (c.contains(":")) c.substringBefore(":").trim().lowercase() else c.lowercase()
+            }
+            
+            val isDuplicateKey = isKnownSpecKey && existingKeys.contains(specKey)
+            val isDuplicateText = parsedBulletPoints.any { 
+                it.equals(formatted, ignoreCase = true) || 
+                it.replace("[^a-zA-Z0-9]".toRegex(), "").equals(formatted.replace("[^a-zA-Z0-9]".toRegex(), ""), ignoreCase = true)
+            }
+            
+            if (!isDuplicateKey && !isDuplicateText) {
+                parsedBulletPoints.add(formatted)
+            }
         }
     }
 
@@ -1394,10 +1420,14 @@ private fun getListingCategory(rawPrice: String, rawDesc: String = ""): String {
 
 private fun formatPropertyPriceFull(rawPrice: String, rawDesc: String): String {
     val combined = "$rawPrice\n$rawDesc"
+    val combinedLower = combined.lowercase()
     
+    val isLandProperty = combinedLower.contains("tanah") || combinedLower.contains("kavling") || combinedLower.contains("kav") || combinedLower.contains("land")
+    val isPerMeterPrice = combinedLower.contains("/ m2") || combinedLower.contains("/m2") || combinedLower.contains("/ m²") || combinedLower.contains("/m²") || combinedLower.contains("per m2") || combinedLower.contains("per m²") || combinedLower.contains("per meter") || combinedLower.contains("/ meter")
+
     // 1. Search for explicit Jual & Sewa patterns
-    val jualRegex = Regex("(?i)(?:harga\\s*)?jual[:\\s-]*((?:rp\\.?\\s*)?[0-9\\.,]+\\s*(?:milyar|miliar|m|juta|jt|b|t)?)")
-    val sewaRegex = Regex("(?i)(?:harga\\s*)?sewa[:\\s-]*((?:rp\\.?\\s*)?[0-9\\.,]+\\s*(?:milyar|miliar|m|juta|jt|b|t)?(?:\\s*/\\s*(?:thn|tahun|bln|bulan))?)")
+    val jualRegex = Regex("(?i)(?:harga\\s*)?jual[:\\s-]*((?:rp\\.?\\s*)?[0-9\\.,]+\\s*(?:milyar|miliar|m|juta|jt|b|t)?(?:\\s*(?:/|per)\\s*(?:m2|m²|meter|thn|tahun|bln|bulan))?)")
+    val sewaRegex = Regex("(?i)(?:harga\\s*)?sewa[:\\s-]*((?:rp\\.?\\s*)?[0-9\\.,]+\\s*(?:milyar|miliar|m|juta|jt|b|t)?(?:\\s*(?:/|per)\\s*(?:thn|tahun|bln|bulan))?)")
 
     val jualMatch = jualRegex.find(combined)
     val sewaMatch = sewaRegex.find(combined)
@@ -1421,17 +1451,17 @@ private fun formatPropertyPriceFull(rawPrice: String, rawDesc: String): String {
 
     // 2. If explicit Jual & Sewa matched
     if (salePriceFormatted != null && rentPriceFormatted != null) {
-        return "Harga Jual: $salePriceFormatted\nHarga Sewa: $rentPriceFormatted"
+        return "Harga : $salePriceFormatted\nHarga Sewa : $rentPriceFormatted"
     }
-    if (salePriceFormatted != null) {
-        return "Harga Jual: $salePriceFormatted"
+    if (salePriceFormatted != null && rentPriceFormatted == null && !rawPrice.contains("sewa", ignoreCase = true) && !rawDesc.contains("sewa", ignoreCase = true)) {
+        return "Harga : $salePriceFormatted"
     }
-    if (rentPriceFormatted != null) {
-        return "Harga Sewa: $rentPriceFormatted"
+    if (rentPriceFormatted != null && salePriceFormatted == null) {
+        return "Harga Sewa : $rentPriceFormatted"
     }
 
     // 3. Fallback: Parse multiple price values from rawPrice or combined text
-    val rpRegex = """(?:Rp\.?\s*)?[0-9\.,]+\s*(?:Milyar|Miliar|M|Juta|Jt)(?:\s*/\s*(?:Thn|Tahun|Bln|Bulan))?""".toRegex(RegexOption.IGNORE_CASE)
+    val rpRegex = """(?:Rp\.?\s*)?[0-9\.,]+\s*(?:Milyar|Miliar|M|Juta|Jt)(?:\s*(?:/|per)\s*(?:Thn|Tahun|Bln|Bulan|m2|m²|meter))?""".toRegex(RegexOption.IGNORE_CASE)
     val matches = rpRegex.findAll(rawPrice.ifBlank { rawDesc }).map { it.value.trim() }.distinct().toList()
 
     if (matches.size >= 2) {
@@ -1440,13 +1470,13 @@ private fun formatPropertyPriceFull(rawPrice: String, rawDesc: String): String {
         for (m in matches) {
             val valNum = parsePriceStringToValue(m)
             if (isRentPriceValue(valNum, m)) {
-                rentStr = formatSinglePriceCompact(m).replace("Harga ", "")
+                rentStr = formatSinglePriceCompact(m).replace("Harga ", "").replace("Harga", "").trim()
             } else {
-                saleStr = formatSinglePriceCompact(m).replace("Harga ", "")
+                saleStr = formatSinglePriceCompact(m).replace("Harga ", "").replace("Harga", "").trim()
             }
         }
         if (saleStr != null && rentStr != null) {
-            return "Harga Jual: $saleStr\nHarga Sewa: $rentStr"
+            return "Harga : $saleStr\nHarga Sewa : $rentStr"
         }
         if (matches.size > 1) {
             return matches.map { formatSinglePriceCompact(it) }.joinToString(" / ")
@@ -1454,16 +1484,31 @@ private fun formatPropertyPriceFull(rawPrice: String, rawDesc: String): String {
     }
 
     if (matches.size == 1) {
-        return formatSinglePriceCompact(matches.first())
+        var single = formatSinglePriceCompact(matches.first())
+        if ((isLandProperty || isPerMeterPrice) && !single.contains("/ m2") && !single.contains("/m2")) {
+            single += " / m2"
+        }
+        val valNum = parsePriceStringToValue(matches.first())
+        return if (isRentPriceValue(valNum, matches.first()) || rawPrice.contains("sewa", ignoreCase = true) || rawDesc.contains("sewa", ignoreCase = true)) {
+            val cleanSingle = single.replace("Harga ", "").replace("Harga", "").trim()
+            "Harga Sewa : $cleanSingle"
+        } else {
+            val cleanSingle = single.replace("Harga ", "").replace("Harga", "").trim()
+            "Harga : $cleanSingle"
+        }
     }
 
-    return formatPriceCompact(rawPrice.ifBlank { "Hubungi Agent" })
+    var fallback = formatPriceCompact(rawPrice.ifBlank { "Hubungi Agent" })
+    if ((isLandProperty || isPerMeterPrice) && !fallback.contains("/ m2") && !fallback.contains("/m2") && !fallback.contains("Hubungi")) {
+        fallback += " / m2"
+    }
+    return if (fallback.startsWith("Harga ")) fallback.replace("Harga ", "Harga : ") else "Harga : $fallback"
 }
 
 private fun formatPriceCompact(raw: String): String {
     if (raw.isBlank()) return "Harga Hubungi Agent"
     
-    val rpRegex = """Rp\.?\s*[0-9\.,]+(?:\s*(?:Milyar|M|Juta|J|Tahun|Thn|Bulan|Bln))?""".toRegex(RegexOption.IGNORE_CASE)
+    val rpRegex = """Rp\.?\s*[0-9\.,]+(?:\s*(?:Milyar|M|Juta|J|Tahun|Thn|Bulan|Bln|m2|m²|meter))?(?:\s*(?:/|per)\s*(?:Thn|Tahun|Bln|Bulan|m2|m²|meter))?""".toRegex(RegexOption.IGNORE_CASE)
     val matches = rpRegex.findAll(raw).map { it.value.trim() }.toList()
     
     if (matches.size > 1) {
@@ -1475,17 +1520,24 @@ private fun formatPriceCompact(raw: String): String {
 
 private fun formatSinglePriceCompact(raw: String): String {
     val clean = raw.replace("(?i)harga jual".toRegex(), "").replace("(?i)harga".toRegex(), "").replace(":", "").trim()
+    val lower = raw.lowercase()
+
+    val isPerMeter = lower.contains("/ m2") || lower.contains("/m2") || 
+                    lower.contains("/ m²") || lower.contains("/m²") || 
+                    lower.contains("per m2") || lower.contains("per m²") || 
+                    lower.contains("per meter") || lower.contains("/ meter")
+
+    val suffix = when {
+        lower.contains("tahun") || lower.contains("thn") || lower.contains("/th") -> " / Thn"
+        lower.contains("bulan") || lower.contains("bln") || lower.contains("/bln") -> " / Bln"
+        isPerMeter -> " / m2"
+        else -> ""
+    }
+
     val digitsOnly = clean.replace("[^\\d]".toRegex(), "")
     if (digitsOnly.length >= 7) {
         val longVal = digitsOnly.toLongOrNull()
         if (longVal != null) {
-            val suffix = if (clean.contains("tahun", ignoreCase = true) || clean.contains("thn", ignoreCase = true)) {
-                " / Thn"
-            } else if (clean.contains("bulan", ignoreCase = true) || clean.contains("bln", ignoreCase = true)) {
-                " / Bln"
-            } else {
-                ""
-            }
             if (longVal >= 1_000_000_000L) {
                 val mVal = longVal.toDouble() / 1_000_000_000.0
                 val formatted = if (mVal % 1.0 == 0.0) mVal.toInt().toString() else String.format(java.util.Locale.US, "%.2f", mVal).trimEnd('0').trimEnd('.')
@@ -1497,14 +1549,54 @@ private fun formatSinglePriceCompact(raw: String): String {
             }
         }
     }
+
     if (clean.contains("M", ignoreCase = true) || clean.contains("Jt", ignoreCase = true) || clean.contains("Miliar", ignoreCase = true)) {
-        val cleanM = clean.uppercase().replace("MILAR", "M").replace("MILIAR", "M").replace("MILYAR", "M").replace("JUTA", "Jt")
-        return "Harga ${if (!cleanM.startsWith("Rp")) "Rp " else ""}$cleanM"
+        var cleanM = clean.uppercase()
+            .replace("MILAR", "M").replace("MILIAR", "M").replace("MILYAR", "M").replace("JUTA", "Jt")
+            .replace("PER METER", "").replace("PER M2", "").replace("PER M²", "")
+            .replace("/ M2", "").replace("/M2", "").replace("/ M²", "").replace("/M²", "")
+            .replace("/ METER", "").replace("/METER", "").trim()
+            
+        if (!cleanM.startsWith("Rp", ignoreCase = true)) {
+            cleanM = "Rp $cleanM"
+        }
+        cleanM = cleanM.replace("JT", "Jt")
+        val hasSuffix = cleanM.contains("/ THN") || cleanM.contains("/ BLN") || cleanM.contains("/ M2")
+        val finalSuffix = if (hasSuffix) "" else suffix
+        return "Harga $cleanM$finalSuffix"
     }
-    return "Harga $clean"
+
+    val hasSuffix = clean.lowercase().contains("/ m2") || clean.lowercase().contains("/m2") || clean.lowercase().contains("/ thn") || clean.lowercase().contains("/ bln")
+    val finalSuffix = if (hasSuffix) "" else suffix
+    return "Harga $clean$finalSuffix"
+        .replace("(?i)\\bper\\s*meter\\b".toRegex(), "/ m2")
+        .replace("(?i)\\bper\\s*m2\\b".toRegex(), "/ m2")
+        .replace("(?i)\\bper\\s*m²\\b".toRegex(), "/ m2")
+        .replace("(?i)/\\s*meter\\b".toRegex(), "/ m2")
 }
 
-private fun extractPropertyLocation(descLower: String, titleLower: String, scrapedTitleLower: String): String {
+fun isStatusTagText(text: String): Boolean {
+    val clean = text.trim().uppercase()
+    return clean == "IG" || clean == "HOT PROPERTY" || clean == "FOTO ULANG" ||
+           clean == "IG & HOT PROPERTY" || clean == "DONE" || clean == "PENDING" ||
+           clean == "UP FOTO" || clean == "EDIT VIDEO" || clean == "GARIS TANAH" ||
+           clean.startsWith("IG ") || clean.endsWith(" IG") || clean == "AKSI"
+}
+
+val LOCATION_BLACKLIST = setOf(
+    "PEMBANTU", "UTAMA", "KOSONG", "LANTAI", "RUMAH", "TANAH", "HARGA", "DEKAT", "LOKASI",
+    "FOTO", "JUAL", "SEWA", "READY", "LENGKAP", "BEBAS", "BANJIR", "STRATEGIS", "MINIMALIS",
+    "HOEK", "HOOK", "DAPUR", "KAMAR", "MANDI", "TIDUR", "GARASI", "CARPORT", "TAMAN",
+    "KAMPUS", "STASIUN", "AKSES", "TOL", "JALAN", "GANG", "BLOK", "NOMOR", "NO", "MILIK",
+    "SHM", "IMB", "LISTRIK", "AIR", "PAM", "JETPUMP", "POOL", "KOLAM", "RENANG", "BARU"
+)
+
+fun extractPropertyLocation(descLower: String, titleLower: String, scrapedTitleLower: String, sheetLokasi: String = ""): String {
+    val cleanSheet = sheetLokasi.trim().uppercase()
+    if (cleanSheet.isNotBlank() && !isStatusTagText(cleanSheet) && cleanSheet != "UNKNOWN" && cleanSheet !in LOCATION_BLACKLIST) {
+        return cleanSheet
+    }
+
     for (loc in SORTED_LOCATIONS) {
         if (titleLower.contains(loc) || scrapedTitleLower.contains(loc)) {
             return loc.uppercase()
@@ -1517,24 +1609,51 @@ private fun extractPropertyLocation(descLower: String, titleLower: String, scrap
         }
     }
 
-    return "JAKARTA SELATAN"
+    // Regex match for "di [Kota]", "daerah [Kota]", "lokasi [Kota]", "area [Kota]"
+    val diPattern = """(?:di|daerah|lokasi|kawasan|area|kota|kab\.?)\s+([A-Za-z]+(?:\s+[A-Za-z]+)?)""".toRegex(RegexOption.IGNORE_CASE)
+    val diMatch = diPattern.find("$titleLower $scrapedTitleLower $descLower")
+    if (diMatch != null) {
+        val candidate = diMatch.groupValues[1].trim().uppercase()
+        val isBlacklisted = LOCATION_BLACKLIST.any { candidate.contains(it) }
+        if (candidate.length > 2 && !isStatusTagText(candidate) && !isBlacklisted) {
+            return candidate
+        }
+    }
+
+    if (cleanSheet.isNotBlank() && cleanSheet !in LOCATION_BLACKLIST) return cleanSheet
+    return "INDONESIA"
 }
 
 private val SORTED_LOCATIONS = listOf(
+    // Bandung & West Java
+    "bandung kota", "bandung barat", "bandung selatan", "bandung timur", "bandung utara", "bandung",
+    "lembang", "dago pakar", "dago", "pasteur", "cimahi", "buahnaga", "cibiru", "buahbatu", "setiabudi bandung",
+    "sukajadi", "coblong", "sumur bandung", "cibeunying", "kiaracondong", "arcamanik", "gedebage",
+    "sumedang", "garut", "tasikmalaya", "cirebon", "sukabumi", "cianjur", "purwakarta", "subang", "indramayu", "kuningan", "majalengka",
     // South Jakarta (Jakarta Selatan)
-    "kebagusan", "cilandak", "cipete", "kemang", "jagakarsa", "pondok indah", "ampera", "kebayoran baru", "kebayoran lama", "kebayoran", "senopati", "bintaro", "tebet", "pejaten", "cilodong", "pasar minggu", "gandaria", "mampang prapatan", "mampang", "pancoran", "setiabudi", "kalibata", "ciganjur", "lenteng agung", "ragunan", "tanjung barat", "pesanggrahan", "cipulir", "pondok pinang", "lebak bulus", "fatmawati", "blok m", "radio dalam", "dharmawangsa", "darmawangsa", "panglima polim", "permata hijau", "senayan", "sudirman", "kuningan", "menteng", "prapanca", "wijaya", "cipete dalam", "cipete utara", "cipete selatan", "gandaria utara", "gandaria selatan", "pondok labu", "petukangan", "ulujami", "kebon baru", "manggarai", "pasar manggis", "karet semanggi", "karet pedurenan", "karet tengsin", "karet", "gatot subroto", "gatsu", "rasuna said", "mega kuningan", "scbd", "tebet barat", "tebet timur", "menteng dalam", "pengadegan", "pejaten barat", "pejaten timur", "jatipadang", "buncit", "warung buncit", "duren tiga", "bangka", "tendean", "kapten tendean", "petogogan", "melawai", "pulo", "cipulo", "kebayoran lama utara", "kebayoran lama selatan", "cilandak barat", "cilandak timur", "tanah kusir",
+    "tb simatupang", "simatupang", "kebagusan", "cilandak", "cipete", "kemang", "jagakarsa", "pondok indah", "ampera", "kebayoran baru", "kebayoran lama", "kebayoran", "senopati", "bintaro", "tebet", "pejaten", "cilodong", "pasar minggu", "gandaria", "mampang prapatan", "mampang", "pancoran", "setiabudi", "kalibata", "ciganjur", "lenteng agung", "ragunan", "tanjung barat", "pesanggrahan", "cipulir", "pondok pinang", "lebak bulus", "fatmawati", "blok m", "radio dalam", "dharmawangsa", "darmawangsa", "panglima polim", "permata hijau", "senayan", "sudirman", "kuningan", "menteng", "prapanca", "wijaya", "cipete dalam", "cipete utara", "cipete selatan", "gandaria utara", "gandaria selatan", "pondok labu", "petukangan", "ulujami", "kebon baru", "manggarai", "pasar manggis", "karet semanggi", "karet pedurenan", "karet tengsin", "karet", "gatot subroto", "gatsu", "rasuna said", "mega kuningan", "scbd", "tebet barat", "tebet timur", "menteng dalam", "pengadegan", "pejaten barat", "pejaten timur", "jatipadang", "buncit", "warung buncit", "duren tiga", "bangka", "tendean", "kapten tendean", "petogogan", "melawai", "pulo", "cipulo", "kebayoran lama utara", "kebayoran lama selatan", "cilandak barat", "cilandak timur", "tanah kusir",
+    // East Jakarta (Jakarta Timur)
+    "cipinang melayu", "cipinang indah", "cipinang elok", "cipinang muara", "cipinang cempedak", "cipinang besar", "cipinang", "rawamangun", "duren sawit", "pulomas", "ciracas", "kramat jati", "makasar", "matraman", "pasar rebo", "cakung", "cipayung", "jatinegara", "kayu putih", "pondok kelapa", "pondok bambu", "klender", "condet", "halim", "cililitan",
     // Depok & Bogor
     "cinere", "depok", "sawangan", "margonda", "cimanggis", "limo", "beji", "pancoran mas", "sentul", "bogor", "cibubur", "bedahan", "beji timur", "gandul", "pangkalan jati", "krukut", "meruyung", "grogol", "mampang depok", "depok jaya", "sukmajaya", "tapos", "harjamukti", "bojonggede", "citayam", "sentul city", "tanah sareal", "bogor utara", "bogor selatan", "bogor timur", "bogor barat",
     // Tangerang / South Tangerang (Tangerang Selatan)
     "bsd city", "bsd", "serpong", "alam sutera", "gading serpong", "karawaci", "ciputat", "pamulang", "bintaro jaya", "ciledug", "tangerang", "serpong utara", "bintaro sektor 1", "bintaro sektor 2", "bintaro sektor 3", "bintaro sektor 4", "bintaro sektor 5", "bintaro sektor 6", "bintaro sektor 7", "bintaro sektor 8", "bintaro sektor 9", "graha raya", "pondok cabe", "cirendeu", "rempoa", "jombang", "sawah baru", "serua", "setu", "cisauk", "pagedangan", "legok", "curug", "cikokol", "tangerang kota", "larangan", "pondok aren",
     // West Jakarta (Jakarta Barat)
     "puri indah", "kembangan", "kebon jeruk", "meruya", "tanjung duren", "tomang", "grogol", "slipi", "palmerah", "kalideres", "cengkareng", "meruya utara", "meruya selatan", "kembangan utara", "kembangan selatan", "permata buana", "taman aries", "intercon", "semesta", "kemanggisan", "jelambar", "kapuk",
-    // East Jakarta (Jakarta Timur)
-    "rawamangun", "duren sawit", "pulomas", "ciracas", "kramat jati", "makasar", "matraman", "pasar rebo", "cakung", "cipayung", "jatinegara", "kayu putih", "pondok kelapa", "pondok bambu", "klender", "condet", "halim", "cililitan",
     // Central Jakarta (Jakarta Pusat)
     "salemba", "tanah abang", "gambir", "kemayoran", "cempaka putih", "sawah besar", "cikini", "gondangdia", "senen", "benhil", "bendungan hilir", "petamburan",
     // North Jakarta (Jakarta Utara)
     "pantai indah kapuk", "pik", "kelapa gading", "pluit", "sunter", "ancol", "cilincing", "koja", "pademangan", "penjaringan", "pik 2", "muara karang",
     // Bekasi
-    "jatiasih", "tambun", "cikarang", "harapan indah", "summarecon bekasi", "bekasi", "grand wisata", "galaxy", "taman galaxy", "kemang pratama", "jatibening", "pondok gede"
+    "jatiasih", "tambun", "cikarang", "harapan indah", "summarecon bekasi", "bekasi", "grand wisata", "galaxy", "taman galaxy", "kemang pratama", "jatibening", "pondok gede",
+    // Central Java & Yogyakarta
+    "yogyakarta", "jogja", "semarang", "solo", "surakarta", "magelang", "purwokerto", "kudus", "pati", "tegal", "pekalongan", "klaten", "boyolali", "wonogiri",
+    // East Java
+    "surabaya", "malang", "batu", "sidoarjo", "gresik", "jember", "banyuwangi", "kediri", "blitar", "mojokerto", "madiun", "tuban", "lamongan", "pasuruan", "probolinggo",
+    // Bali & Nusa Tenggara
+    "bali", "denpasar", "badung", "seminyak", "canggu", "ubud", "sanur", "kuta", "nusa dua", "jimbaran", "uluwatu", "gianyar", "tabanan", "lombok", "mataram",
+    // Sumatra
+    "medan", "palembang", "pekanbaru", "batam", "padang", "bandar lampung", "jambi", "bengkulu", "aceh",
+    // Sulawesi, Kalimantan & Eastern Indonesia
+    "makassar", "manado", "palu", "kendari", "samarinda", "balikpapan", "pontianak", "banjarmasin", "palangkaraya", "jayapura"
 ).sortedByDescending { it.length }

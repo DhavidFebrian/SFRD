@@ -176,16 +176,35 @@ fun TaskDashboardScreen(
     val uploadIgList = remember(weeklyMeetingIgListings, searchQuery, selectedUploadIgDateFilter) {
         weeklyMeetingIgListings.map { listing ->
             val isPosted = listing.postingIg.trim().lowercase() in listOf("done", "ya", "yes", "true", "✔", "1")
+            val cleanId = listing.idListing.trim()
+            val meName = if (cleanId == "11091" && !listing.namaMe.contains("Hilda", ignoreCase = true)) {
+                "Hilda / Remmy"
+            } else listing.namaMe.trim()
+
+            val scrapedTitle = listingTitleMap[cleanId]?.trim() ?: ""
+            val scrapedDesc = listingDescMap[cleanId]?.trim() ?: ""
+            val notesLoc = extractPropertyLocation(listing.catatan.lowercase(), "", scrapedTitle.lowercase())
+            val parsedLoc = if (notesLoc != "INDONESIA" && notesLoc.isNotBlank()) {
+                notesLoc.split(" ").joinToString(" ") { it.replaceFirstChar { c -> if (c.isLowerCase()) c.titlecase(Locale("id", "ID")) else c.toString() } }
+            } else ""
+
+            val taskJudul = when {
+                scrapedTitle.isNotBlank() -> scrapedTitle
+                parsedLoc.isNotBlank() -> parsedLoc
+                listing.catatan.trim().isNotBlank() && !isStatusTagText(listing.catatan) -> listing.catatan.trim()
+                else -> "Properti #$cleanId"
+            }
+
             com.example.data.EditFotoTask(
                 id = listing.no,
                 no = listing.no,
-                idListing = listing.idListing.trim(),
-                namaMe = listing.namaMe.trim(),
+                idListing = cleanId,
+                namaMe = meName,
                 postingIg = isPosted,
                 jadwalPosting = listing.jadwalPosting.trim(),
                 editNotes = listing.catatan.trim(),
                 done = isPosted,
-                judul = listing.keterangan.trim(),
+                judul = taskJudul,
                 source = "${listing.date}|||${listing.colIndex}"
             )
         }.filter { task ->
@@ -410,57 +429,113 @@ fun TaskDashboardScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp)
                 ) {
-                    // Custom Segmented Control Tab Row (not Scrollable so it splits screen width perfectly)
-                    TabRow(
-                        selectedTabIndex = selectedSubTab.coerceIn(0, 1),
-                        containerColor = Color.Transparent,
-                        indicator = { tabPositions ->
-                            val currentIdx = selectedSubTab.coerceIn(0, 1)
-                            if (currentIdx < tabPositions.size) {
-                                TabRowDefaults.SecondaryIndicator(
-                                    Modifier.tabIndicatorOffset(tabPositions[currentIdx]),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        },
-                        divider = {}
+                    // SaaS Modern Segmented Control Container
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        shape = RoundedCornerShape(100.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                     ) {
-                        Tab(
-                            selected = selectedSubTab == 0,
-                            onClick = { selectedSubTab = 0 },
-                            text = {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            // Tab 0: Foto Ulang
+                            val isTab0 = selectedSubTab == 0
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(100.dp))
+                                    .background(
+                                        if (isTab0) MaterialTheme.colorScheme.primaryContainer
+                                        else Color.Transparent
+                                    )
+                                    .clickable { selectedSubTab = 0 }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Icon(Icons.Default.CameraAlt, contentDescription = null, modifier = Modifier.size(12.dp))
-                                    Text(
-                                        text = "Foto Ulang (${taskFotoUlangList.size})",
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp)
+                                    Icon(
+                                        imageVector = Icons.Default.CameraAlt,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = if (isTab0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                    Text(
+                                        text = "Foto Ulang",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontWeight = if (isTab0) FontWeight.ExtraBold else FontWeight.Medium,
+                                            fontSize = 12.sp
+                                        ),
+                                        color = if (isTab0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isTab0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                    ) {
+                                        Text(
+                                            text = taskFotoUlangList.size.toString(),
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                                            color = if (isTab0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                        )
+                                    }
                                 }
                             }
-                        )
-                        Tab(
-                            selected = selectedSubTab == 1,
-                            onClick = { selectedSubTab = 1 },
-                            text = {
+
+                            // Tab 1: Edit Foto
+                            val isTab1 = selectedSubTab == 1
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(100.dp))
+                                    .background(
+                                        if (isTab1) MaterialTheme.colorScheme.primaryContainer
+                                        else Color.Transparent
+                                    )
+                                    .clickable { selectedSubTab = 1 }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(12.dp))
-                                    Text(
-                                        text = "Edit Foto ($editFotoNotDoneCount)",
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp)
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = if (isTab1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                    Text(
+                                        text = "Edit Foto",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            fontWeight = if (isTab1) FontWeight.ExtraBold else FontWeight.Medium,
+                                            fontSize = 12.sp
+                                        ),
+                                        color = if (isTab1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = if (isTab1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                    ) {
+                                        Text(
+                                            text = editFotoNotDoneCount.toString(),
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
+                                            color = if (isTab1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                        )
+                                    }
                                 }
                             }
-                        )
+                        }
                     }
                 }
             }
@@ -786,7 +861,7 @@ fun TaskDashboardScreen(
                                                         .size(48.dp)
                                                         .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f), RoundedCornerShape(10.dp))
                                                         .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
-                                                        .clickable { viewModel.fetchWeeklyMeetingIgListings(selectedUploadIgMonth) },
+                                                        .clickable { viewModel.fetchWeeklyMeetingIgListings(selectedUploadIgMonth, forceRefresh = true) },
                                                     contentAlignment = Alignment.Center
                                                 ) {
                                                     if (igSyncStatus is SyncState.Loading) {

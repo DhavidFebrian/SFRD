@@ -8,6 +8,8 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -110,6 +112,8 @@ class MainActivity : ComponentActivity() {
             val viewmodel: ScheduleViewModel = viewModel()
             val isDarkTheme by viewmodel.isDarkTheme.collectAsState()
             val themeStyle by viewmodel.selectedThemeStyle.collectAsState()
+            val uiLayoutMode by viewmodel.uiLayoutMode.collectAsState()
+            val isNotificationsEnabled by viewmodel.isNotificationsEnabled.collectAsState()
             
             MyApplicationTheme(darkTheme = isDarkTheme, themeStyle = themeStyle) {
                 var currentTab by remember { mutableStateOf(TabItem.DASHBOARD) }
@@ -374,6 +378,54 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                             )
                             
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                            // Notification Toggle Item inside Drawer Menu (Pojok Kiri Atas Dashboard)
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isNotificationsEnabled) Icons.Default.NotificationsActive else Icons.Default.NotificationsOff,
+                                            contentDescription = null,
+                                            tint = if (isNotificationsEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        Column {
+                                            Text(
+                                                text = "Notifikasi Aplikasi",
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = if (isNotificationsEnabled) "Aktif" else "Dimatikan",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = if (isNotificationsEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                    }
+                                    Switch(
+                                        checked = isNotificationsEnabled,
+                                        onCheckedChange = { viewmodel.setNotificationsEnabled(it) }
+                                    )
+                                }
+                            }
+                            
                             Spacer(Modifier.weight(1f))
                             Text(
                                 "Versi V5.8",
@@ -388,30 +440,54 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize(),
                         contentWindowInsets = WindowInsets(0, 0, 0, 0),
                         bottomBar = {
-                            NavigationBar(
-                                modifier = Modifier.testTag("bottom_nav_bar"),
-                                windowInsets = WindowInsets.navigationBars
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                shape = RoundedCornerShape(24.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+                                tonalElevation = 8.dp,
+                                shadowElevation = 12.dp,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
+                                )
                             ) {
-                                val selectedCat by viewmodel.selectedCategory.collectAsState()
-                                TabItem.values().filter { it != TabItem.PENGATURAN && it != TabItem.ANALYTIC && it != TabItem.ABSEN_WEEKLY_MEETING }.forEach { tab ->
-                                    val isSelected = currentTab == tab
-                                    NavigationBarItem(
-                                        selected = isSelected,
-                                        onClick = { 
-                                            currentTab = tab
-                                            if (tab == TabItem.TAMBAH) {
-                                                viewmodel.resetForm()
-                                            }
-                                        },
-                                        icon = {
-                                            Icon(
-                                                imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
-                                                contentDescription = tab.title
-                                            )
-                                        },
-                                        label = { Text(tab.title) },
-                                        modifier = Modifier.testTag(tab.tag)
-                                    )
+                                NavigationBar(
+                                    containerColor = Color.Transparent,
+                                    modifier = Modifier.testTag("bottom_nav_bar"),
+                                    windowInsets = WindowInsets(0, 0, 0, 0)
+                                ) {
+                                    TabItem.values().filter { it != TabItem.PENGATURAN && it != TabItem.ANALYTIC && it != TabItem.ABSEN_WEEKLY_MEETING }.forEach { tab ->
+                                        val isSelected = currentTab == tab
+                                        NavigationBarItem(
+                                            selected = isSelected,
+                                            onClick = { 
+                                                currentTab = tab
+                                                if (tab == TabItem.TAMBAH) {
+                                                    viewmodel.resetForm()
+                                                }
+                                            },
+                                            icon = {
+                                                Icon(
+                                                    imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
+                                                    contentDescription = tab.title,
+                                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            },
+                                            label = { 
+                                                Text(
+                                                    text = tab.title,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                    style = MaterialTheme.typography.labelSmall
+                                                ) 
+                                            },
+                                            colors = NavigationBarItemDefaults.colors(
+                                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                                            ),
+                                            modifier = Modifier.testTag(tab.tag)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -455,10 +531,16 @@ class MainActivity : ComponentActivity() {
                                             )
                                             if (u.changelog.isNotBlank()) {
                                                 Card(
-                                                    modifier = Modifier.fillMaxWidth(),
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .heightIn(max = 220.dp),
                                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                                                 ) {
-                                                    Column(modifier = Modifier.padding(12.dp)) {
+                                                    Column(
+                                                        modifier = Modifier
+                                                            .padding(12.dp)
+                                                            .verticalScroll(rememberScrollState())
+                                                    ) {
                                                         Text(
                                                             text = "Catatan Rilis:",
                                                             style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
