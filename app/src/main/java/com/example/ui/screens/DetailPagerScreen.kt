@@ -1305,7 +1305,7 @@ fun PageDetailHome(
     } else if (rawDesc.isBlank()) {
         "Deskripsi tidak tersedia di websiteListing. Silakan hubungi agent terkait."
     } else {
-        rawDesc
+        cleanListingDescription(rawDesc)
             .replace("\r", "")
             .replace("(?m)^[ \t]*\r?\n".toRegex(), "\n")
             .replace(" {2,}".toRegex(), " ")

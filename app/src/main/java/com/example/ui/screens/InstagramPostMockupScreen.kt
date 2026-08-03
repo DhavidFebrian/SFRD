@@ -886,33 +886,44 @@ private fun isLineJustNumbersOrStats(line: String): Boolean {
     return false
 }
 
-// Select a valid property title, ensuring it's never just numbers or status tags (like "IG", "HOT PROPERTY")
+// Select a valid property title, preferring rich headlines written in Deskripsi Lengkap over generic web titles
 private fun selectPropertyTitle(scrapedTitle: String, judulTask: String, cleanDesc: String, lokasi: String): String {
+    // 1. PRIORITY 1: Prefer rich title line inside Deskripsi Lengkap
+    if (cleanDesc.isNotBlank()) {
+        val lines = cleanDesc.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+        for (line in lines) {
+            val lower = line.lowercase()
+            val isSpecKey = lower.startsWith("luas tanah") || lower.startsWith("lt") ||
+                    lower.startsWith("luas bangunan") || lower.startsWith("lb") ||
+                    lower.startsWith("kamar tidur") || lower.startsWith("kt") ||
+                    lower.startsWith("kamar mandi") || lower.startsWith("km") ||
+                    lower.startsWith("sertifikat") || lower.startsWith("shm") ||
+                    lower.startsWith("garasi") || lower.startsWith("carport") ||
+                    lower.startsWith("dimensi") || lower.startsWith("menghadap") ||
+                    lower.startsWith("harga") || lower.startsWith("listing id") ||
+                    lower.startsWith("dengan spek") || lower.startsWith("dengan spesifikasi") ||
+                    lower.contains("deskripsi lengkap") || lower.contains("ray white") ||
+                    lower.contains("hubungi kami") || lower.contains("contact us")
+
+            if (!isSpecKey && !isLineJustNumbersOrStats(line) && !isStatusTagText(line) && line.length >= 5) {
+                return line
+            }
+        }
+    }
+
+    // 2. PRIORITY 2: Fallback to scraped web title if no rich title in description
     var title = scrapedTitle.replace("<[^>]*>".toRegex(), "").trim()
     if (title.isNotBlank() && !isLineJustNumbersOrStats(title) && !isStatusTagText(title)) {
         return title
     }
+
+    // 3. PRIORITY 3: Fallback to task title
     title = judulTask.replace("<[^>]*>".toRegex(), "").trim()
     if (title.isNotBlank() && !isLineJustNumbersOrStats(title) && !isStatusTagText(title)) {
         return title
     }
-    val fallbackLines = cleanDesc.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-    for (line in fallbackLines) {
-        val lower = line.lowercase()
-        if (line.isNotEmpty() && 
-            !lower.startsWith("dengan spek") && 
-            !lower.startsWith("listing id") && 
-            !lower.startsWith("luas tanah") && 
-            !lower.startsWith("luas bangunan") && 
-            !lower.contains("deskripsi lengkap") &&
-            !lower.contains("for sale") &&
-            !lower.contains("hubungi") &&
-            !lower.contains("contact") &&
-            !isLineJustNumbersOrStats(line)
-        ) {
-            return line
-        }
-    }
+
+    // 4. Default fallback
     val cleanLokasi = lokasi.lowercase().split(" ").joinToString(" ") { it.replaceFirstChar { char -> char.uppercase() } }
     return "Rumah 2 Lantai di Lokasi Strategis Area $cleanLokasi"
 }
@@ -963,15 +974,19 @@ private fun formatBulletPoint(line: String): String {
     if (lower.startsWith("luas tanah") || lower.startsWith("lt")) {
         var value = cleanedLine.substringAfter(":").trim()
         if (value.isBlank() || value == cleanedLine) {
-            value = cleanedLine.replace("(?i)luas\\s*tanah".toRegex(), "").replace("(?i)lt".toRegex(), "").trim()
+            value = cleanedLine.replace("(?i)luas\\s*tanah".toRegex(), "").replace("(?i)\\blt\\b".toRegex(), "").trim()
         }
-        val digits = value.replace("[^\\d\\s\\+\\.,mMyY2²]".toRegex(), "").trim()
-        val displayVal = if (digits.isBlank()) "315" else digits
-        var formattedVal = displayVal.replace("(?i)m2".toRegex(), "m2").replace("(?i)m²".toRegex(), "m2")
-        if (!formattedVal.lowercase().endsWith("m2")) {
-            formattedVal = "$formattedVal m2"
+        val cleanValue = value.replace("(?i)m2".toRegex(), "")
+                             .replace("(?i)m²".toRegex(), "")
+                             .replace("(?i)meter".toRegex(), "")
+                             .trim()
+
+        val numberMatches = Regex("\\d+(?:[\\.,]\\d+)?").findAll(cleanValue).map { it.value }.toList()
+        val formattedVal = when {
+            numberMatches.size >= 2 -> "${numberMatches[0]} - ${numberMatches[1]} m2"
+            numberMatches.size == 1 -> "${numberMatches[0]} m2"
+            else -> "315 m2"
         }
-        formattedVal = formattedVal.replace("\\s+".toRegex(), " ")
         return "• Luas Tanah : $formattedVal"
     }
     
@@ -979,15 +994,19 @@ private fun formatBulletPoint(line: String): String {
     if (lower.startsWith("luas bangunan") || lower.startsWith("lb")) {
         var value = cleanedLine.substringAfter(":").trim()
         if (value.isBlank() || value == cleanedLine) {
-            value = cleanedLine.replace("(?i)luas\\s*bangunan".toRegex(), "").replace("(?i)lb".toRegex(), "").trim()
+            value = cleanedLine.replace("(?i)luas\\s*bangunan".toRegex(), "").replace("(?i)\\blb\\b".toRegex(), "").trim()
         }
-        val digits = value.replace("[^\\d\\s\\+\\.,mMyY2²]".toRegex(), "").trim()
-        val displayVal = if (digits.isBlank()) "190" else digits
-        var formattedVal = displayVal.replace("(?i)m2".toRegex(), "m2").replace("(?i)m²".toRegex(), "m2")
-        if (!formattedVal.lowercase().endsWith("m2")) {
-            formattedVal = "$formattedVal m2"
+        val cleanValue = value.replace("(?i)m2".toRegex(), "")
+                             .replace("(?i)m²".toRegex(), "")
+                             .replace("(?i)meter".toRegex(), "")
+                             .trim()
+
+        val numberMatches = Regex("\\d+(?:[\\.,]\\d+)?").findAll(cleanValue).map { it.value }.toList()
+        val formattedVal = when {
+            numberMatches.size >= 2 -> "${numberMatches[0]} - ${numberMatches[1]} m2"
+            numberMatches.size == 1 -> "${numberMatches[0]} m2"
+            else -> "190 m2"
         }
-        formattedVal = formattedVal.replace("\\s+".toRegex(), " ")
         return "• Luas Bangunan : $formattedVal"
     }
 
@@ -1066,6 +1085,118 @@ private fun formatBulletPoint(line: String): String {
     return "• $words"
 }
 
+private fun getCanonicalSpecKey(key: String): String {
+    val k = key.lowercase().trim()
+    return when {
+        k == "lt" || k == "luas tanah" -> "luas tanah"
+        k == "lb" || k == "luas bangunan" -> "luas bangunan"
+        k == "kt" || k == "kamar tidur" -> "kamar tidur"
+        k == "km" || k == "kamar mandi" -> "kamar mandi"
+        k == "shm" || k == "sertifikat" -> "sertifikat"
+        k == "dimensi" -> "dimensi"
+        k == "garasi" -> "garasi"
+        k == "carport" -> "carport"
+        k.contains("menghadap") -> "menghadap"
+        else -> k
+    }
+}
+
+private fun sortBulletPoints(bulletPoints: List<String>): List<String> {
+    fun getSortPriority(bLine: String): Int {
+        val clean = bLine.removePrefix("•").trim()
+        val rawKey = if (clean.contains(":")) clean.substringBefore(":").trim() else clean
+        val canonical = getCanonicalSpecKey(rawKey)
+        return when (canonical) {
+            "luas tanah" -> 1
+            "luas bangunan" -> 2
+            "dimensi" -> 3
+            "kamar tidur" -> 4
+            "kamar mandi" -> 5
+            "garasi" -> 6
+            "carport" -> 7
+            "sertifikat" -> 8
+            "menghadap" -> 9
+            else -> 100
+        }
+    }
+    return bulletPoints.sortedWith(compareBy { getSortPriority(it) })
+}
+
+private fun isTitleDuplicateOrHeadline(
+    line: String, 
+    title: String, 
+    scrapedTitle: String, 
+    judulTask: String
+): Boolean {
+    val lower = line.lowercase().trim()
+    if (lower.isBlank()) return true
+
+    // 1. Direct exact or normalized title match
+    val lineNorm = line.replace("[^a-zA-Z0-9]".toRegex(), "").lowercase()
+    val titleNorm = title.replace("[^a-zA-Z0-9]".toRegex(), "").lowercase()
+    val scrapedTitleNorm = scrapedTitle.replace("[^a-zA-Z0-9]".toRegex(), "").lowercase()
+    val judulTaskNorm = judulTask.replace("[^a-zA-Z0-9]".toRegex(), "").lowercase()
+
+    if (lineNorm.isNotBlank()) {
+        if (lineNorm == titleNorm || 
+            lineNorm == scrapedTitleNorm || 
+            lineNorm == judulTaskNorm ||
+            (titleNorm.isNotBlank() && (lineNorm.contains(titleNorm) || titleNorm.contains(lineNorm)))
+        ) {
+            return true
+        }
+    }
+
+    // 2. Headline prefix check
+    val isHeadlinePrefix = lower.startsWith("rumah dijual") || 
+        lower.startsWith("rumah disewakan") || 
+        lower.startsWith("dijual rumah") || 
+        lower.startsWith("disewakan rumah") ||
+        lower.startsWith("ruko dijual") || 
+        lower.startsWith("ruko disewakan") || 
+        lower.startsWith("tanah dijual") || 
+        lower.startsWith("tanah disewakan") || 
+        lower.startsWith("apartemen dijual") ||
+        lower.startsWith("villa dijual") ||
+        lower.startsWith("rumah modern") ||
+        lower.startsWith("rumah mewah") ||
+        lower.startsWith("rumah cantik") ||
+        lower.startsWith("rumah baru")
+
+    if (isHeadlinePrefix) return true
+
+    // 3. Word-set overlap check with title candidates
+    val stopWords = setOf("dan", "di", "ke", "yang", "dengan", "untuk", "pada", "ini", "itu", "atau", "dari", "serta")
+    fun extractWordSet(text: String): Set<String> {
+        return text.lowercase()
+            .replace("[^a-z0-9\\s]".toRegex(), " ")
+            .split("\\s+".toRegex())
+            .filter { it.length >= 2 && it !in stopWords }
+            .toSet()
+    }
+
+    val lineWords = extractWordSet(line)
+    if (lineWords.isEmpty()) return false
+
+    val titleCandidates = listOf(title, scrapedTitle, judulTask)
+    for (cand in titleCandidates) {
+        if (cand.isBlank()) continue
+        val candWords = extractWordSet(cand)
+        if (candWords.isEmpty()) continue
+
+        val overlap = lineWords.intersect(candWords)
+        if (overlap.size >= 2) {
+            val ratioLine = overlap.size.toDouble() / lineWords.size
+            val ratioCand = overlap.size.toDouble() / candWords.size
+            if (ratioLine >= 0.50 || ratioCand >= 0.50 || overlap.size >= minOf(lineWords.size, candWords.size)) {
+                return true
+            }
+        }
+    }
+
+    return false
+}
+
 // Dynamic Instagram caption generator
 private fun buildInstagramCaption(
     rawDesc: String,
@@ -1075,12 +1206,13 @@ private fun buildInstagramCaption(
     judulTask: String,
     scrapedTitle: String = ""
 ): String {
-    // 1. Clean HTML
-    val clean = rawDesc
-        .replace("(?i)<br\\s*/?>".toRegex(), "\n")
-        .replace("(?i)</p>".toRegex(), "\n")
-        .replace("<[^>]*>".toRegex(), "")
-        .trim()
+    // 1. Clean HTML and strip any leading "dengan spek" section completely
+    val clean = com.example.ui.cleanListingDescription(
+        rawDesc
+            .replace("(?i)<br\\s*/?>".toRegex(), "\n")
+            .replace("(?i)</p>".toRegex(), "\n")
+            .replace("<[^>]*>".toRegex(), "")
+    ).trim()
 
     val descLower = clean.lowercase()
     val lokasiVal = extractPropertyLocation(descLower, judulTask.lowercase(), scrapedTitle.lowercase())
@@ -1089,32 +1221,23 @@ private fun buildInstagramCaption(
     // Multi-contact resolver
     val contactsStr = getInstagramCaptionContacts(namaMe, rawDesc, scrapedTitle, judulTask, idListing)
 
-    // Extract specs from BOTH "Dengan Spek Sebagai Berikut" and "Deskripsi Lengkap"
+    // Extract specs ONLY from "Deskripsi Lengkap" or main cleaned description body (NEVER from "Dengan Spek")
     val parsedBulletPoints = mutableListOf<String>()
     val linesToProcess = mutableListOf<String>()
 
-    val specSectionIndex = clean.indexOf("Dengan Spek Sebagai Berikut", ignoreCase = true)
     val deskripsiLengkapIndex = clean.indexOf("Deskripsi Lengkap:", ignoreCase = true)
+    val deskripsiLengkapAltIndex = if (deskripsiLengkapIndex == -1) clean.indexOf("Deskripsi Lengkap", ignoreCase = true) else deskripsiLengkapIndex
 
-    if (specSectionIndex != -1) {
-        val specText = if (deskripsiLengkapIndex > specSectionIndex) {
-            clean.substring(specSectionIndex, deskripsiLengkapIndex)
-        } else {
-            clean.substring(specSectionIndex)
-        }
-        specText.split("\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach { linesToProcess.add(it) }
-    }
-
-    if (deskripsiLengkapIndex != -1) {
-        val deskripsiText = clean.substring(deskripsiLengkapIndex + "Deskripsi Lengkap:".length)
+    if (deskripsiLengkapAltIndex != -1) {
+        val headerLength = if (deskripsiLengkapIndex != -1) "Deskripsi Lengkap:".length else "Deskripsi Lengkap".length
+        val deskripsiText = clean.substring(deskripsiLengkapAltIndex + headerLength)
         deskripsiText.split("\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach { linesToProcess.add(it) }
-    }
-
-    if (linesToProcess.isEmpty()) {
+    } else {
         clean.split("\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach { linesToProcess.add(it) }
     }
 
     var stopParsing = false
+
     for (line in linesToProcess) {
         if (stopParsing) break
         val lower = line.lowercase()
@@ -1128,14 +1251,15 @@ private fun buildInstagramCaption(
             continue
         }
 
-        if (lower.startsWith("dengan spek") || 
+        if (isTitleDuplicateOrHeadline(line, title, scrapedTitle, judulTask) ||
+            lower.startsWith("dengan spek") || 
+            lower.startsWith("dengan spesifikasi") ||
             lower.startsWith("listing id:") || 
             lower.contains("deskripsi lengkap") ||
             lower.contains("for sale") ||
             lower.contains("hubungi") ||
             lower.contains("contact") ||
             lower.startsWith("harga") ||
-            line.equals(title, ignoreCase = true) ||
             isLineJustNumbersOrStats(line) ||
             line.matches("^\\d+$".toRegex())
         ) {
@@ -1144,28 +1268,32 @@ private fun buildInstagramCaption(
 
         val formatted = formatBulletPoint(line)
         if (formatted.isNotEmpty()) {
-            val cleanFormatted = formatted.removePrefix("•").trim()
-            val specKey = if (cleanFormatted.contains(":")) cleanFormatted.substringBefore(":").trim().lowercase() else cleanFormatted.lowercase()
-            
-            val isKnownSpecKey = specKey in setOf(
-                "luas tanah", "luas bangunan", "lt", "lb", 
-                "kamar tidur", "kt", "kamar mandi", "km", 
-                "garasi", "carport", "sertifikat", "shm", "menghadap ke arah", "menghadap"
-            )
-            
-            val existingKeys = parsedBulletPoints.map { 
-                val c = it.removePrefix("•").trim()
-                if (c.contains(":")) c.substringBefore(":").trim().lowercase() else c.lowercase()
-            }
-            
-            val isDuplicateKey = isKnownSpecKey && existingKeys.contains(specKey)
-            val isDuplicateText = parsedBulletPoints.any { 
-                it.equals(formatted, ignoreCase = true) || 
-                it.replace("[^a-zA-Z0-9]".toRegex(), "").equals(formatted.replace("[^a-zA-Z0-9]".toRegex(), ""), ignoreCase = true)
-            }
-            
-            if (!isDuplicateKey && !isDuplicateText) {
-                parsedBulletPoints.add(formatted)
+            val bulletLines = formatted.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+            for (bLine in bulletLines) {
+                val cleanFormatted = bLine.removePrefix("•").trim()
+                val rawKey = if (cleanFormatted.contains(":")) cleanFormatted.substringBefore(":").trim() else cleanFormatted
+                val canonicalKey = getCanonicalSpecKey(rawKey)
+                
+                val isKnownSpecKey = canonicalKey in setOf(
+                    "luas tanah", "luas bangunan", "kamar tidur", "kamar mandi", 
+                    "garasi", "carport", "sertifikat", "menghadap", "dimensi"
+                )
+                
+                val existingCanonicalKeys = parsedBulletPoints.map { 
+                    val c = it.removePrefix("•").trim()
+                    val rKey = if (c.contains(":")) c.substringBefore(":").trim() else c
+                    getCanonicalSpecKey(rKey)
+                }
+                
+                val isDuplicateKey = isKnownSpecKey && existingCanonicalKeys.contains(canonicalKey)
+                val isDuplicateText = parsedBulletPoints.any { 
+                    it.equals(bLine, ignoreCase = true) || 
+                    it.replace("[^a-zA-Z0-9]".toRegex(), "").equals(bLine.replace("[^a-zA-Z0-9]".toRegex(), ""), ignoreCase = true)
+                }
+                
+                if (!isDuplicateKey && !isDuplicateText) {
+                    parsedBulletPoints.add(bLine)
+                }
             }
         }
     }
@@ -1181,13 +1309,15 @@ private fun buildInstagramCaption(
         parsedBulletPoints.add("• ${details["sertifikat"]}")
     }
 
+    val sortedBulletPoints = sortBulletPoints(parsedBulletPoints)
+
     // Build final caption without "Nego"
     val category = getListingCategory(rawPrice, clean)
     return buildString {
         append("raywhitecipete $category ID $idListing\n\n")
         append("$title\n\n")
         
-        parsedBulletPoints.forEach { append("$it\n") }
+        sortedBulletPoints.forEach { append("$it\n") }
         append("\n")
         
         val displayPrice = formatPropertyPriceFull(rawPrice, clean)

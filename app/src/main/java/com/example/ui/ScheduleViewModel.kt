@@ -236,9 +236,12 @@ fun getAgentInstagramByName(meName: String): String {
 }
 
 fun cleanListingDescription(rawDesc: String): String {
-    val lines = rawDesc.split("\n")
+    if (rawDesc.isBlank()) return ""
+    var desc = rawDesc.trim()
+    
+    // 1. Look at top 8 lines for a line containing only digits, and drop it & lines above it
+    val lines = desc.split("\n")
     var numLineIndex = -1
-    // Look at the top 8 lines for a line containing only digits
     for (i in 0 until minOf(lines.size, 8)) {
         val trimmedLine = lines[i].trim()
         if (trimmedLine.isNotEmpty() && trimmedLine.matches("""\d+""".toRegex())) {
@@ -247,10 +250,53 @@ fun cleanListingDescription(rawDesc: String): String {
         }
     }
     if (numLineIndex != -1 && numLineIndex < lines.size - 1) {
-        // Drop the number line and everything above it, and only return lines below it!
-        return lines.drop(numLineIndex + 1).joinToString("\n").trim()
+        desc = lines.drop(numLineIndex + 1).joinToString("\n").trim()
     }
-    return rawDesc.trim()
+    
+    // 2. Remove "dengan spek" / "spek sebagai berikut" / "dengan spesifikasi" block completely
+    val lower = desc.lowercase()
+    val deskripsiLengkapIdx = lower.indexOf("deskripsi lengkap")
+    
+    if (deskripsiLengkapIdx != -1) {
+        // If "deskripsi lengkap" is present, keep ONLY from "deskripsi lengkap" onward!
+        desc = desc.substring(deskripsiLengkapIdx).trim()
+    } else {
+        // If "deskripsi lengkap" header is absent, strip any line containing spek triggers
+        val descLines = desc.split("\n")
+        val filteredLines = mutableListOf<String>()
+        var skippingSpekBlock = false
+        for (line in descLines) {
+            val l = line.lowercase().trim()
+            if (l.contains("dengan spek") || 
+                l.contains("dengan spesifikasi") || 
+                l.contains("spek sebagai berikut") || 
+                l.contains("spesifikasi sebagai berikut")
+            ) {
+                skippingSpekBlock = true
+                continue
+            }
+            if (skippingSpekBlock) {
+                if (l.isBlank() || l.startsWith("lt") || l.startsWith("lb") || l.startsWith("kt") || l.startsWith("km") || l.startsWith("luas")) {
+                    continue
+                } else {
+                    skippingSpekBlock = false
+                }
+            }
+            filteredLines.add(line)
+        }
+        if (filteredLines.isNotEmpty()) {
+            desc = filteredLines.joinToString("\n").trim()
+        }
+    }
+    
+    // 3. Remove leading "Deskripsi Lengkap:" or "Deskripsi Lengkap" if present at top
+    if (desc.lowercase().startsWith("deskripsi lengkap:")) {
+        desc = desc.substring("deskripsi lengkap:".length).trim()
+    } else if (desc.lowercase().startsWith("deskripsi lengkap")) {
+        desc = desc.substring("deskripsi lengkap".length).trim()
+    }
+    
+    return desc.trim()
 }
 
 fun getCleanTextWithNewlines(node: org.jsoup.nodes.Node): String {
@@ -1648,10 +1694,14 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 }
 
                 if (cachedImg != null && cachedGallery != null && cachedTitle != null && cachedDesc != null) {
+                    val cleanedCachedDesc = cleanListingDescription(cachedDesc)
                     _listingImagesMap.update { it + (cleanId to cachedImg) }
                     _listingImagesGalleryMap.update { it + (cleanId to cachedGallery) }
                     _listingTitleMap.update { it + (cleanId to cachedTitle) }
-                    _listingDescMap.update { it + (cleanId to cachedDesc) }
+                    _listingDescMap.update { it + (cleanId to cleanedCachedDesc) }
+                    if (cleanedCachedDesc != cachedDesc) {
+                        preferenceManager.saveListingDesc(cleanId, cleanedCachedDesc)
+                    }
                     if (cachedPrice != null) {
                         _listingPriceMap.update { it + (cleanId to cachedPrice) }
                     }
@@ -2109,27 +2159,8 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                             if (targetDiv != null) {
                                 val sb = java.lang.StringBuilder()
                                 
-                                // 1. Spek text (second p element inside targetDiv)
-                                val pList = targetDiv.select("p")
-                                if (pList.size >= 2) {
-                                    val p2 = pList[1]
-                                    val spekText = getCleanTextWithNewlines(p2).trim()
-                                    if (spekText.isNotBlank()) {
-                                        sb.append(spekText)
-                                        sb.append("\n\n")
-                                    }
-                                } else if (pList.isNotEmpty()) {
-                                    // Fallback to any p containing "spek" or similar, or first p if only one
-                                    val spekP = pList.firstOrNull { it.text().lowercase().contains("spek") } ?: pList[0]
-                                    val spekText = getCleanTextWithNewlines(spekP).trim()
-                                    if (spekText.isNotBlank()) {
-                                        sb.append(spekText)
-                                        sb.append("\n\n")
-                                    }
-                                }
-                                
-                                // 2. Deskripsi Lengkap header and text below it
-                                val h5 = targetDiv.select("h5").firstOrNull()
+                                // 2. Deskripsi Lengkap header and text below it (skipping spek paragraph)
+                                val h5 = targetDiv.select("h5").firstOrNull { it.text().contains("Deskripsi", ignoreCase = true) } ?: targetDiv.select("h5").firstOrNull()
                                 if (h5 != null) {
                                     val h5Text = getCleanTextWithNewlines(h5).trim()
                                     if (h5Text.isNotBlank()) {
@@ -2144,22 +2175,20 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                                         nextNode = nextNode.nextSibling()
                                     }
                                 } else {
-                                    // Fallback if h5 doesn't exist: append all remaining text nodes and tags from targetDiv that aren't the title or first/second p
-                                    val allChildren = targetDiv.childNodes()
-                                    var skipPCount = 0
-                                    for (child in allChildren) {
-                                        if (child is org.jsoup.nodes.Element) {
-                                            val tagName = child.tagName()
-                                            if (tagName == "h4") continue // Skip title
-                                            if (tagName == "p") {
-                                                skipPCount++
-                                                if (skipPCount <= 2) continue // Skip p[1] and p[2] (p[2] was appended already)
+                                    // Fallback if h5 doesn't exist: append p tags excluding spek paragraph
+                                    val pList = targetDiv.select("p")
+                                    for (p in pList) {
+                                        val pText = getCleanTextWithNewlines(p).trim()
+                                        val lowerP = pText.lowercase()
+                                        if (!lowerP.contains("dengan spek") && !lowerP.contains("dengan spesifikasi")) {
+                                            if (pText.isNotBlank()) {
+                                                sb.append(pText)
+                                                sb.append("\n\n")
                                             }
                                         }
-                                        sb.append(getCleanTextWithNewlines(child))
                                     }
                                 }
-                                parsedDesc = sb.toString().trim()
+                                parsedDesc = cleanListingDescription(sb.toString().trim())
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()
