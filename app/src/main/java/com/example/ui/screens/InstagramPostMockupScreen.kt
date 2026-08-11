@@ -51,6 +51,7 @@ fun InstagramPostMockupScreen(
     listingDescMap: Map<String, String>,
     listingPriceMap: Map<String, String>,
     listingTitleMap: Map<String, String> = emptyMap(),
+    allMeetingListings: List<com.example.network.MeetingListing> = emptyList(),
     onDismiss: () -> Unit,
     onViewDetails: () -> Unit
 ) {
@@ -78,15 +79,14 @@ fun InstagramPostMockupScreen(
     val rawPrice = if (cleanId.isNotBlank()) listingPriceMap[cleanId] ?: "" else ""
     val scrapedTitle = if (cleanId.isNotBlank()) listingTitleMap[cleanId] ?: "" else ""
     
-    // Resolve notes judul untuk template overlay (PRIORITY: notes judul > scraping title)
-    val notesJudul = remember(task.editNotes, task.judul) {
-        com.example.ui.extractJudulFromNotes(task.editNotes)
-            ?: com.example.ui.extractJudulFromNotes(task.judul)
+    // Resolve cover headline title (notes judul jika ada, otherwise NAMA DAERAH saja)
+    val coverHeadlineTitle = remember(task.editNotes, task.judul, scrapedTitle, rawDesc, cleanId) {
+        resolveCoverHeadlineTitle(task.editNotes, task.judul, scrapedTitle, rawDesc, cleanId)
     }
     
     // Parse dynamic details
-    val details = remember(rawDesc, cleanId, rawPrice, task.judul, task.editNotes, scrapedTitle) {
-        parsePropertyDetails(rawDesc, cleanId, rawPrice, task.judul, scrapedTitle, editNotes = task.editNotes)
+    val details = remember(rawDesc, cleanId, rawPrice, task.judul, task.editNotes, scrapedTitle, task.namaMe) {
+        parsePropertyDetails(rawDesc, cleanId, rawPrice, task.judul, scrapedTitle, editNotes = task.editNotes, namaMe = task.namaMe)
     }
 
     // Interaction states
@@ -322,8 +322,7 @@ fun InstagramPostMockupScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
-                                    // Jika ada notes judul, tampilkan itu. Jika tidak, tampilkan lokasi dari scraping
-                                    text = (notesJudul?.takeIf { it.isNotBlank() } ?: details["lokasi"])?.uppercase() ?: "JAKARTA SELATAN",
+                                    text = coverHeadlineTitle.uppercase(),
                                     color = Color.White,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 18.sp,
@@ -589,6 +588,325 @@ fun InstagramPostMockupScreen(
                                 fontSize = 13.sp,
                                 lineHeight = 18.sp
                             )
+
+                            // ── Professional Dashboard: Monitoring Data Listing ───────────────────
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 16.dp, bottom = 8.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = Color(0xFF161B22) // Premium dark dashboard card
+                                ),
+                                border = BorderStroke(1.dp, Color(0xFF30363D))
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    // Dashboard Header
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .background(Color(0xFF0D1117), CircleShape)
+                                                    .border(1.dp, Color(0xFFFFDF00).copy(alpha = 0.5f), CircleShape),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Analytics,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFFFDF00),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                            Column {
+                                                Text(
+                                                    text = "MONITORING DATA LISTING",
+                                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Black),
+                                                    color = Color(0xFFFFDF00),
+                                                    letterSpacing = 0.8.sp
+                                                )
+                                                Text(
+                                                    text = "Professional Dashboard · ID #$cleanId",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Color.White.copy(alpha = 0.6f)
+                                                )
+                                            }
+                                        }
+
+                                        Surface(
+                                            color = if (task.done) Color(0xFF238636) else Color(0xFF9E6A03),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Text(
+                                                text = if (task.done) "SUDAH POST" else "BELUM POST",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = Color.White,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                fontSize = 9.sp
+                                            )
+                                        }
+                                    }
+
+                                    HorizontalDivider(color = Color(0xFF30363D))
+
+                                    // KPI Metrics Grid
+                                    val historyListings = remember(allMeetingListings, cleanId) {
+                                        allMeetingListings.filter { it.idListing.trim() == cleanId }
+                                    }
+                                    val postedCount = remember(historyListings) {
+                                        val count = historyListings.count { it.postingIg.trim().lowercase() in listOf("done", "ya", "yes", "true", "✔", "1") }
+                                        if (count == 0 && task.done) 1 else count
+                                    }
+                                    val datesListened = remember(historyListings, task.jadwalPosting) {
+                                        val list = historyListings.mapNotNull { item ->
+                                            val dateStr = item.jadwalPosting.trim().takeIf { it.isNotBlank() && it != "-" } ?: item.date.trim()
+                                            if (dateStr.isNotBlank() && dateStr != "-") dateStr else null
+                                        }.toMutableList()
+                                        if (task.jadwalPosting.isNotBlank() && task.jadwalPosting != "-" && !list.contains(task.jadwalPosting.trim())) {
+                                            list.add(0, task.jadwalPosting.trim())
+                                        }
+                                        list.distinct()
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        // KPI 1: Histori Posting IG
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .background(Color(0xFF21262D), RoundedCornerShape(10.dp))
+                                                .border(1.dp, Color(0xFF30363D), RoundedCornerShape(10.dp))
+                                                .padding(10.dp)
+                                        ) {
+                                            Column {
+                                                Text(
+                                                    text = "TOTAL POSTING IG",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                                    color = Color.White.copy(alpha = 0.5f)
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = "$postedCount Kali",
+                                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                                                    color = Color(0xFF58A6FF)
+                                                )
+                                            }
+                                        }
+
+                                        // KPI 2: Marketing (ME)
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .background(Color(0xFF21262D), RoundedCornerShape(10.dp))
+                                                .border(1.dp, Color(0xFF30363D), RoundedCornerShape(10.dp))
+                                                .padding(10.dp)
+                                        ) {
+                                            Column {
+                                                Text(
+                                                    text = "MARKETING (ME)",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                                    color = Color.White.copy(alpha = 0.5f)
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = task.namaMe.uppercase().ifBlank { "N/A" },
+                                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Black),
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        // KPI 3: Jadwal Posting Current
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .background(Color(0xFF21262D), RoundedCornerShape(10.dp))
+                                                .border(1.dp, Color(0xFF30363D), RoundedCornerShape(10.dp))
+                                                .padding(10.dp)
+                                        ) {
+                                            Column {
+                                                Text(
+                                                    text = "JADWAL POSTING",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                                    color = Color.White.copy(alpha = 0.5f)
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = task.jadwalPosting.ifBlank { "Belum Terjadwal" },
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                    color = Color(0xFF7EE787),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+
+                                        // KPI 4: Estimasi Area
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .background(Color(0xFF21262D), RoundedCornerShape(10.dp))
+                                                .border(1.dp, Color(0xFF30363D), RoundedCornerShape(10.dp))
+                                                .padding(10.dp)
+                                        ) {
+                                            Column {
+                                                Text(
+                                                    text = "ESTIMASI AREA",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                                    color = Color.White.copy(alpha = 0.5f)
+                                                )
+                                                Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = details["lokasi"]?.uppercase() ?: "JAKARTA SELATAN",
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                    color = Color(0xFFFFA657),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // Riwayat Tanggal Posting ke IG
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(Icons.Default.Event, contentDescription = null, tint = Color(0xFF58A6FF), modifier = Modifier.size(14.dp))
+                                            Text(
+                                                text = "Riwayat Tanggal Posting IG (${datesListened.size}):",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = Color.White.copy(alpha = 0.9f)
+                                            )
+                                        }
+
+                                        if (datesListened.isNotEmpty()) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(top = 2.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                datesListened.take(4).forEach { d ->
+                                                    Surface(
+                                                        color = Color(0xFF1F6FEB).copy(alpha = 0.2f),
+                                                        border = BorderStroke(1.dp, Color(0xFF1F6FEB).copy(alpha = 0.4f)),
+                                                        shape = RoundedCornerShape(6.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = d,
+                                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                            color = Color(0xFF58A6FF),
+                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            Text(
+                                                text = "Belum ada riwayat tanggal posting lain tercatat di sheet.",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color.White.copy(alpha = 0.4f),
+                                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                                            )
+                                        }
+                                    }
+
+                                    // Catatan Spreadsheet (Notes)
+                                    if (task.editNotes.isNotBlank()) {
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            color = Color(0xFF21262D),
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = BorderStroke(1.dp, Color(0xFFDB6D28).copy(alpha = 0.4f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(10.dp),
+                                                verticalAlignment = Alignment.Top,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.StickyNote2,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFF0883E),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Column {
+                                                    Text(
+                                                        text = "CATATAN SPREADSHEET (NOTES):",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                                                        color = Color(0xFFF0883E)
+                                                    )
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    Text(
+                                                        text = task.editNotes,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = Color.White.copy(alpha = 0.95f),
+                                                        lineHeight = 16.sp
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Detail Metadata Spreadsheet Lainnya
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFF0D1117), RoundedCornerShape(8.dp))
+                                            .padding(8.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Sumber Sheet / Posisi", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                                            Text(task.source.ifBlank { "Google Sheet Meeting" }, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = Color.White)
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Harga Properti", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                                            Text(details["harga"] ?: "N/A", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = Color(0xFFFFD700))
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("Judul Terpilih (Posts)", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                                            Text(
+                                                text = details["title"] ?: "N/A",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                color = Color.White,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -736,14 +1054,8 @@ fun InstagramPostMockupScreen(
     }
 
     if (showRwcDownloadDialog) {
-        val initialHeadline = remember(task.judul, details, task.editNotes) {
-            val notesJudul = com.example.ui.extractJudulFromNotes(task.editNotes)
-                ?: com.example.ui.extractJudulFromNotes(task.judul)
-            if (!notesJudul.isNullOrBlank()) {
-                notesJudul.trim()
-            } else {
-                details["title"] ?: task.judul.ifBlank { scrapedTitle }
-            }
+        val initialHeadline = remember(task.judul, task.editNotes, scrapedTitle, rawDesc, cleanId) {
+            resolveCoverHeadlineTitle(task.editNotes, task.judul, scrapedTitle, rawDesc, cleanId)
         }
         RwcDesign3DownloadDialog(
             listingId = cleanId,
@@ -768,7 +1080,7 @@ fun InstagramPostMockupScreen(
 }
 
 // Parser helper function to extract specs from Ray White description dynamically
-private fun parsePropertyDetails(rawDesc: String, idListing: String, rawPrice: String, title: String, scrapedTitle: String = "", editNotes: String = ""): Map<String, String> {
+private fun parsePropertyDetails(rawDesc: String, idListing: String, rawPrice: String, title: String, scrapedTitle: String = "", editNotes: String = "", namaMe: String = ""): Map<String, String> {
     val details = mutableMapOf<String, String>()
     
     // Strip HTML tags
@@ -783,7 +1095,7 @@ private fun parsePropertyDetails(rawDesc: String, idListing: String, rawPrice: S
     details["lokasi"] = lokasiVal
 
     // 2. Title - Use task.judul or notes if available, otherwise capitalize first line of description or fallback
-    val displayTitle = selectPropertyTitle(scrapedTitle, title, cleanDesc, lokasiVal, editNotes = editNotes)
+    val displayTitle = selectPropertyTitle(scrapedTitle, title, cleanDesc, lokasiVal, editNotes = editNotes, namaMe = namaMe)
     details["title"] = displayTitle.uppercase()
 
     // 3. Price
@@ -896,13 +1208,45 @@ private fun isLineJustNumbersOrStats(line: String): Boolean {
     return false
 }
 
+// Helper function to resolve Cover / Headline 1 Title
+// Rules:
+// 1. If notes contains "judul XYZ", return notes title.
+// 2. If NO notes title -> DO NOT use full web title! Extract location name only (e.g. "GADING SERPONG", "CIPETE", etc.).
+fun resolveCoverHeadlineTitle(
+    notes: String,
+    taskTitle: String,
+    scrapedTitle: String,
+    desc: String = "",
+    idListing: String = ""
+): String {
+    val notesJudul = com.example.ui.extractJudulFromNotes(notes)
+        ?: com.example.ui.extractJudulFromNotes(taskTitle)
+    if (!notesJudul.isNullOrBlank()) {
+        return notesJudul.trim()
+    }
+
+    val locationName = extractPropertyLocation(
+        descLower = desc.lowercase(),
+        titleLower = taskTitle.lowercase(),
+        scrapedTitleLower = scrapedTitle.lowercase(),
+        idListing = idListing
+    )
+
+    if (locationName.isNotBlank() && locationName.uppercase() != "INDONESIA") {
+        return locationName.uppercase()
+    }
+
+    return "JAKARTA SELATAN"
+}
+
 // Select a valid property title, preferring rich headlines written in Deskripsi Lengkap over generic web titles
 private fun selectPropertyTitle(
     scrapedTitle: String,
     judulTask: String,
     cleanDesc: String,
     lokasi: String,
-    editNotes: String = ""
+    editNotes: String = "",
+    namaMe: String = ""
 ): String {
     // 0. PRIORITY 0: Explicit title from notes (column Q / editNotes) or task title if extracted from notes
     val notesTitle = com.example.ui.extractJudulFromNotes(editNotes) 
@@ -923,6 +1267,36 @@ private fun selectPropertyTitle(
             lower.startsWith("properti #")
         ) return false
         return true
+    }
+
+    // SPECIAL EXCEPTION FOR MARKETING "ILHAM":
+    // Ilham selalu membuat judul khusus lagi di bagian Deskripsi Lengkap-nya di web.
+    // Khusus untuk Ilham, ambil judul yang ada di bagian Deskripsi Lengkap di webnya.
+    if (namaMe.contains("ilham", ignoreCase = true) && cleanDesc.isNotBlank()) {
+        val dlIdx = cleanDesc.indexOf("Deskripsi Lengkap:", ignoreCase = true)
+        val dlAltIdx = if (dlIdx == -1) cleanDesc.indexOf("Deskripsi Lengkap", ignoreCase = true) else dlIdx
+        if (dlAltIdx != -1) {
+            val headerLen = if (dlIdx != -1) "Deskripsi Lengkap:".length else "Deskripsi Lengkap".length
+            val dlBody = cleanDesc.substring(dlAltIdx + headerLen)
+            val lines = dlBody.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+            for (line in lines) {
+                val lower = line.lowercase()
+                val isSpecKey = lower.startsWith("luas tanah") || lower.startsWith("lt") ||
+                        lower.startsWith("luas bangunan") || lower.startsWith("lb") ||
+                        lower.startsWith("kamar tidur") || lower.startsWith("kt") ||
+                        lower.startsWith("kamar mandi") || lower.startsWith("km") ||
+                        lower.startsWith("sertifikat") || lower.startsWith("shm") ||
+                        lower.startsWith("garasi") || lower.startsWith("carport") ||
+                        lower.startsWith("dimensi") || lower.startsWith("menghadap") ||
+                        lower.startsWith("harga") || lower.startsWith("listing id") ||
+                        lower.startsWith("dengan spek") || lower.startsWith("dengan spesifikasi") ||
+                        lower.contains("ray white") || lower.contains("hubungi kami") || lower.contains("contact us")
+
+                if (!isSpecKey && isValidTitle(line) && line.length >= 3) {
+                    return line
+                }
+            }
+        }
     }
 
     // 1. PRIORITY 1: Scraped web title (automatis ambil dari website jika tidak ada notes judul)
@@ -1257,7 +1631,7 @@ private fun buildInstagramCaption(
 
     val descLower = clean.lowercase()
     val lokasiVal = extractPropertyLocation(descLower, judulTask.lowercase(), scrapedTitle.lowercase(), idListing = idListing)
-    val title = selectPropertyTitle(scrapedTitle, judulTask, clean, lokasiVal, editNotes = editNotes)
+    val title = selectPropertyTitle(scrapedTitle, judulTask, clean, lokasiVal, editNotes = editNotes, namaMe = namaMe)
 
     // Multi-contact resolver
     val contactsStr = getInstagramCaptionContacts(namaMe, rawDesc, scrapedTitle, judulTask, idListing)

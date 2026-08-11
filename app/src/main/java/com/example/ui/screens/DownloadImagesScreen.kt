@@ -65,15 +65,15 @@ fun DownloadImagesScreen(
     val cleanId = task.idListing.trim()
     val rawUrls = if (cleanId.isNotBlank()) listingImagesGalleryMap[cleanId] ?: emptyList() else emptyList()
     
-    // Resolve judul foto: notes judul > scraped title > fallback idListing
+    // Resolve judul foto: notes judul > nama daerah > fallback idListing
     val judulFoto = remember(task.editNotes, task.judul, cleanId, listingTitleMap) {
         val notesJudul = com.example.ui.extractJudulFromNotes(task.editNotes)
             ?: com.example.ui.extractJudulFromNotes(task.judul)
-        val scrapedTitle = listingTitleMap[cleanId]?.trim() ?: ""
-        when {
-            !notesJudul.isNullOrBlank() -> notesJudul.trim()
-            scrapedTitle.isNotBlank() -> scrapedTitle
-            else -> ""
+        if (!notesJudul.isNullOrBlank()) {
+            notesJudul.trim()
+        } else {
+            val scrapedTitle = listingTitleMap[cleanId]?.trim() ?: ""
+            extractPropertyLocation("", task.judul.lowercase(), scrapedTitle.lowercase(), idListing = cleanId)
         }
     }
     
@@ -90,10 +90,12 @@ fun DownloadImagesScreen(
     // Selection State
     val selectedUrls = remember { mutableStateListOf<String>() }
     
-    // Automatically select all on initial load
+    // Automatically select only the first image (cover) on initial load
     LaunchedEffect(imageUrls) {
         selectedUrls.clear()
-        selectedUrls.addAll(imageUrls)
+        if (imageUrls.isNotEmpty()) {
+            selectedUrls.add(imageUrls.first())
+        }
     }
     
     // Download Status State

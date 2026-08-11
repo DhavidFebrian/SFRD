@@ -62,7 +62,8 @@ fun RwcDesign3DownloadDialog(
                     images = fetchedImages
                     if (fetchedImages.isNotEmpty()) {
                         selectedCoverId = fetchedImages[0].id
-                        fetchedImages.forEach { selectedDownloadIds.add(it.id) }
+                        selectedDownloadIds.clear()
+                        selectedDownloadIds.add(fetchedImages[0].id) // Default centang foto depan (cover) saja
                     }
                     isLoading = false
                 }
