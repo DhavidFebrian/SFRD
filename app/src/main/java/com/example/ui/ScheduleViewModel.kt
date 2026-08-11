@@ -1682,13 +1682,9 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 val cachedAgentStr = preferenceManager.getAgentInfo(cleanId)
                 val cachedSold = preferenceManager.getListingSold(cleanId)
 
-                // Validate if cached description has mismatched listing ID or corrupted text
-                val cachedIdMatch = """Listing ID:\s*([0-9]+)""".toRegex(RegexOption.IGNORE_CASE).find(cachedDesc ?: "")
-                // Also detect cross-contamination: if cache contains a different Listing ID anywhere
-                val anyIdInDesc = """(?:Listing ID|ID Listing)[:\s]*([0-9]{4,6})""".toRegex(RegexOption.IGNORE_CASE)
-                    .findAll(cachedDesc ?: "").map { it.groupValues[1].trim() }.toList()
-                val hasWrongIdEmbedded = anyIdInDesc.isNotEmpty() && anyIdInDesc.none { it == cleanId }
-                val isMismatchedCache = (cachedIdMatch != null && cachedIdMatch.groupValues[1] != cleanId) || hasWrongIdEmbedded
+                // Validate if cached description header has mismatched listing ID (e.g. corrupted cache)
+                val cachedHeaderId = """Listing ID:\s*([0-9]+)""".toRegex(RegexOption.IGNORE_CASE).find(cachedDesc ?: "")?.groupValues?.getOrNull(1)
+                val isMismatchedCache = cachedHeaderId != null && cachedHeaderId != cleanId
 
                 if (!isMismatchedCache && cachedImg != null && cachedGallery != null && cachedTitle != null && cachedDesc != null) {
                     val cleanedCachedDesc = cleanListingDescription(cachedDesc)
