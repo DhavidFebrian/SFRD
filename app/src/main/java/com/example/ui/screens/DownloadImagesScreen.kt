@@ -56,6 +56,7 @@ import java.net.URL
 fun DownloadImagesScreen(
     task: EditFotoTask,
     listingImagesGalleryMap: Map<String, List<String>>,
+    listingTitleMap: Map<String, String> = emptyMap(),
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -63,6 +64,18 @@ fun DownloadImagesScreen(
     
     val cleanId = task.idListing.trim()
     val rawUrls = if (cleanId.isNotBlank()) listingImagesGalleryMap[cleanId] ?: emptyList() else emptyList()
+    
+    // Resolve judul foto: notes judul > scraped title > fallback idListing
+    val judulFoto = remember(task.editNotes, task.judul, cleanId, listingTitleMap) {
+        val notesJudul = com.example.ui.extractJudulFromNotes(task.editNotes)
+            ?: com.example.ui.extractJudulFromNotes(task.judul)
+        val scrapedTitle = listingTitleMap[cleanId]?.trim() ?: ""
+        when {
+            !notesJudul.isNullOrBlank() -> notesJudul.trim()
+            scrapedTitle.isNotBlank() -> scrapedTitle
+            else -> ""
+        }
+    }
     
     // Filter out blank URLs, and drop the marketing flyer (the last image in the list if there's > 1 image)
     val imageUrls = remember(rawUrls) {
@@ -180,7 +193,7 @@ fun DownloadImagesScreen(
                                         
                                         selectedUrls.forEachIndexed { index, url ->
                                             downloadProgressText = "Men-download foto ${index + 1} dari $total..."
-                                            val success = downloadSingleImage(context, url, cleanId)
+                                            val success = downloadSingleImage(context, url, cleanId, judulFoto)
                                             if (success) successCount++
                                         }
                                         
@@ -383,7 +396,7 @@ fun DownloadImagesScreen(
 }
 
 // Actual Download Implementation: Raw uncompressed image streams for perfect 1:1 original sizes and qualities
-private suspend fun downloadSingleImage(context: Context, imageUrl: String, idListing: String): Boolean = withContext(Dispatchers.IO) {
+private suspend fun downloadSingleImage(context: Context, imageUrl: String, idListing: String, judulFoto: String = ""): Boolean = withContext(Dispatchers.IO) {
     try {
         val url = URL(imageUrl)
         val connection = url.openConnection()
@@ -400,7 +413,16 @@ private suspend fun downloadSingleImage(context: Context, imageUrl: String, idLi
             else -> "jpg"
         }
         
-        val filename = "Listing_${idListing}_${System.currentTimeMillis()}.$extension"
+        // Build filename: gunakan judul dari notes jika ada, otherwise fallback ke idListing saja
+        val sanitizedJudul = judulFoto
+            .replace("[^a-zA-Z0-9 \\-_.,()]".toRegex(), "")
+            .trim()
+            .take(60) // batas max panjang nama judul
+        val filename = if (sanitizedJudul.isNotBlank()) {
+            "${sanitizedJudul}_${idListing}_${System.currentTimeMillis()}.$extension"
+        } else {
+            "Listing_${idListing}_${System.currentTimeMillis()}.$extension"
+        }
         
         val resolver = context.contentResolver
         val imageCollection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

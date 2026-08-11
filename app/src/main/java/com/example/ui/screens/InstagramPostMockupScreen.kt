@@ -78,9 +78,15 @@ fun InstagramPostMockupScreen(
     val rawPrice = if (cleanId.isNotBlank()) listingPriceMap[cleanId] ?: "" else ""
     val scrapedTitle = if (cleanId.isNotBlank()) listingTitleMap[cleanId] ?: "" else ""
     
+    // Resolve notes judul untuk template overlay (PRIORITY: notes judul > scraping title)
+    val notesJudul = remember(task.editNotes, task.judul) {
+        com.example.ui.extractJudulFromNotes(task.editNotes)
+            ?: com.example.ui.extractJudulFromNotes(task.judul)
+    }
+    
     // Parse dynamic details
-    val details = remember(rawDesc, cleanId, rawPrice, task.judul, scrapedTitle) {
-        parsePropertyDetails(rawDesc, cleanId, rawPrice, task.judul, scrapedTitle)
+    val details = remember(rawDesc, cleanId, rawPrice, task.judul, task.editNotes, scrapedTitle) {
+        parsePropertyDetails(rawDesc, cleanId, rawPrice, task.judul, scrapedTitle, editNotes = task.editNotes)
     }
 
     // Interaction states
@@ -101,8 +107,8 @@ fun InstagramPostMockupScreen(
     var downloadedUris by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
 
     // Build the dynamic Instagram caption/description text
-    val captionText = remember(rawDesc, cleanId, rawPrice, task.namaMe, task.judul, scrapedTitle) {
-        buildInstagramCaption(rawDesc, cleanId, rawPrice, task.namaMe, task.judul, scrapedTitle)
+    val captionText = remember(rawDesc, cleanId, rawPrice, task.namaMe, task.judul, task.editNotes, scrapedTitle) {
+        buildInstagramCaption(rawDesc, cleanId, rawPrice, task.namaMe, task.judul, scrapedTitle, editNotes = task.editNotes)
     }
 
     // Full screen-ish dialog matching IG black style
@@ -316,11 +322,14 @@ fun InstagramPostMockupScreen(
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
-                                    text = details["lokasi"]?.uppercase() ?: "JAKARTA SELATAN",
+                                    // Jika ada notes judul, tampilkan itu. Jika tidak, tampilkan lokasi dari scraping
+                                    text = (notesJudul?.takeIf { it.isNotBlank() } ?: details["lokasi"])?.uppercase() ?: "JAKARTA SELATAN",
                                     color = Color.White,
                                     fontWeight = FontWeight.ExtraBold,
                                     fontSize = 18.sp,
-                                    letterSpacing = 1.sp
+                                    letterSpacing = 1.sp,
+                                    maxLines = 2,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                 )
                             }
 
@@ -727,12 +736,13 @@ fun InstagramPostMockupScreen(
     }
 
     if (showRwcDownloadDialog) {
-        val initialHeadline = remember(task.judul, details) {
-            val loc = details["lokasi"] ?: ""
-            if (loc.isNotBlank() && !loc.equals("Kebayoran", ignoreCase = true) && !loc.equals("Unknown", ignoreCase = true)) {
-                loc
+        val initialHeadline = remember(task.judul, details, task.editNotes) {
+            val notesJudul = com.example.ui.extractJudulFromNotes(task.editNotes)
+                ?: com.example.ui.extractJudulFromNotes(task.judul)
+            if (!notesJudul.isNullOrBlank()) {
+                notesJudul.trim()
             } else {
-                task.judul.ifBlank { details["title"] ?: "" }
+                details["title"] ?: task.judul.ifBlank { scrapedTitle }
             }
         }
         RwcDesign3DownloadDialog(
@@ -758,7 +768,7 @@ fun InstagramPostMockupScreen(
 }
 
 // Parser helper function to extract specs from Ray White description dynamically
-private fun parsePropertyDetails(rawDesc: String, idListing: String, rawPrice: String, title: String, scrapedTitle: String = ""): Map<String, String> {
+private fun parsePropertyDetails(rawDesc: String, idListing: String, rawPrice: String, title: String, scrapedTitle: String = "", editNotes: String = ""): Map<String, String> {
     val details = mutableMapOf<String, String>()
     
     // Strip HTML tags
@@ -769,11 +779,11 @@ private fun parsePropertyDetails(rawDesc: String, idListing: String, rawPrice: S
     details["id"] = idListing.ifBlank { "8255" }
 
     // 10. Lokasi (Location) - computed first for title fallback
-    val lokasiVal = extractPropertyLocation(descLower, title.lowercase(), scrapedTitle.lowercase())
+    val lokasiVal = extractPropertyLocation(descLower, title.lowercase(), scrapedTitle.lowercase(), idListing = idListing)
     details["lokasi"] = lokasiVal
 
-    // 2. Title - Use task.judul if available, otherwise capitalize first line of description or fallback
-    val displayTitle = selectPropertyTitle(scrapedTitle, title, cleanDesc, lokasiVal)
+    // 2. Title - Use task.judul or notes if available, otherwise capitalize first line of description or fallback
+    val displayTitle = selectPropertyTitle(scrapedTitle, title, cleanDesc, lokasiVal, editNotes = editNotes)
     details["title"] = displayTitle.uppercase()
 
     // 3. Price
@@ -887,8 +897,45 @@ private fun isLineJustNumbersOrStats(line: String): Boolean {
 }
 
 // Select a valid property title, preferring rich headlines written in Deskripsi Lengkap over generic web titles
-private fun selectPropertyTitle(scrapedTitle: String, judulTask: String, cleanDesc: String, lokasi: String): String {
-    // 1. PRIORITY 1: Prefer rich title line inside Deskripsi Lengkap
+private fun selectPropertyTitle(
+    scrapedTitle: String,
+    judulTask: String,
+    cleanDesc: String,
+    lokasi: String,
+    editNotes: String = ""
+): String {
+    // 0. PRIORITY 0: Explicit title from notes (column Q / editNotes) or task title if extracted from notes
+    val notesTitle = com.example.ui.extractJudulFromNotes(editNotes) 
+        ?: com.example.ui.extractJudulFromNotes(judulTask)
+    if (!notesTitle.isNullOrBlank()) {
+        return notesTitle.trim()
+    }
+
+    val cleanJudulTask = judulTask.replace("<[^>]*>".toRegex(), "").trim()
+    val cleanScraped = scrapedTitle.replace("<[^>]*>".toRegex(), "").trim()
+
+    fun isValidTitle(text: String): Boolean {
+        if (text.isBlank()) return false
+        val lower = text.lowercase().trim()
+        if (isLineJustNumbersOrStats(text) || isStatusTagText(text)) return false
+        if (lower == "for sale" || lower == "for rent" || lower == "for sale / rent" ||
+            lower == "[for sale]" || lower == "[for rent]" || lower == "[for sale / rent]" ||
+            lower.startsWith("properti #")
+        ) return false
+        return true
+    }
+
+    // 1. PRIORITY 1: Scraped web title (automatis ambil dari website jika tidak ada notes judul)
+    if (isValidTitle(cleanScraped)) {
+        return cleanScraped
+    }
+
+    // 2. PRIORITY 2: Task title if explicit and valid
+    if (isValidTitle(cleanJudulTask) && !cleanJudulTask.startsWith("Properti #")) {
+        return cleanJudulTask
+    }
+
+    // 3. PRIORITY 3: Prefer rich title line inside Deskripsi Lengkap
     if (cleanDesc.isNotBlank()) {
         val lines = cleanDesc.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
         for (line in lines) {
@@ -905,27 +952,20 @@ private fun selectPropertyTitle(scrapedTitle: String, judulTask: String, cleanDe
                     lower.contains("deskripsi lengkap") || lower.contains("ray white") ||
                     lower.contains("hubungi kami") || lower.contains("contact us")
 
-            if (!isSpecKey && !isLineJustNumbersOrStats(line) && !isStatusTagText(line) && line.length >= 5) {
+            if (!isSpecKey && isValidTitle(line) && line.length >= 5) {
                 return line
             }
         }
     }
 
-    // 2. PRIORITY 2: Fallback to scraped web title if no rich title in description
-    var title = scrapedTitle.replace("<[^>]*>".toRegex(), "").trim()
-    if (title.isNotBlank() && !isLineJustNumbersOrStats(title) && !isStatusTagText(title)) {
-        return title
+    // 4. PRIORITY 4: Task title fallback
+    if (isValidTitle(cleanJudulTask)) {
+        return cleanJudulTask
     }
 
-    // 3. PRIORITY 3: Fallback to task title
-    title = judulTask.replace("<[^>]*>".toRegex(), "").trim()
-    if (title.isNotBlank() && !isLineJustNumbersOrStats(title) && !isStatusTagText(title)) {
-        return title
-    }
-
-    // 4. Default fallback
+    // 5. Default fallback
     val cleanLokasi = lokasi.lowercase().split(" ").joinToString(" ") { it.replaceFirstChar { char -> char.uppercase() } }
-    return "Rumah 2 Lantai di Lokasi Strategis Area $cleanLokasi"
+    return "Rumah 2 Lantai di Lokasi Strategis Area ${if (cleanLokasi.isNotBlank()) cleanLokasi else "Cipete"}"
 }
 
 // Beautifully format individual bullet points to keep them clean and professional
@@ -1204,7 +1244,8 @@ private fun buildInstagramCaption(
     rawPrice: String,
     namaMe: String,
     judulTask: String,
-    scrapedTitle: String = ""
+    scrapedTitle: String = "",
+    editNotes: String = ""
 ): String {
     // 1. Clean HTML and strip any leading "dengan spek" section completely
     val clean = com.example.ui.cleanListingDescription(
@@ -1215,8 +1256,8 @@ private fun buildInstagramCaption(
     ).trim()
 
     val descLower = clean.lowercase()
-    val lokasiVal = extractPropertyLocation(descLower, judulTask.lowercase(), scrapedTitle.lowercase())
-    val title = selectPropertyTitle(scrapedTitle, judulTask, clean, lokasiVal)
+    val lokasiVal = extractPropertyLocation(descLower, judulTask.lowercase(), scrapedTitle.lowercase(), idListing = idListing)
+    val title = selectPropertyTitle(scrapedTitle, judulTask, clean, lokasiVal, editNotes = editNotes)
 
     // Multi-contact resolver
     val contactsStr = getInstagramCaptionContacts(namaMe, rawDesc, scrapedTitle, judulTask, idListing)
@@ -1721,7 +1762,11 @@ val LOCATION_BLACKLIST = setOf(
     "SHM", "IMB", "LISTRIK", "AIR", "PAM", "JETPUMP", "POOL", "KOLAM", "RENANG", "BARU"
 )
 
-fun extractPropertyLocation(descLower: String, titleLower: String, scrapedTitleLower: String, sheetLokasi: String = ""): String {
+fun extractPropertyLocation(descLower: String, titleLower: String, scrapedTitleLower: String, sheetLokasi: String = "", idListing: String = ""): String {
+    if (idListing.trim() == "10645") {
+        return "CIPETE"
+    }
+
     val cleanSheet = sheetLokasi.trim().uppercase()
     if (cleanSheet.isNotBlank() && !isStatusTagText(cleanSheet) && cleanSheet != "UNKNOWN" && cleanSheet !in LOCATION_BLACKLIST) {
         return cleanSheet

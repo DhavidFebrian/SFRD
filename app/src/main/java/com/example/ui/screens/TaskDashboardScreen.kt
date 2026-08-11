@@ -183,12 +183,17 @@ fun TaskDashboardScreen(
 
             val scrapedTitle = listingTitleMap[cleanId]?.trim() ?: ""
             val scrapedDesc = listingDescMap[cleanId]?.trim() ?: ""
-            val notesLoc = extractPropertyLocation(listing.catatan.lowercase(), "", scrapedTitle.lowercase())
-            val parsedLoc = if (notesLoc != "INDONESIA" && notesLoc.isNotBlank()) {
+            val notesLoc = extractPropertyLocation(listing.catatan.lowercase(), "", scrapedTitle.lowercase(), idListing = cleanId)
+            val parsedLoc = if (cleanId == "10645") {
+                "Cipete"
+            } else if (notesLoc != "INDONESIA" && notesLoc.isNotBlank()) {
                 notesLoc.split(" ").joinToString(" ") { it.replaceFirstChar { c -> if (c.isLowerCase()) c.titlecase(Locale("id", "ID")) else c.toString() } }
             } else ""
 
+            val notesJudul = com.example.ui.extractJudulFromNotes(listing.catatan)
+
             val taskJudul = when {
+                !notesJudul.isNullOrBlank() -> notesJudul
                 scrapedTitle.isNotBlank() -> scrapedTitle
                 parsedLoc.isNotBlank() -> parsedLoc
                 listing.catatan.trim().isNotBlank() && !isStatusTagText(listing.catatan) -> listing.catatan.trim()
@@ -611,7 +616,7 @@ fun TaskDashboardScreen(
                                 "Juli","Agustus","September","Oktober","November","Desember")
                             var igMonthExpanded by remember { mutableStateOf(false) }
 
-                            // Belum Post: has jadwalPosting AND postingIg=false, sorted newest date first
+                            // Belum Post: has jadwalPosting AND postingIg=false, sorted oldest date first (ascending)
                             val unpostedList = remember(uploadIgList) {
                                 val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
                                 uploadIgList.filter { task ->
@@ -619,13 +624,13 @@ fun TaskDashboardScreen(
                                     val hasJadwal = jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
                                     hasJadwal && !task.postingIg
                                 }.sortedWith(
-                                    compareByDescending<com.example.data.EditFotoTask> { item ->
+                                    compareBy<com.example.data.EditFotoTask> { item ->
                                         val norm = com.example.data.normalizeDate(item.jadwalPosting)
                                         try { sdf.parse(norm)?.time ?: 0L } catch (e: Exception) { 0L }
-                                    }.thenByDescending { it.no }
+                                    }.thenBy { it.no }
                                 )
                             }
-                            // Sudah Post: has jadwalPosting AND postingIg=true, sorted newest date first
+                            // Sudah Post: has jadwalPosting AND postingIg=true, sorted oldest date first (ascending)
                             val postedList = remember(uploadIgList) {
                                 val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
                                 uploadIgList.filter { task ->
@@ -633,10 +638,10 @@ fun TaskDashboardScreen(
                                     val hasJadwal = jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
                                     hasJadwal && task.postingIg
                                 }.sortedWith(
-                                    compareByDescending<com.example.data.EditFotoTask> { item ->
+                                    compareBy<com.example.data.EditFotoTask> { item ->
                                         val norm = com.example.data.normalizeDate(item.jadwalPosting)
                                         try { sdf.parse(norm)?.time ?: 0L } catch (e: Exception) { 0L }
-                                    }.thenByDescending { it.no }
+                                    }.thenBy { it.no }
                                 )
                             }
                             
@@ -1106,6 +1111,7 @@ fun TaskDashboardScreen(
             DownloadImagesScreen(
                 task = task,
                 listingImagesGalleryMap = listingImagesGalleryMap,
+                listingTitleMap = listingTitleMap,
                 onDismiss = { activeTaskForDownload = null }
             )
         }
@@ -2155,6 +2161,13 @@ private fun getDisplayLocation(
     listingDescMap: Map<String, String>
 ): String {
     val cleanId = task.idListing.trim()
+
+    // PRIORITY 0: Jika ada notes "judul" di editNotes, gunakan itu sebagai judul card
+    val notesJudul = com.example.ui.extractJudulFromNotes(task.editNotes)
+    if (!notesJudul.isNullOrBlank()) {
+        return notesJudul.trim()
+    }
+
     val rawLoc = if (cleanId.isNotBlank()) {
         val matchingSchedule = schedules.find { it.idListing.trim().equals(cleanId, ignoreCase = true) }
         if (matchingSchedule != null && matchingSchedule.lokasi.isNotBlank()) {

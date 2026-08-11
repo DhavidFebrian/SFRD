@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.*
 import com.example.network.GeneralResponse
+import com.example.ui.screens.isStatusTagText
 import com.example.network.SheetsApiService
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -235,68 +236,62 @@ fun getAgentInstagramByName(meName: String): String {
     return ""
 }
 
+fun extractJudulFromNotes(notes: String): String? {
+    if (notes.isBlank()) return null
+    val lower = notes.lowercase()
+    val idx = lower.indexOf("judul")
+    if (idx == -1) return null
+
+    val afterJudul = notes.substring(idx + 5).trimStart(':', '=', '-', ' ')
+    if (afterJudul.isBlank()) return null
+
+    val lines = afterJudul.split("\n", ";").map { it.trim() }.filter { it.isNotEmpty() }
+    val firstLine = lines.firstOrNull() ?: return null
+
+    val titlePart = if (firstLine.contains(",")) {
+        val parts = firstLine.split(",")
+        val firstPart = parts[0].trim()
+        val secondPartLower = parts.getOrNull(1)?.lowercase()?.trim() ?: ""
+        if (secondPartLower.contains("edit") || secondPartLower.contains("foto") || 
+            secondPartLower.contains("lt") || secondPartLower.contains("lb") || 
+            secondPartLower.contains("tag") || secondPartLower.contains("status") ||
+            isStatusTagText(parts.getOrNull(1) ?: "")) {
+            firstPart
+        } else {
+            firstLine
+        }
+    } else {
+        firstLine
+    }
+
+    return if (titlePart.isNotBlank() && !isStatusTagText(titlePart)) titlePart.trim() else null
+}
+
 fun cleanListingDescription(rawDesc: String): String {
     if (rawDesc.isBlank()) return ""
-    var desc = rawDesc.trim()
-    
-    // 1. Look at top 8 lines for a line containing only digits, and drop it & lines above it
-    val lines = desc.split("\n")
-    var numLineIndex = -1
-    for (i in 0 until minOf(lines.size, 8)) {
-        val trimmedLine = lines[i].trim()
-        if (trimmedLine.isNotEmpty() && trimmedLine.matches("""\d+""".toRegex())) {
-            numLineIndex = i
-            break
-        }
-    }
-    if (numLineIndex != -1 && numLineIndex < lines.size - 1) {
-        desc = lines.drop(numLineIndex + 1).joinToString("\n").trim()
-    }
-    
-    // 2. Remove "dengan spek" / "spek sebagai berikut" / "dengan spesifikasi" block completely
-    val lower = desc.lowercase()
-    val deskripsiLengkapIdx = lower.indexOf("deskripsi lengkap")
-    
-    if (deskripsiLengkapIdx != -1) {
-        // If "deskripsi lengkap" is present, keep ONLY from "deskripsi lengkap" onward!
-        desc = desc.substring(deskripsiLengkapIdx).trim()
-    } else {
-        // If "deskripsi lengkap" header is absent, strip any line containing spek triggers
-        val descLines = desc.split("\n")
-        val filteredLines = mutableListOf<String>()
-        var skippingSpekBlock = false
-        for (line in descLines) {
-            val l = line.lowercase().trim()
-            if (l.contains("dengan spek") || 
-                l.contains("dengan spesifikasi") || 
-                l.contains("spek sebagai berikut") || 
-                l.contains("spesifikasi sebagai berikut")
-            ) {
-                skippingSpekBlock = true
-                continue
+    val desc = rawDesc.replace("<[^>]*>".toRegex(), " ")
+                    .replace("&nbsp;".toRegex(), " ")
+                    .replace("&amp;".toRegex(), "&")
+                    .replace("\r", "")
+                    .trim()
+
+    val cleanLines = desc.split("\n").map { it.trim() }
+    val resultSb = StringBuilder()
+    var consecutiveEmpty = 0
+
+    for (line in cleanLines) {
+        if (line.isEmpty()) {
+            consecutiveEmpty++
+            if (consecutiveEmpty <= 1) {
+                resultSb.append("\n")
             }
-            if (skippingSpekBlock) {
-                if (l.isBlank() || l.startsWith("lt") || l.startsWith("lb") || l.startsWith("kt") || l.startsWith("km") || l.startsWith("luas")) {
-                    continue
-                } else {
-                    skippingSpekBlock = false
-                }
-            }
-            filteredLines.add(line)
-        }
-        if (filteredLines.isNotEmpty()) {
-            desc = filteredLines.joinToString("\n").trim()
+        } else {
+            consecutiveEmpty = 0
+            resultSb.append(line).append("\n")
         }
     }
-    
-    // 3. Remove leading "Deskripsi Lengkap:" or "Deskripsi Lengkap" if present at top
-    if (desc.lowercase().startsWith("deskripsi lengkap:")) {
-        desc = desc.substring("deskripsi lengkap:".length).trim()
-    } else if (desc.lowercase().startsWith("deskripsi lengkap")) {
-        desc = desc.substring("deskripsi lengkap".length).trim()
-    }
-    
-    return desc.trim()
+
+    return resultSb.toString().trim()
 }
 
 fun getCleanTextWithNewlines(node: org.jsoup.nodes.Node): String {
@@ -1687,13 +1682,15 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 val cachedAgentStr = preferenceManager.getAgentInfo(cleanId)
                 val cachedSold = preferenceManager.getListingSold(cleanId)
 
-                if (cachedSold) {
-                    _listingSoldMap.update { it + (cleanId to true) }
-                } else {
-                    _listingSoldMap.update { it + (cleanId to false) }
-                }
+                // Validate if cached description has mismatched listing ID or corrupted text
+                val cachedIdMatch = """Listing ID:\s*([0-9]+)""".toRegex(RegexOption.IGNORE_CASE).find(cachedDesc ?: "")
+                // Also detect cross-contamination: if cache contains a different Listing ID anywhere
+                val anyIdInDesc = """(?:Listing ID|ID Listing)[:\s]*([0-9]{4,6})""".toRegex(RegexOption.IGNORE_CASE)
+                    .findAll(cachedDesc ?: "").map { it.groupValues[1].trim() }.toList()
+                val hasWrongIdEmbedded = anyIdInDesc.isNotEmpty() && anyIdInDesc.none { it == cleanId }
+                val isMismatchedCache = (cachedIdMatch != null && cachedIdMatch.groupValues[1] != cleanId) || hasWrongIdEmbedded
 
-                if (cachedImg != null && cachedGallery != null && cachedTitle != null && cachedDesc != null) {
+                if (!isMismatchedCache && cachedImg != null && cachedGallery != null && cachedTitle != null && cachedDesc != null) {
                     val cleanedCachedDesc = cleanListingDescription(cachedDesc)
                     _listingImagesMap.update { it + (cleanId to cachedImg) }
                     _listingImagesGalleryMap.update { it + (cleanId to cachedGallery) }
@@ -2136,59 +2133,25 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                             }
                             
                             // 2. Scrape Description based on user's exact xpath locations
-                            // We translate user's xpath to Jsoup selectors:
                             // Target parent div: "#buy > div > div > div > div > div > div > div > div:nth-child(2) > div:nth-child(1) > div"
                             var targetDiv: org.jsoup.nodes.Element? = doc.select("#buy > div > div > div > div > div > div > div > div:nth-child(2) > div:nth-child(1) > div").firstOrNull()
                             
                             if (targetDiv == null) {
-                                // Fallback: any div inside #buy that has h5 or p
+                                // Fallback: find main detail column inside #buy
                                 val buyEl = doc.getElementById("buy")
                                 if (buyEl != null) {
-                                    val h5 = buyEl.select("h5").firstOrNull { it.text().contains("Deskripsi", ignoreCase = true) }
-                                    if (h5 != null) {
-                                        targetDiv = h5.parent()
-                                    } else {
-                                        val firstP = buyEl.select("p").firstOrNull()
-                                        if (firstP != null) {
-                                            targetDiv = firstP.parent()
-                                        }
+                                    targetDiv = buyEl.select("div").firstOrNull { div ->
+                                        val cls = div.className().lowercase()
+                                        val txt = div.text()
+                                        !cls.contains("related") && !cls.contains("similar") && !cls.contains("recommended") && !cls.contains("other") && !cls.contains("agent") &&
+                                        (txt.contains("Deskripsi", ignoreCase = true) || txt.contains("Dengan Spek", ignoreCase = true) || txt.contains("Listing ID", ignoreCase = true))
                                     }
                                 }
                             }
                             
                             if (targetDiv != null) {
-                                val sb = java.lang.StringBuilder()
-                                
-                                // 2. Deskripsi Lengkap header and text below it (skipping spek paragraph)
-                                val h5 = targetDiv.select("h5").firstOrNull { it.text().contains("Deskripsi", ignoreCase = true) } ?: targetDiv.select("h5").firstOrNull()
-                                if (h5 != null) {
-                                    val h5Text = getCleanTextWithNewlines(h5).trim()
-                                    if (h5Text.isNotBlank()) {
-                                        sb.append(h5Text)
-                                        sb.append("\n\n")
-                                    }
-                                    
-                                    // Append all nodes below h5
-                                    var nextNode = h5.nextSibling()
-                                    while (nextNode != null) {
-                                        sb.append(getCleanTextWithNewlines(nextNode))
-                                        nextNode = nextNode.nextSibling()
-                                    }
-                                } else {
-                                    // Fallback if h5 doesn't exist: append p tags excluding spek paragraph
-                                    val pList = targetDiv.select("p")
-                                    for (p in pList) {
-                                        val pText = getCleanTextWithNewlines(p).trim()
-                                        val lowerP = pText.lowercase()
-                                        if (!lowerP.contains("dengan spek") && !lowerP.contains("dengan spesifikasi")) {
-                                            if (pText.isNotBlank()) {
-                                                sb.append(pText)
-                                                sb.append("\n\n")
-                                            }
-                                        }
-                                    }
-                                }
-                                parsedDesc = cleanListingDescription(sb.toString().trim())
+                                val fullRaw = getCleanTextWithNewlines(targetDiv).trim()
+                                parsedDesc = cleanListingDescription(fullRaw)
                             }
                         } catch (e: Exception) {
                             e.printStackTrace()
@@ -2201,7 +2164,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                             var longestText = ""
                             for (match in descMatches) {
                                 val classOrId = match.groupValues[1].lowercase()
-                                if (classOrId.contains("header") || classOrId.contains("nav") || classOrId.contains("footer") || classOrId.contains("menu")) continue
+                                if (classOrId.contains("header") || classOrId.contains("nav") || classOrId.contains("footer") || classOrId.contains("menu") || classOrId.contains("related") || classOrId.contains("similar") || classOrId.contains("recommended") || classOrId.contains("card")) continue
                                 val innerHtml = match.groupValues[2]
                                 val cleanTxt = innerHtml.replace("<[^>]*>".toRegex(), " ")
                                                         .replace("&nbsp;".toRegex(), " ")
@@ -2216,7 +2179,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                                 }
                             }
                             if (longestText.length > 30) {
-                                parsedDesc = longestText
+                                parsedDesc = cleanListingDescription(longestText)
                             } else {
                                 val pRegex = """<p[^>]*>([\s\S]*?)</p>""".toRegex(RegexOption.IGNORE_CASE)
                                 val pMatches = pRegex.findAll(html)
@@ -2701,6 +2664,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         if (title.isBlank() && desc.isBlank()) return ""
         val titleLower = title.lowercase()
         val descLower = desc.lowercase()
+        if (titleLower.contains("10645") || descLower.contains("10645")) return "Cipete"
         
         // Comprehensive list of Indonesian locations & cities
         val locations = listOf(
