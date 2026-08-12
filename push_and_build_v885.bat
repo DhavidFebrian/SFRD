@@ -10,7 +10,7 @@ echo =====================================
 echo.
 
 git add -A
-git commit -m "v8.8.5: Headline location title fallback, default cover-only check in download, Ilham title exception, Professional Dashboard Monitoring Card in Posts"
+git commit -m "v8.8.5: Restrukturisasi Navigasi UI 5 tab, Workflow Dashboard Monitor, Fix cache & refresh scheduling IG"
 git push
 
 if %ERRORLEVEL% NEQ 0 (

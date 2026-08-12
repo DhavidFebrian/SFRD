@@ -27,6 +27,8 @@ import com.example.ui.screens.DashboardScreen
 import com.example.ui.screens.InputFormScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.AnalyticScreen
+import com.example.ui.screens.WorkflowDashboardScreen
+import com.example.ui.screens.PublishScreen
 import com.example.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.launch
 import android.content.Intent
@@ -44,14 +46,15 @@ enum class TabItem(
     val unselectedIcon: ImageVector,
     val tag: String
 ) {
+    MEETING("Meeting", Icons.Filled.Groups, Icons.Outlined.Groups, "tab_meeting"),
+    MEDIA("Media", Icons.Filled.PhotoLibrary, Icons.Outlined.PhotoLibrary, "tab_media"),
     DASHBOARD("Dashboard", Icons.Filled.Dashboard, Icons.Outlined.Dashboard, "tab_dashboard"),
-    TASK("Task", Icons.Filled.TaskAlt, Icons.Outlined.TaskAlt, "tab_task"),
-    UPLOAD_IG("Upload IG", Icons.Filled.CloudUpload, Icons.Outlined.CloudUpload, "tab_upload_ig"),
-    WEEKLY_MEETING("Meeting", Icons.Filled.Groups, Icons.Outlined.Groups, "tab_weekly_meeting"),
-    TAMBAH("Tambah", Icons.Filled.AddCircle, Icons.Outlined.AddCircle, "tab_tambah"),
+    CONTENT("Content", Icons.Filled.Article, Icons.Outlined.Article, "tab_content"),
+    PUBLISH("Publish", Icons.Filled.Send, Icons.Outlined.Send, "tab_publish"),
+    // Hidden tabs (only accessible from drawer/internal navigation)
     ANALYTIC("Analytic", Icons.Filled.PieChart, Icons.Outlined.PieChart, "tab_analytic"),
     PENGATURAN("Setting", Icons.Filled.Settings, Icons.Outlined.Settings, "tab_settings"),
-    ABSEN_WEEKLY_MEETING("Absen Weekly Meeting", Icons.Filled.CheckCircle, Icons.Outlined.CheckCircle, "tab_absen_weekly_meeting")
+    TAMBAH("Tambah", Icons.Filled.AddCircle, Icons.Outlined.AddCircle, "tab_tambah")
 }
 
 class MainActivity : ComponentActivity() {
@@ -208,26 +211,50 @@ class MainActivity : ComponentActivity() {
 
                              HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
-                             // Navigation Drawer Items as beautiful list
-                             val selectedCat by viewmodel.selectedCategory.collectAsState()
-                            
-                            NavigationDrawerItem(
+                             NavigationDrawerItem(
                                 icon = { Icon(Icons.Default.Dashboard, contentDescription = null) },
                                 label = { Text("Dashboard Utama") },
-                                selected = currentTab == TabItem.DASHBOARD && selectedCat == ScheduleCategory.SEMUA,
+                                selected = currentTab == TabItem.DASHBOARD,
                                 onClick = {
                                     currentTab = TabItem.DASHBOARD
+                                    scope.launch { drawerState.close() }
+                                },
+                                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                            )
+
+                             val selectedCat by viewmodel.selectedCategory.collectAsState()
+
+                             NavigationDrawerItem(
+                                icon = { Icon(Icons.Default.Groups, contentDescription = null) },
+                                label = { Text("Meeting") },
+                                selected = currentTab == TabItem.MEETING,
+                                onClick = {
+                                    currentTab = TabItem.MEETING
+                                    scope.launch { drawerState.close() }
+                                },
+                                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                            )
+
+                             NavigationDrawerItem(
+                                icon = { Icon(Icons.Default.PhotoLibrary, contentDescription = null) },
+                                label = { Text("Media (Jadwal Foto)") },
+                                selected = currentTab == TabItem.MEDIA,
+                                onClick = {
+                                    currentTab = TabItem.MEDIA
                                     viewmodel.selectedCategory.value = ScheduleCategory.SEMUA
                                     scope.launch { drawerState.close() }
                                 },
                                 modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                             )
+
+                             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
                             NavigationDrawerItem(
                                 icon = { Icon(Icons.Default.ElectricBolt, contentDescription = null) },
                                 label = { Text("Jadwal Aktif") },
-                                selected = currentTab == TabItem.DASHBOARD && selectedCat == ScheduleCategory.AKTIF,
+                                selected = currentTab == TabItem.MEDIA && selectedCat == ScheduleCategory.AKTIF,
                                 onClick = {
-                                    currentTab = TabItem.DASHBOARD
+                                    currentTab = TabItem.MEDIA
                                     viewmodel.selectedCategory.value = ScheduleCategory.AKTIF
                                     scope.launch { drawerState.close() }
                                 },
@@ -236,9 +263,9 @@ class MainActivity : ComponentActivity() {
                              NavigationDrawerItem(
                                 icon = { Icon(Icons.Default.CheckCircle, contentDescription = null) },
                                 label = { Text("Jadwal Selesai") },
-                                selected = currentTab == TabItem.DASHBOARD && selectedCat == ScheduleCategory.SELESAI,
+                                selected = currentTab == TabItem.MEDIA && selectedCat == ScheduleCategory.SELESAI,
                                 onClick = {
-                                    currentTab = TabItem.DASHBOARD
+                                    currentTab = TabItem.MEDIA
                                     viewmodel.selectedCategory.value = ScheduleCategory.SELESAI
                                     scope.launch { drawerState.close() }
                                 },
@@ -247,21 +274,34 @@ class MainActivity : ComponentActivity() {
                             NavigationDrawerItem(
                                 icon = { Icon(Icons.Default.PauseCircle, contentDescription = null) },
                                 label = { Text("Jadwal Non-Aktif") },
-                                selected = currentTab == TabItem.DASHBOARD && selectedCat == ScheduleCategory.NON_AKTIF,
+                                selected = currentTab == TabItem.MEDIA && selectedCat == ScheduleCategory.NON_AKTIF,
                                 onClick = {
-                                    currentTab = TabItem.DASHBOARD
+                                    currentTab = TabItem.MEDIA
                                     viewmodel.selectedCategory.value = ScheduleCategory.NON_AKTIF
                                     scope.launch { drawerState.close() }
                                 },
                                 modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
                             )
 
+                             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
                             NavigationDrawerItem(
-                                icon = { Icon(Icons.Default.Task, contentDescription = null) },
-                                label = { Text("Dashboard Task (V5.8)") },
-                                selected = currentTab == TabItem.TASK,
+                                icon = { Icon(Icons.Default.Article, contentDescription = null) },
+                                label = { Text("Content (Task)") },
+                                selected = currentTab == TabItem.CONTENT,
                                 onClick = {
-                                    currentTab = TabItem.TASK
+                                    currentTab = TabItem.CONTENT
+                                    scope.launch { drawerState.close() }
+                                },
+                                modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                            )
+
+                            NavigationDrawerItem(
+                                icon = { Icon(Icons.Default.Send, contentDescription = null) },
+                                label = { Text("Publish (Upload IG)") },
+                                selected = currentTab == TabItem.PUBLISH,
+                                onClick = {
+                                    currentTab = TabItem.PUBLISH
                                     scope.launch { drawerState.close() }
                                 },
                                 modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
@@ -458,7 +498,7 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.testTag("bottom_nav_bar"),
                                     windowInsets = WindowInsets(0, 0, 0, 0)
                                 ) {
-                                    TabItem.values().filter { it != TabItem.PENGATURAN && it != TabItem.ANALYTIC && it != TabItem.ABSEN_WEEKLY_MEETING }.forEach { tab ->
+                                    TabItem.values().filter { it in listOf(TabItem.MEETING, TabItem.MEDIA, TabItem.DASHBOARD, TabItem.CONTENT, TabItem.PUBLISH) }.forEach { tab ->
                                         val isSelected = currentTab == tab
                                         NavigationBarItem(
                                             selected = isSelected,
@@ -680,21 +720,14 @@ class MainActivity : ComponentActivity() {
                             
                             Box(modifier = Modifier.weight(1f)) {
                                 when (currentTab) {
-                                    TabItem.WEEKLY_MEETING -> com.example.ui.screens.WeeklyMeetingCombinedScreen(
+                                    TabItem.MEETING -> com.example.ui.screens.WeeklyMeetingCombinedScreen(
                                         viewModel = viewmodel,
                                         onOpenDrawer = {
                                             scope.launch { drawerState.open() }
                                         },
                                         modifier = Modifier.fillMaxSize()
                                     )
-                                    TabItem.ABSEN_WEEKLY_MEETING -> com.example.ui.screens.WeeklyMeetingCombinedScreen(
-                                        viewModel = viewmodel,
-                                        onOpenDrawer = {
-                                            scope.launch { drawerState.open() }
-                                        },
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                    TabItem.DASHBOARD -> DashboardScreen(
+                                    TabItem.MEDIA -> DashboardScreen(
                                         viewModel = viewmodel,
                                         onNavigateToForm = { currentTab = TabItem.TAMBAH },
                                         onNavigateToChat = { isInChatScreen = true },
@@ -703,7 +736,19 @@ class MainActivity : ComponentActivity() {
                                         },
                                         modifier = Modifier.fillMaxSize()
                                     )
-                                    TabItem.TASK -> com.example.ui.screens.TaskDashboardScreen(
+                                    TabItem.DASHBOARD -> WorkflowDashboardScreen(
+                                        viewModel = viewmodel,
+                                        onNavigateToMeeting = { currentTab = TabItem.MEETING },
+                                        onNavigateToMedia = { currentTab = TabItem.MEDIA },
+                                        onNavigateToContent = { currentTab = TabItem.CONTENT },
+                                        onNavigateToPublish = { currentTab = TabItem.PUBLISH },
+                                        onNavigateToChat = { isInChatScreen = true },
+                                        onOpenDrawer = {
+                                            scope.launch { drawerState.open() }
+                                        },
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                    TabItem.CONTENT -> com.example.ui.screens.TaskDashboardScreen(
                                         viewModel = viewmodel,
                                         onOpenDrawer = {
                                             scope.launch { drawerState.open() }
@@ -714,14 +759,11 @@ class MainActivity : ComponentActivity() {
                                         onNavigateToChat = { isInChatScreen = true },
                                         onNavigateToForm = { currentTab = TabItem.TAMBAH }
                                     )
-                                    TabItem.UPLOAD_IG -> com.example.ui.screens.TaskDashboardScreen(
+                                    TabItem.PUBLISH -> PublishScreen(
                                         viewModel = viewmodel,
                                         onOpenDrawer = {
                                             scope.launch { drawerState.open() }
                                         },
-                                        modifier = Modifier.fillMaxSize(),
-                                        initialSubTab = 2,
-                                        isUploadIgOnly = true,
                                         onNavigateToChat = { isInChatScreen = true },
                                         onNavigateToForm = { currentTab = TabItem.TAMBAH }
                                     )

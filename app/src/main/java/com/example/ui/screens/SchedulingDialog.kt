@@ -190,7 +190,7 @@ fun SchedulingDialog(
                     },
                     actions = {
                         IconButton(
-                            onClick = { viewModel.fetchWeeklyMeetingIgListings(dialogMonth) },
+                            onClick = { viewModel.fetchWeeklyMeetingIgListings(dialogMonth, forceRefresh = true) },
                             enabled = igSyncStatus !is SyncState.Loading
                         ) {
                             if (igSyncStatus is SyncState.Loading) {
@@ -828,9 +828,9 @@ private fun UnscheduledThreeSectionContent(
     }
 
     // Section expand states
-    var turunHargaExpanded by remember { mutableStateOf(true) }
-    var tradeAreaExpanded by remember { mutableStateOf(true) }
-    var igExpanded by remember { mutableStateOf(true) }
+    var turunHargaExpanded by remember { mutableStateOf(false) }
+    var tradeAreaExpanded by remember { mutableStateOf(false) }
+    var igExpanded by remember { mutableStateOf(false) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -1173,6 +1173,35 @@ private fun UnscheduledCard(
                     overflow = TextOverflow.Ellipsis,
                     fontSize = 9.sp
                 )
+
+                // Notes from catatan spreadsheet
+                if (listing.catatan.trim().isNotBlank()) {
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.StickyNote2,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(8.dp)
+                            )
+                            Text(
+                                text = listing.catatan.trim(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                                fontSize = 8.sp
+                            )
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(2.dp))
 
@@ -1564,4 +1593,498 @@ private fun parseJadwalPostingDateToDate(rawDate: String): Date {
     } catch (e: Exception) {}
 
     return Date(0)
+}
+
+/**
+ * Embeddable version of SchedulingDialog content.
+ * This renders the same scheduling UI but as a regular composable (not a Dialog),
+ * suitable for embedding in PublishScreen tabs.
+ */
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+fun SchedulingScreenContent(
+    viewModel: ScheduleViewModel,
+    modifier: Modifier = Modifier
+) {
+    val igSyncStatus by viewModel.weeklyMeetingIgSyncStatus.collectAsStateWithLifecycle()
+    val igListings by viewModel.weeklyMeetingIgListings.collectAsStateWithLifecycle()
+
+    val listingImagesMap by viewModel.listingImagesMap.collectAsStateWithLifecycle()
+    val listingTitleMap by viewModel.listingTitleMap.collectAsStateWithLifecycle()
+    val listingPriceMap by viewModel.listingPriceMap.collectAsStateWithLifecycle()
+    val listingDescMap by viewModel.listingDescMap.collectAsStateWithLifecycle()
+    val agentInfoMap by viewModel.agentInfoMap.collectAsStateWithLifecycle()
+
+    var selectedTabState by remember { mutableStateOf(0) }
+    var searchQuery by remember { mutableStateOf("") }
+    var isFilterExpanded by remember { mutableStateOf(false) }
+
+    val globalSelectedMonth by viewModel.selectedMonth.collectAsStateWithLifecycle()
+    var dialogMonth by remember { mutableStateOf(globalSelectedMonth) }
+    var monthDropdownExpanded by remember { mutableStateOf(false) }
+    val allMonths = listOf("Januari","Februari","Maret","April","Mei","Juni",
+        "Juli","Agustus","September","Oktober","November","Desember")
+
+    var showDatePickerForListing by remember { mutableStateOf<com.example.network.MeetingListing?>(null) }
+    var isSubmittingUpdate by remember { mutableStateOf<com.example.network.MeetingListing?>(null) }
+    var detailListing by remember { mutableStateOf<com.example.network.MeetingListing?>(null) }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(dialogMonth) {
+        viewModel.fetchWeeklyMeetingIgListings(dialogMonth)
+    }
+
+    val processedLists = remember(igListings, searchQuery) {
+        val filteredListings = if (searchQuery.isBlank()) igListings
+        else igListings.filter {
+            it.idListing.contains(searchQuery, ignoreCase = true) ||
+            it.namaMe.contains(searchQuery, ignoreCase = true)
+        }
+        val unscheduled = filteredListings.filter {
+            val jadwal = it.jadwalPosting.trim()
+            val noJadwal = jadwal.isEmpty() || jadwal == "-" || jadwal.lowercase().contains("belum")
+            val isPosted = it.postingIg.trim().lowercase() in listOf("done", "ya", "yes", "true", "✔", "1")
+            noJadwal && !isPosted
+        }
+        val scheduled = filteredListings.filter {
+            val jadwal = it.jadwalPosting.trim()
+            jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
+        }.sortedByDescending { parseJadwalPostingDateToDate(it.jadwalPosting) }
+        Pair(unscheduled, scheduled)
+    }
+
+    val (unscheduledList, scheduledList) = processedLists
+    val pagerState = androidx.compose.foundation.pager.rememberPagerState(pageCount = { 2 })
+
+    LaunchedEffect(selectedTabState) {
+        if (pagerState.currentPage != selectedTabState) pagerState.animateScrollToPage(selectedTabState)
+    }
+    LaunchedEffect(pagerState.currentPage) {
+        selectedTabState = pagerState.currentPage
+    }
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = {
+            TopAppBar(
+                title = {
+                    Column {
+                        Text(
+                            text = "Instagram Scheduling",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                        Text(
+                            text = "Mengatur jadwal posting konten IG dari Google Sheets",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { viewModel.fetchWeeklyMeetingIgListings(dialogMonth, forceRefresh = true) },
+                        enabled = igSyncStatus !is SyncState.Loading
+                    ) {
+                        if (igSyncStatus is SyncState.Loading) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+            )
+        }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .background(MaterialTheme.colorScheme.background)
+        ) {
+            // Collapsible Filter Area
+            Surface(
+                onClick = { isFilterExpanded = !isFilterExpanded },
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = if (isFilterExpanded || searchQuery.isNotBlank())
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                border = BorderStroke(
+                    1.dp,
+                    if (searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                    else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null,
+                        tint = if (searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = if (searchQuery.isNotBlank()) "Filter: \"$searchQuery\" · $dialogMonth"
+                               else "Cari ID / Bulan ($dialogMonth) · Ketuk untuk filter",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                        color = if (searchQuery.isNotBlank()) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (searchQuery.isNotBlank()) {
+                        IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(20.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(14.dp),
+                                tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    Icon(
+                        imageVector = if (isFilterExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isFilterExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Cari ID / Nama ME di daftar IG...", fontSize = 14.sp) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { searchQuery = "" }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Bulan:", style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
+                        ExposedDropdownMenuBox(
+                            expanded = monthDropdownExpanded,
+                            onExpandedChange = { monthDropdownExpanded = it },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            OutlinedTextField(
+                                value = dialogMonth,
+                                onValueChange = {},
+                                readOnly = true,
+                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = monthDropdownExpanded) },
+                                singleLine = true,
+                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                                ),
+                                modifier = Modifier.menuAnchor().fillMaxWidth()
+                            )
+                            ExposedDropdownMenu(
+                                expanded = monthDropdownExpanded,
+                                onDismissRequest = { monthDropdownExpanded = false }
+                            ) {
+                                allMonths.forEach { m ->
+                                    DropdownMenuItem(
+                                        text = { Text(m) },
+                                        onClick = {
+                                            dialogMonth = m
+                                            monthDropdownExpanded = false
+                                            isFilterExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Tabs
+            TabRow(
+                selectedTabIndex = selectedTabState,
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.primary,
+                indicator = { tabPositions ->
+                    if (selectedTabState < tabPositions.size) {
+                        TabRowDefaults.SecondaryIndicator(
+                            modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabState]),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            ) {
+                Tab(
+                    selected = selectedTabState == 0,
+                    onClick = { selectedTabState = 0 },
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.HourglassEmpty, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Unscheduled (${unscheduledList.size})", fontWeight = if (selectedTabState == 0) FontWeight.Bold else FontWeight.Normal)
+                        }
+                    }
+                )
+                Tab(
+                    selected = selectedTabState == 1,
+                    onClick = { selectedTabState = 1 },
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.EventAvailable, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Scheduled (${scheduledList.size})", fontWeight = if (selectedTabState == 1) FontWeight.Bold else FontWeight.Normal)
+                        }
+                    }
+                )
+            }
+
+            // Pager content
+            androidx.compose.foundation.pager.HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            ) { page ->
+                if (igSyncStatus is SyncState.Loading && igListings.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                } else if (page == 0) {
+                    UnscheduledThreeSectionContent(
+                        unscheduledList = unscheduledList,
+                        listingImagesMap = listingImagesMap,
+                        listingTitleMap = listingTitleMap,
+                        listingPriceMap = listingPriceMap,
+                        listingDescMap = listingDescMap,
+                        onScheduleClick = { listing -> showDatePickerForListing = listing },
+                        isSubmittingUpdate = isSubmittingUpdate,
+                        onDetailClick = { listing -> detailListing = listing }
+                    )
+                } else {
+                    if (scheduledList.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.CalendarToday, contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), modifier = Modifier.size(64.dp))
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Text("Belum Ada Jadwal", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Tidak ada postingan IG yang telah terjadwal.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.outline, textAlign = TextAlign.Center)
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(scheduledList, key = { "${it.idListing}_${it.no}_${it.colIndex}" }) { listing ->
+                                val cleanId = listing.idListing.trim()
+                                ScheduledListingCard(
+                                    listing = listing,
+                                    imageUrl = listingImagesMap[cleanId],
+                                    title = listingTitleMap[cleanId],
+                                    price = listingPriceMap[cleanId],
+                                    isSubmittingUpdate = isSubmittingUpdate,
+                                    onScheduleClick = { showDatePickerForListing = listing },
+                                    onClearSchedule = {
+                                        isSubmittingUpdate = listing
+                                        viewModel.updateWeeklyMeetingSchedule(
+                                            dateStr = listing.date, row = listing.no, colIndex = listing.colIndex,
+                                            jadwalPosting = "-", photoMonth = dialogMonth,
+                                            onResult = { _, _ -> isSubmittingUpdate = null }
+                                        )
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Detail popup
+    if (detailListing != null) {
+        val listing = detailListing!!
+        val cleanId = listing.idListing.trim()
+        val title = listingTitleMap[cleanId] ?: "Memuat judul..."
+        val price = listingPriceMap[cleanId]
+        val desc = listingDescMap[cleanId]
+        val imageUrl = listingImagesMap[cleanId]
+
+        Dialog(
+            onDismissRequest = { detailListing = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = true)
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f).padding(16.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 8.dp
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Box(
+                                modifier = Modifier
+                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text("ID: $cleanId",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary)
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Detail Listing", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        }
+                        IconButton(onClick = { detailListing = null }) {
+                            Icon(Icons.Default.Close, contentDescription = "Tutup")
+                        }
+                    }
+                    HorizontalDivider()
+                    Column(
+                        modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Box(
+                                modifier = Modifier.size(90.dp).clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (imageUrl != null) {
+                                    coil.compose.AsyncImage(model = imageUrl, contentDescription = null,
+                                        modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                                } else {
+                                    Icon(Icons.Default.HomeWork, contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(36.dp))
+                                }
+                            }
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                    maxLines = 3, overflow = TextOverflow.Ellipsis)
+                                if (!price.isNullOrBlank()) {
+                                    Text(price, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Black),
+                                        color = MaterialTheme.colorScheme.primary)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Icon(Icons.Default.Person, contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(12.dp))
+                                    Text("ME: ${listing.namaMe.uppercase()}", style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                        if (listing.catatan.trim().isNotEmpty()) {
+                            Surface(modifier = Modifier.fillMaxWidth(),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                shape = RoundedCornerShape(10.dp)) {
+                                Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.Top,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Icon(Icons.Default.StickyNote2, contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(16.dp))
+                                    Text("Catatan: ${listing.catatan}", style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                        }
+                        if (!desc.isNullOrBlank()) {
+                            Column {
+                                Text("Deskripsi Listing (Web)",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Surface(modifier = Modifier.fillMaxWidth(),
+                                    color = MaterialTheme.colorScheme.background,
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))) {
+                                    Text(desc, style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                                        modifier = Modifier.padding(12.dp), lineHeight = 18.sp)
+                                }
+                            }
+                        }
+                    }
+                    HorizontalDivider()
+                    Button(
+                        onClick = { detailListing = null; showDatePickerForListing = listing },
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.EditCalendar, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Atur Tanggal Posting")
+                    }
+                }
+            }
+        }
+    }
+
+    // Date picker
+    if (showDatePickerForListing != null) {
+        val listing = showDatePickerForListing!!
+        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = System.currentTimeMillis())
+        DatePickerDialog(
+            onDismissRequest = { showDatePickerForListing = null },
+            confirmButton = {
+                TextButton(onClick = {
+                    val selectedDateMillis = datePickerState.selectedDateMillis
+                    if (selectedDateMillis != null) {
+                        val formattedDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(selectedDateMillis))
+                        showDatePickerForListing = null
+                        isSubmittingUpdate = listing
+                        viewModel.updateWeeklyMeetingSchedule(
+                            dateStr = listing.date, row = listing.no, colIndex = listing.colIndex,
+                            jadwalPosting = formattedDate, photoMonth = dialogMonth,
+                            onResult = { _, _ -> isSubmittingUpdate = null }
+                        )
+                    }
+                }) { Text("PILIH") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePickerForListing = null }) { Text("BATAL") }
+            }
+        ) {
+            DatePicker(
+                state = datePickerState,
+                title = {
+                    Text("Atur Tanggal Posting IG",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(start = 24.dp, top = 24.dp))
+                }
+            )
+        }
+    }
 }

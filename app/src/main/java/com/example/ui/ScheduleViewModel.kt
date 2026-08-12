@@ -803,10 +803,12 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         }
         
         val cleanMonth = photoMonth.trim()
-        if (!forceRefresh && igListingsCache.containsKey(cleanMonth)) {
-            val cachedListings = igListingsCache[cleanMonth] ?: emptyList()
+        val cacheKey = if (cleanMonth.isBlank() || cleanMonth.contains("Semua", ignoreCase = true)) "SEMUA" else getWeeklyMeetingSheetNameForMonth(cleanMonth)
+        
+        if (!forceRefresh && igListingsCache.containsKey(cacheKey)) {
+            val cachedListings = igListingsCache[cacheKey] ?: emptyList()
             weeklyMeetingIgListings.value = cachedListings
-            val isSemua = cleanMonth.isBlank() || cleanMonth.contains("Semua", ignoreCase = true)
+            val isSemua = cacheKey == "SEMUA"
             val msg = if (isSemua) "Berhasil memuat ${cachedListings.size} postingan IG dari Semua Bulan!" else "Berhasil memuat ${cachedListings.size} postingan IG!"
             _weeklyMeetingIgSyncStatus.value = SyncState.Success(msg)
             return
@@ -815,7 +817,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             _weeklyMeetingIgSyncStatus.value = SyncState.Loading
             try {
-                val isSemua = cleanMonth.isBlank() || cleanMonth.contains("Semua", ignoreCase = true)
+                val isSemua = cacheKey == "SEMUA"
                 val combinedListings = mutableListOf<com.example.network.MeetingListing>()
                 
                 if (isSemua) {
@@ -869,7 +871,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 val filtered = mergedListings.filter { 
                     it.keterangan.trim().equals("IG", ignoreCase = true) 
                 }
-                igListingsCache[cleanMonth] = filtered
+                igListingsCache[cacheKey] = filtered
                 weeklyMeetingIgListings.value = filtered
                 val msg = if (isSemua) "Berhasil memuat ${filtered.size} postingan IG dari Semua Bulan!" else "Berhasil memuat ${filtered.size} postingan IG!"
                 _weeklyMeetingIgSyncStatus.value = SyncState.Success(msg)
@@ -906,10 +908,11 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 )
                 val response = apiService.updateMeetingIgPost(baseUrl, request)
                 if (response.status.lowercase() == "success") {
+                    igListingsCache.clear()
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         onResult(true, response.message)
                     }
-                    fetchWeeklyMeetingIgListings(photoMonth)
+                    fetchWeeklyMeetingIgListings(photoMonth, forceRefresh = true)
                 } else {
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         onResult(false, response.message)
@@ -1595,11 +1598,29 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 
                 val response = apiService.updateMeetingSchedule(baseUrl, request)
                 if (response.status.lowercase() == "success") {
+                    // 1. Clear cache so subsequent queries won't hit stale cache
+                    igListingsCache.clear()
+
+                    // 2. Immediate optimistic update of weeklyMeetingIgListings
+                    val currentList = weeklyMeetingIgListings.value
+                    val updatedList = currentList.map { item ->
+                        if (item.no == row && item.colIndex == colIndex) {
+                            item.copy(jadwalPosting = jadwalPosting)
+                        } else {
+                            item
+                        }
+                    }
+                    weeklyMeetingIgListings.value = updatedList
+
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         onResult(true, response.message)
                     }
-                    // Refresh dengan bulan yang benar
-                    fetchWeeklyMeetingIgListings(detectedMonth)
+
+                    // 3. Re-fetch from server with forceRefresh = true
+                    fetchWeeklyMeetingIgListings(detectedMonth, forceRefresh = true)
+                    if (photoMonth.isNotBlank() && photoMonth.lowercase() != detectedMonth.lowercase()) {
+                        fetchWeeklyMeetingIgListings(photoMonth, forceRefresh = true)
+                    }
                     if (selectedMeetingDate.value != null && selectedMeetingMonth.value != null) {
                         fetchMeetingListings(selectedMeetingMonth.value!!, selectedMeetingDate.value!!)
                     }

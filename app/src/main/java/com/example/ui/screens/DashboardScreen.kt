@@ -175,6 +175,16 @@ fun DashboardScreen(
     Scaffold(
         modifier = modifier,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = onNavigateToForm,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(imageVector = Icons.Default.Add, contentDescription = "Tambah Jadwal")
+            }
+        },
         topBar = {
             CenterAlignedTopAppBar(
                 navigationIcon = {
@@ -193,7 +203,7 @@ fun DashboardScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "Raffa - David",
+                            text = "David",
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.onSurface
                         )
