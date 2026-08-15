@@ -66,7 +66,8 @@ fun TaskDashboardScreen(
     initialSubTab: Int = 0,
     isUploadIgOnly: Boolean = false,
     onNavigateToChat: (() -> Unit)? = null,
-    onNavigateToForm: (() -> Unit)? = null
+    onNavigateToForm: (() -> Unit)? = null,
+    isExternalFilterExpanded: Boolean? = null
 ) {
     var selectedSubTab by remember(initialSubTab) { mutableStateOf(initialSubTab) } // 0 = Foto Ulang, 1 = Edit Jadwal, 2 = Upload IG
     
@@ -129,23 +130,27 @@ fun TaskDashboardScreen(
 
     // Filter Task Foto Ulang (type starts with "done" and status != "done")
     val taskFotoUlangList = remember(schedules, searchQuery, selectedTypeFilter) {
-        schedules.filter {
-            val typeLower = it.type.lowercase().trim()
-            val statusLower = it.status.lowercase().trim()
-            val isTask = typeLower.startsWith("done") && statusLower != "done"
-            val matchesQuery = searchQuery.isBlank() ||
-                    it.namaMe.contains(searchQuery, ignoreCase = true) ||
-                    it.idListing.contains(searchQuery, ignoreCase = true) ||
-                    it.lokasi.contains(searchQuery, ignoreCase = true)
-            
-            val matchesFilter = when (selectedTypeFilter) {
-                "Up Foto" -> typeLower.contains("up foto", ignoreCase = true) || statusLower.contains("up foto", ignoreCase = true)
-                "Edit Video" -> typeLower.contains("video", ignoreCase = true) || statusLower.contains("video", ignoreCase = true)
-                "Garis Tanah" -> typeLower.contains("garis", ignoreCase = true) || typeLower.contains("tanah", ignoreCase = true) || statusLower.contains("garis", ignoreCase = true) || statusLower.contains("tanah", ignoreCase = true)
-                else -> true
+        if (selectedTypeFilter == "Edit Foto") {
+            emptyList()
+        } else {
+            schedules.filter {
+                val typeLower = it.type.lowercase().trim()
+                val statusLower = it.status.lowercase().trim()
+                val isTask = typeLower.startsWith("done") && statusLower != "done"
+                val matchesQuery = searchQuery.isBlank() ||
+                        it.namaMe.contains(searchQuery, ignoreCase = true) ||
+                        it.idListing.contains(searchQuery, ignoreCase = true) ||
+                        it.lokasi.contains(searchQuery, ignoreCase = true)
+                
+                val matchesFilter = when (selectedTypeFilter) {
+                    "Up Foto" -> typeLower.contains("up foto", ignoreCase = true) || statusLower.contains("up foto", ignoreCase = true)
+                    "Edit Video" -> typeLower.contains("video", ignoreCase = true) || statusLower.contains("video", ignoreCase = true)
+                    "Garis Tanah" -> typeLower.contains("garis", ignoreCase = true) || typeLower.contains("tanah", ignoreCase = true) || statusLower.contains("garis", ignoreCase = true) || statusLower.contains("tanah", ignoreCase = true)
+                    else -> true
+                }
+                
+                isTask && matchesQuery && matchesFilter
             }
-            
-            isTask && matchesQuery && matchesFilter
         }
     }
 
@@ -163,6 +168,7 @@ fun TaskDashboardScreen(
                 "Up Foto" -> it.editNotes.contains("up foto", ignoreCase = true) || it.judul.contains("up foto", ignoreCase = true)
                 "Edit Video" -> it.editNotes.contains("video", ignoreCase = true) || it.judul.contains("video", ignoreCase = true)
                 "Garis Tanah" -> it.editNotes.contains("garis", ignoreCase = true) || it.editNotes.contains("tanah", ignoreCase = true) || it.judul.contains("garis", ignoreCase = true) || it.judul.contains("tanah", ignoreCase = true)
+                "Edit Foto" -> true
                 else -> true
             }
             
@@ -215,26 +221,18 @@ fun TaskDashboardScreen(
         }.filter { task ->
             val matchesSearch = if (searchQuery.isBlank()) true else {
                 task.idListing.contains(searchQuery, ignoreCase = true) ||
-                task.namaMe.contains(searchQuery, ignoreCase = true)
+                task.namaMe.contains(searchQuery, ignoreCase = true) ||
+                task.judul.contains(searchQuery, ignoreCase = true) ||
+                task.editNotes.contains(searchQuery, ignoreCase = true)
             }
             
             val matchesDate = if (selectedUploadIgDateFilter == null) true else {
-                val normalizedTaskDate = try {
-                    val sdfIn = SimpleDateFormat("dd/MM/yyyy", Locale.US)
-                    val sdfOut = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-                    val d = sdfIn.parse(task.jadwalPosting.trim())
-                    sdfOut.format(d!!)
-                } catch (e: Exception) {
-                    try {
-                        val sdfIn = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-                        val sdfOut = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-                        val d = sdfIn.parse(task.jadwalPosting.trim())
-                        sdfOut.format(d!!)
-                    } catch (ex: Exception) {
-                        task.jadwalPosting.trim()
-                    }
-                }
-                normalizedTaskDate == selectedUploadIgDateFilter
+                val normalizedTaskDate = com.example.data.normalizeDate(task.jadwalPosting)
+                val normalizedSourceDate = try {
+                    val src = task.source.substringBefore("|||").trim()
+                    com.example.data.normalizeDate(src)
+                } catch (e: Exception) { "" }
+                normalizedTaskDate == selectedUploadIgDateFilter || normalizedSourceDate == selectedUploadIgDateFilter
             }
             
             matchesSearch && matchesDate
@@ -249,51 +247,53 @@ fun TaskDashboardScreen(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = if (selectedSubTab == 2 || isUploadIgOnly) "Upload Instagram" else "Dashboard Task",
-                            fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Text(
-                            text = if (selectedSubTab == 2 || isUploadIgOnly) "Daftar postingan siap upload ke Instagram" else "Kelola tugas foto ulang dan editing foto RWC",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onOpenDrawer) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { onNavigateToChat?.invoke() }) {
-                        BadgedBox(
-                            badge = {
-                                if (unreadCount > 0) {
-                                    Badge {
-                                        Text(unreadCount.toString())
-                                    }
-                                }
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Forum,
-                                contentDescription = "Chat",
-                                tint = MaterialTheme.colorScheme.onSurface
+            if (!isUploadIgOnly) {
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text(
+                                text = if (selectedSubTab == 2) "Upload Instagram" else "Dashboard Task",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = if (selectedSubTab == 2) "Daftar postingan siap upload ke Instagram" else "Kelola tugas foto ulang dan editing foto RWC",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onOpenDrawer) {
+                            Icon(Icons.Default.Menu, contentDescription = "Menu")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { onNavigateToChat?.invoke() }) {
+                            BadgedBox(
+                                badge = {
+                                    if (unreadCount > 0) {
+                                        Badge {
+                                            Text(unreadCount.toString())
+                                        }
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Forum,
+                                    contentDescription = "Chat",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    )
                 )
-            )
+            }
         }
     ) { innerPadding ->
         Column(
@@ -391,154 +391,42 @@ fun TaskDashboardScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Custom Interactive Filter Chips
+                    // 5 Modern Interactive Filter Chips: Semua, Up Foto, Edit Video, Garis Tanah, Edit Foto
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val filters = listOf("Semua", "Up Foto", "Edit Video", "Garis Tanah")
+                        val filters = listOf("Semua", "Up Foto", "Edit Video", "Garis Tanah", "Edit Foto")
                         filters.forEach { filter ->
                             val isSelected = selectedTypeFilter == filter
                             Box(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(10.dp))
                                     .background(
                                         if (isSelected) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
                                     )
                                     .clickable { selectedTypeFilter = filter }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                    .padding(vertical = 8.dp, horizontal = 2.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = filter,
-                                    style = MaterialTheme.typography.labelMedium.copy(
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        fontSize = 11.sp
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                                        fontSize = 10.5.sp,
+                                        letterSpacing = (-0.2).sp
                                     ),
                                     color = if (isSelected) MaterialTheme.colorScheme.onPrimary
-                                            else MaterialTheme.colorScheme.onSurfaceVariant
+                                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (!isUploadIgOnly) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                ) {
-                    // SaaS Modern Segmented Control Container
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 6.dp),
-                        shape = RoundedCornerShape(100.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            // Tab 0: Foto Ulang
-                            val isTab0 = selectedSubTab == 0
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(100.dp))
-                                    .background(
-                                        if (isTab0) MaterialTheme.colorScheme.primaryContainer
-                                        else Color.Transparent
-                                    )
-                                    .clickable { selectedSubTab = 0 }
-                                    .padding(vertical = 10.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CameraAlt,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = if (isTab0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = "Foto Ulang",
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontWeight = if (isTab0) FontWeight.ExtraBold else FontWeight.Medium,
-                                            fontSize = 12.sp
-                                        ),
-                                        color = if (isTab0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = if (isTab0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                    ) {
-                                        Text(
-                                            text = taskFotoUlangList.size.toString(),
-                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
-                                            color = if (isTab0) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Tab 1: Edit Foto
-                            val isTab1 = selectedSubTab == 1
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(100.dp))
-                                    .background(
-                                        if (isTab1) MaterialTheme.colorScheme.primaryContainer
-                                        else Color.Transparent
-                                    )
-                                    .clickable { selectedSubTab = 1 }
-                                    .padding(vertical = 10.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Edit,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp),
-                                        tint = if (isTab1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = "Edit Foto",
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            fontWeight = if (isTab1) FontWeight.ExtraBold else FontWeight.Medium,
-                                            fontSize = 12.sp
-                                        ),
-                                        color = if (isTab1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = if (isTab1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                                    ) {
-                                        Text(
-                                            text = editFotoNotDoneCount.toString(),
-                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 10.sp),
-                                            color = if (isTab1) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
-                                        )
-                                    }
-                                }
                             }
                         }
                     }
@@ -552,12 +440,12 @@ fun TaskDashboardScreen(
                     .fillMaxWidth()
             ) {
                 when (selectedSubTab) {
-                    0 -> {
-                        // Task Foto Ulang
-                        if (taskFotoUlangList.isEmpty()) {
+                    0, 1 -> {
+                        // Unified Content Desk List (Foto Ulang & Edit Foto)
+                        if (taskFotoUlangList.isEmpty() && taskEditFotoList.isEmpty()) {
                             EmptyStateTask(
-                                title = "Tidak Ada Task Foto Ulang",
-                                subtitle = "Semua jadwal berjalan lancar tanpa request foto ulang."
+                                title = "Tidak Ada Task",
+                                subtitle = "Semua task pada kategori '$selectedTypeFilter' sudah selesai."
                             )
                         } else {
                             LazyColumn(
@@ -565,138 +453,84 @@ fun TaskDashboardScreen(
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
-                                items(taskFotoUlangList, key = { it.id }) { item ->
-                                    TaskFotoUlangCard(
-                                        schedule = item,
-                                        listingImagesMap = listingImagesMap,
-                                        listingSoldMap = listingSoldMap,
-                                        onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, item.namaMe) },
-                                        onDelete = { scheduleToDelete = item },
-                                        onClick = { selectedScheduleForDetail = item }
-                                    )
+                                if (taskFotoUlangList.isNotEmpty()) {
+                                    items(taskFotoUlangList, key = { "schedule_${it.id}" }) { item ->
+                                        TaskFotoUlangCard(
+                                            schedule = item,
+                                            listingImagesMap = listingImagesMap,
+                                            listingSoldMap = listingSoldMap,
+                                            onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, item.namaMe) },
+                                            onDelete = { scheduleToDelete = item },
+                                            onClick = { selectedScheduleForDetail = item }
+                                        )
+                                    }
                                 }
-                            }
-                        }
-                    }
-                    1 -> {
-                        // Task Edit Foto
-                        if (taskEditFotoList.isEmpty()) {
-                            EmptyStateTask(
-                                title = "Tidak Ada Task Edit Jadwal",
-                                subtitle = "Antrean editing foto kosong. Kerja bagus!"
-                            )
-                        } else {
-                            LazyColumn(
-                                contentPadding = PaddingValues(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp),
-                                modifier = Modifier.fillMaxSize()
-                            ) {
-                                items(taskEditFotoList, key = { it.id }) { item ->
-                                    TaskEditFotoCard(
-                                        task = item,
-                                        listingImagesMap = listingImagesMap,
-                                        listingSoldMap = listingSoldMap,
-                                        onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, item.namaMe) },
-                                        onToggleDone = { viewModel.toggleEditFotoDone(item) },
-                                        onTogglePosting = { viewModel.toggleEditFotoPostingIg(item) },
-                                        onDownloadPhotos = { activeTaskForDownload = item },
-                                        onDelete = { taskEditToDelete = item },
-                                        onClick = {
-                                            selectedScheduleForDetail = mapEditFotoToSchedule(item)
-                                        }
-                                    )
+                                if (taskEditFotoList.isNotEmpty()) {
+                                    items(taskEditFotoList, key = { "editfoto_${it.id}_${it.idListing}_${it.no}" }) { item ->
+                                        TaskEditFotoCard(
+                                            task = item,
+                                            listingImagesMap = listingImagesMap,
+                                            listingSoldMap = listingSoldMap,
+                                            onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, item.namaMe) },
+                                            onToggleDone = { viewModel.toggleEditFotoDone(item) },
+                                            onTogglePosting = { viewModel.toggleEditFotoPostingIg(item) },
+                                            onDownloadPhotos = { activeTaskForDownload = item },
+                                            onDelete = { taskEditToDelete = item },
+                                            onClick = {
+                                                selectedScheduleForDetail = mapEditFotoToSchedule(item)
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
                     2 -> {
-                        // Task Upload IG with 2 sub-pages (Belum Post & Sudah Post)
+                        // Task Upload IG with 2 sub-pages (Unpublished & Published)
                         // Month selector for Upload IG
-                            val allIgMonths = listOf("Januari","Februari","Maret","April","Mei","Juni",
-                                "Juli","Agustus","September","Oktober","November","Desember")
-                            var igMonthExpanded by remember { mutableStateOf(false) }
+                        val allIgMonths = listOf(
+                            "Semua Bulan",
+                            "Januari 2026", "Februari 2026", "Maret 2026", "April 2026", "Mei 2026", "Juni 2026",
+                            "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026"
+                        )
+                        var igMonthExpanded by remember { mutableStateOf(false) }
 
-                            // Belum Post: has jadwalPosting AND postingIg=false, sorted oldest date first (ascending)
-                            val unpostedList = remember(uploadIgList) {
-                                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-                                uploadIgList.filter { task ->
-                                    val jadwal = task.jadwalPosting.trim()
-                                    val hasJadwal = jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
-                                    hasJadwal && !task.postingIg
-                                }.sortedWith(
-                                    compareBy<com.example.data.EditFotoTask> { item ->
-                                        val norm = com.example.data.normalizeDate(item.jadwalPosting)
-                                        try { sdf.parse(norm)?.time ?: 0L } catch (e: Exception) { 0L }
-                                    }.thenBy { it.no }
-                                )
-                            }
-                            // Sudah Post: has jadwalPosting AND postingIg=true, sorted oldest date first (ascending)
-                            val postedList = remember(uploadIgList) {
-                                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
-                                uploadIgList.filter { task ->
-                                    val jadwal = task.jadwalPosting.trim()
-                                    val hasJadwal = jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
-                                    hasJadwal && task.postingIg
-                                }.sortedWith(
-                                    compareBy<com.example.data.EditFotoTask> { item ->
-                                        val norm = com.example.data.normalizeDate(item.jadwalPosting)
-                                        try { sdf.parse(norm)?.time ?: 0L } catch (e: Exception) { 0L }
-                                    }.thenBy { it.no }
-                                )
-                            }
-                            
-                            val pagerState = rememberPagerState(pageCount = { 2 })
+                        // Unpublished: has jadwalPosting AND postingIg=false, sorted strictly ascending by date (oldest first)
+                        val unpostedList = remember(uploadIgList) {
+                            uploadIgList.filter { task ->
+                                val jadwal = task.jadwalPosting.trim()
+                                val hasJadwal = jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
+                                hasJadwal && !task.postingIg
+                            }.sortedWith(
+                                compareBy<com.example.data.EditFotoTask> { parseJadwalPostingDateToEpoch(it.jadwalPosting) }
+                                    .thenBy { it.no }
+                            )
+                        }
+                        // Published: has jadwalPosting AND postingIg=true, sorted strictly ascending by date (oldest first)
+                        val postedList = remember(uploadIgList) {
+                            uploadIgList.filter { task ->
+                                val jadwal = task.jadwalPosting.trim()
+                                val hasJadwal = jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
+                                hasJadwal && task.postingIg
+                            }.sortedWith(
+                                compareBy<com.example.data.EditFotoTask> { parseJadwalPostingDateToEpoch(it.jadwalPosting) }
+                                    .thenBy { it.no }
+                            )
+                        }
+                        
+                        val pagerState = rememberPagerState(pageCount = { 2 })
                             val scope = rememberCoroutineScope()
                             val gridState0 = rememberLazyGridState()
                             val gridState1 = rememberLazyGridState()
                             var isUploadIgFilterExpanded by remember { mutableStateOf(false) }
+                            val effectiveUploadIgFilterExpanded = isExternalFilterExpanded ?: isUploadIgFilterExpanded
                              
                              Column(
                                  modifier = Modifier.fillMaxSize()
                              ) {
-                                 // Toggle Button Row for Filter Card
-                                 Row(
-                                     modifier = Modifier
-                                         .fillMaxWidth()
-                                         .padding(horizontal = 16.dp, vertical = 4.dp),
-                                     verticalAlignment = Alignment.CenterVertically,
-                                     horizontalArrangement = Arrangement.Start
-                                 ) {
-                                     Surface(
-                                         onClick = { isUploadIgFilterExpanded = !isUploadIgFilterExpanded },
-                                         shape = RoundedCornerShape(10.dp),
-                                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
-                                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
-                                     ) {
-                                         Row(
-                                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                             verticalAlignment = Alignment.CenterVertically,
-                                             horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                         ) {
-                                             Icon(
-                                                 imageVector = Icons.Default.FilterList,
-                                                 contentDescription = null,
-                                                 tint = MaterialTheme.colorScheme.primary,
-                                                 modifier = Modifier.size(16.dp)
-                                             )
-                                             Text(
-                                                 text = if (isUploadIgFilterExpanded) "Sembunyikan Filter" else "Tampilkan Filter (Cari / Bulan / Tanggal)",
-                                                 style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                                 color = MaterialTheme.colorScheme.primary
-                                             )
-                                             Icon(
-                                                 imageVector = if (isUploadIgFilterExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                                 contentDescription = null,
-                                                 tint = MaterialTheme.colorScheme.primary,
-                                                 modifier = Modifier.size(18.dp)
-                                             )
-                                         }
-                                     }
-                                 }
-
-                                 // Filter Card: Visible ONLY when manual toggle is expanded
+                                 // Filter Card: Visible when search/filter is toggled from top bar
                                  AnimatedVisibility(
-                                     visible = isUploadIgFilterExpanded,
+                                     visible = effectiveUploadIgFilterExpanded,
                                      enter = expandVertically() + fadeIn(),
                                      exit = shrinkVertically() + fadeOut()
                                  ) {
@@ -923,7 +757,7 @@ fun TaskDashboardScreen(
                                                         tint = if (pagerState.currentPage == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                                                     )
                                                     Text(
-                                                        "Belum Post (${unpostedList.size})",
+                                                        "Unpublished (${unpostedList.size})",
                                                         fontWeight = FontWeight.Bold,
                                                         style = MaterialTheme.typography.bodyMedium
                                                     )
@@ -949,7 +783,7 @@ fun TaskDashboardScreen(
                                                         tint = if (pagerState.currentPage == 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                                                     )
                                                     Text(
-                                                        "Sudah Post (${postedList.size})",
+                                                        "Published (${postedList.size})",
                                                         fontWeight = FontWeight.Bold,
                                                         style = MaterialTheme.typography.bodyMedium
                                                     )
@@ -965,7 +799,7 @@ fun TaskDashboardScreen(
                                             .fillMaxWidth()
                                     ) { page ->
                                         val listToUse = if (page == 0) unpostedList else postedList
-                                        val emptyTitle = if (page == 0) "Tidak Ada Task Belum Post" else "Tidak Ada Task Sudah Post"
+                                        val emptyTitle = if (page == 0) "Tidak Ada Task Unpublished" else "Tidak Ada Task Published"
                                         val emptySub = if (page == 0) "Semua tugas editing selesai telah diposting di Instagram." else "Belum ada postingan yang ditandai sudah diposting."
                                         
                                         if (listToUse.isEmpty()) {
@@ -2153,6 +1987,64 @@ private fun formatJadwalPostingDate(rawDate: String): String {
     } catch (e: Exception) {}
 
     return clean
+}
+
+private fun parseJadwalPostingDateToEpoch(rawDate: String): Long {
+    val trimmed = rawDate.trim()
+    val fallbackFuture = 253402300799000L // Year 9999
+    if (trimmed.isEmpty() || trimmed == "-" || trimmed.lowercase().contains("belum")) return fallbackFuture
+
+    try {
+        if (trimmed.contains("T")) {
+            val datePart = trimmed.substringBefore("T")
+            val parser = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            parser.parse(datePart)?.let { return it.time }
+        }
+    } catch (e: Exception) {}
+
+    try {
+        val tokens = trimmed.split(" ").filter { it.isNotBlank() }
+        if (tokens.size >= 4) {
+            val firstFour = tokens.take(4).joinToString(" ")
+            val parser = java.text.SimpleDateFormat("EEE MMM dd yyyy", java.util.Locale.US)
+            parser.parse(firstFour)?.let { return it.time }
+        }
+    } catch (e: Exception) {}
+
+    val formats = listOf(
+        "yyyy-MM-dd",
+        "dd/MM/yyyy",
+        "dd-MM-yyyy",
+        "yyyy/MM/dd",
+        "EEEE, dd MMMM yyyy",
+        "EEEE, d MMMM yyyy",
+        "EEEE, dd-MMMM-yyyy",
+        "dd MMMM yyyy",
+        "d MMMM yyyy",
+        "dd MMM yyyy",
+        "d MMM yyyy"
+    )
+
+    for (fmt in formats) {
+        try {
+            val parser = java.text.SimpleDateFormat(fmt, java.util.Locale("id", "ID"))
+            parser.parse(trimmed)?.let { return it.time }
+        } catch (e: Exception) {}
+        try {
+            val parser = java.text.SimpleDateFormat(fmt, java.util.Locale.US)
+            parser.parse(trimmed)?.let { return it.time }
+        } catch (e: Exception) {}
+    }
+
+    val norm = com.example.data.normalizeDate(trimmed)
+    if (norm.isNotBlank()) {
+        try {
+            val parser = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+            parser.parse(norm)?.let { return it.time }
+        } catch (e: Exception) {}
+    }
+
+    return fallbackFuture
 }
 
 private fun getDisplayLocation(

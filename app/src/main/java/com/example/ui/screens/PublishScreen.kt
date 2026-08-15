@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -15,10 +16,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.ui.ScheduleViewModel
+import com.example.ui.SyncState
 import kotlinx.coroutines.launch
 
 /**
- * PublishScreen combines Upload IG + Scheduling into one embedded screen.
+ * PublishScreen combines Upload IG + Scheduling into one cohesive screen.
  * Tab 0 = Upload IG (from TaskDashboardScreen with isUploadIgOnly=true)
  * Tab 1 = Scheduling (embedded SchedulingScreenContent — not a dialog)
  */
@@ -33,6 +35,10 @@ fun PublishScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val pagerState = rememberPagerState(pageCount = { 2 })
+    val igSyncStatus by viewModel.weeklyMeetingIgSyncStatus.collectAsState()
+    val unreadCount by viewModel.unreadChatCount.collectAsState()
+    val selectedMonth by viewModel.selectedMonth.collectAsState()
+    var isSearchExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -40,11 +46,11 @@ fun PublishScreen(
             .statusBarsPadding()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Compact Top Bar
+        // Unified Top Bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
+                .height(56.dp)
                 .background(MaterialTheme.colorScheme.surface)
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -56,12 +62,70 @@ fun PublishScreen(
                     tint = MaterialTheme.colorScheme.onSurface
                 )
             }
-            Text(
-                text = "Publish Desk",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(start = 8.dp)
-            )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 4.dp)
+            ) {
+                Text(
+                    text = "Publish Desk",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = if (pagerState.currentPage == 0) "Upload Instagram" else "Instagram Scheduling",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            // Search / Filter Icon Button
+            IconButton(onClick = { isSearchExpanded = !isSearchExpanded }) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Cari / Filter",
+                    tint = if (isSearchExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // Top Refresh button
+            IconButton(
+                onClick = { viewModel.fetchWeeklyMeetingIgListings(selectedMonth, forceRefresh = true) },
+                enabled = igSyncStatus !is SyncState.Loading
+            ) {
+                if (igSyncStatus is SyncState.Loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Refresh",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Chat button
+            if (onNavigateToChat != null) {
+                IconButton(onClick = onNavigateToChat) {
+                    BadgedBox(
+                        badge = {
+                            if (unreadCount > 0) {
+                                Badge { Text(unreadCount.toString()) }
+                            }
+                        }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Forum,
+                            contentDescription = "Chat",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
 
         // TabRow with sliding indicator
@@ -69,7 +133,7 @@ fun PublishScreen(
             selectedTabIndex = pagerState.currentPage,
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.height(44.dp),
+            modifier = Modifier.height(46.dp),
             indicator = { tabPositions ->
                 if (pagerState.currentPage < tabPositions.size) {
                     TabRowDefaults.SecondaryIndicator(
@@ -149,7 +213,8 @@ fun PublishScreen(
                     initialSubTab = 2,
                     isUploadIgOnly = true,
                     onNavigateToChat = onNavigateToChat,
-                    onNavigateToForm = onNavigateToForm
+                    onNavigateToForm = onNavigateToForm,
+                    isExternalFilterExpanded = isSearchExpanded
                 )
                 1 -> SchedulingScreenContent(
                     viewModel = viewModel

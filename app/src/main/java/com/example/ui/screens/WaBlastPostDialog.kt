@@ -32,6 +32,11 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import kotlinx.coroutines.delay
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WaBlastPostDialog(
@@ -41,6 +46,9 @@ fun WaBlastPostDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val captionFocusRequester = remember { FocusRequester() }
+
     // Remove "raywhitecipete " prefix from editor content
     val cleanInitialCaption = remember(initialCaption) {
         initialCaption.removePrefix("raywhitecipete ").trim()
@@ -49,6 +57,15 @@ fun WaBlastPostDialog(
 
     val pagerState = rememberPagerState(initialPage = 0) { downloadedUris.size.coerceAtLeast(1) }
     val cleanId = remember(listingId) { listingId.replace("[^0-9]".toRegex(), "") }
+
+    // Auto-focus description field when dialog opens
+    LaunchedEffect(Unit) {
+        delay(300)
+        try {
+            captionFocusRequester.requestFocus()
+            keyboardController?.show()
+        } catch (e: Exception) {}
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -118,7 +135,7 @@ fun WaBlastPostDialog(
                                     AsyncImage(
                                         model = downloadedUris[page],
                                         contentDescription = "Preview Foto ${page + 1}",
-                                        contentScale = ContentScale.Crop,
+                                        contentScale = ContentScale.Fit,
                                         modifier = Modifier.fillMaxSize()
                                     )
                                 }
@@ -188,7 +205,8 @@ fun WaBlastPostDialog(
                         onValueChange = { captionText = it },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 200.dp),
+                            .heightIn(min = 200.dp)
+                            .focusRequester(captionFocusRequester),
                         shape = RoundedCornerShape(12.dp),
                         textStyle = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 18.sp)
                     )

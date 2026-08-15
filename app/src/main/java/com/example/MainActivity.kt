@@ -20,6 +20,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.ScheduleViewModel
 import com.example.ui.ScheduleCategory
@@ -518,8 +520,14 @@ class MainActivity : ComponentActivity() {
                                             label = { 
                                                 Text(
                                                     text = tab.title,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                                    style = MaterialTheme.typography.labelSmall
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontSize = 10.sp,
+                                                        letterSpacing = (-0.3).sp
+                                                    ),
+                                                    maxLines = 1,
+                                                    softWrap = false,
+                                                    overflow = TextOverflow.Ellipsis
                                                 ) 
                                             },
                                             colors = NavigationBarItemDefaults.colors(

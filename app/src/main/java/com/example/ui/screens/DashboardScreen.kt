@@ -2180,6 +2180,10 @@ fun DashboardCalendarView(
         getCalendarDays(calendarYear, calendarMonth)
     }
     
+    val schedulesByDate = remember(schedules) {
+        schedules.groupBy { com.example.data.normalizeDate(it.tanggal) }
+    }
+
     val monthYearFormatter = remember { SimpleDateFormat("MMMM yyyy", Locale("id", "ID")) }
     val displayMonthYear = remember(calendarYear, calendarMonth) {
         val cal = Calendar.getInstance().apply {
@@ -2277,13 +2281,7 @@ fun DashboardCalendarView(
                 ) {
                     for (colIdx in 0 until 7) {
                         val day = days[rowIdx * 7 + colIdx]
-                        
-                        // Count schedules on this specific date using robust date normalization
-                        val daySchedules = remember(schedules, day.dateString) {
-                            val normTarget = com.example.data.normalizeDate(day.dateString)
-                            schedules.filter { com.example.data.normalizeDate(it.tanggal) == normTarget }
-                        }
-                        
+                        val daySchedules = schedulesByDate[day.dateString] ?: emptyList()
                         val isSelected = selectedDate == day.dateString
                         
                         Box(
@@ -2326,14 +2324,14 @@ fun DashboardCalendarView(
                                         horizontalArrangement = Arrangement.spacedBy(2.5.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        // Draw a dot for each schedule representing active vs completed events
-                                        daySchedules.forEach { schedule ->
+                                        val displayDots = daySchedules.take(4)
+                                        displayDots.forEach { schedule ->
                                             val tLower = schedule.type.lowercase()
                                             val isDone = tLower.startsWith("done")
                                             val dotColor = when {
                                                 isSelected -> MaterialTheme.colorScheme.onPrimary
-                                                isDone -> MaterialTheme.colorScheme.primary // Gold
-                                                else -> MaterialTheme.colorScheme.secondary // Cosmic Indigo/Accent
+                                                isDone -> MaterialTheme.colorScheme.primary
+                                                else -> MaterialTheme.colorScheme.secondary
                                             }
                                             Box(
                                                 modifier = Modifier

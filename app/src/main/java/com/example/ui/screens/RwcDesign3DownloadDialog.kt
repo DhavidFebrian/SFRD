@@ -29,6 +29,11 @@ import coil.compose.AsyncImage
 import com.example.util.RwcListingImage
 import com.example.util.RwcSocialMediaDownloader
 
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import kotlinx.coroutines.delay
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RwcDesign3DownloadDialog(
@@ -38,6 +43,8 @@ fun RwcDesign3DownloadDialog(
     onDownloadSuccess: (List<Uri>, String) -> Unit
 ) {
     val context = LocalContext.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusRequester = remember { FocusRequester() }
 
     var isLoading by remember { mutableStateOf(true) }
     var isDownloading by remember { mutableStateOf(false) }
@@ -60,6 +67,7 @@ fun RwcDesign3DownloadDialog(
 
                 override fun onSuccess(fetchedImages: List<RwcListingImage>) {
                     images = fetchedImages
+                    selectedDownloadIds.clear()
                     if (fetchedImages.isNotEmpty()) {
                         selectedCoverId = fetchedImages[0].id
                         selectedDownloadIds.clear()
@@ -75,6 +83,17 @@ fun RwcDesign3DownloadDialog(
                 }
             }
         )
+    }
+
+    // Auto-focus Title Input (Headline 1) and open keyboard when loaded
+    LaunchedEffect(isLoading) {
+        if (!isLoading) {
+            delay(250)
+            try {
+                focusRequester.requestFocus()
+                keyboardController?.show()
+            } catch (e: Exception) {}
+        }
     }
 
     Dialog(
@@ -150,7 +169,9 @@ fun RwcDesign3DownloadDialog(
                             onValueChange = { coverTitle = it },
                             label = { Text("Judul Cover (Headline 1)") },
                             placeholder = { Text("Masukkan Judul Cover...") },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester),
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
                         )
@@ -198,17 +219,25 @@ fun RwcDesign3DownloadDialog(
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(130.dp)
+                                        .height(135.dp)
                                         .clip(RoundedCornerShape(12.dp))
                                         .border(
                                             width = if (isCover) 3.dp else if (isSelected) 2.dp else 1.dp,
-                                            color = if (isCover) Color(0xFFFF9800) else if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray,
+                                            color = if (isCover) Color(0xFFFF9800) else if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray.copy(alpha = 0.5f),
                                             shape = RoundedCornerShape(12.dp)
                                         )
                                         .clickable {
-                                            selectedCoverId = item.id
-                                            if (!selectedDownloadIds.contains(item.id)) {
+                                            // Click preview image to toggle download selection
+                                            if (isSelected) {
+                                                selectedDownloadIds.remove(item.id)
+                                                if (isCover) {
+                                                    selectedCoverId = selectedDownloadIds.firstOrNull() ?: ""
+                                                }
+                                            } else {
                                                 selectedDownloadIds.add(item.id)
+                                                if (selectedCoverId.isEmpty()) {
+                                                    selectedCoverId = item.id
+                                                }
                                             }
                                         },
                                     shape = RoundedCornerShape(12.dp)
@@ -221,34 +250,87 @@ fun RwcDesign3DownloadDialog(
                                             modifier = Modifier.fillMaxSize()
                                         )
 
-                                        // Cover Badge
-                                        if (isCover) {
+                                        // Dim non-selected images slightly
+                                        if (!isSelected) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(Color.Black.copy(alpha = 0.35f))
+                                            )
+                                        }
+
+                                        // Selection Indicator Badge (Bottom Left)
+                                        if (isSelected) {
                                             Surface(
-                                                color = Color(0xFFFF9800),
-                                                shape = RoundedCornerShape(bottomEnd = 8.dp),
-                                                modifier = Modifier.align(Alignment.TopStart)
+                                                color = MaterialTheme.colorScheme.primary,
+                                                shape = RoundedCornerShape(topEnd = 8.dp),
+                                                modifier = Modifier.align(Alignment.BottomStart)
                                             ) {
-                                                Text(
-                                                    text = "★ COVER",
-                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                                    color = Color.White,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                                )
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(12.dp)
+                                                    )
+                                                    Text(
+                                                        text = "Download",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
+                                                        color = Color.White
+                                                    )
+                                                }
                                             }
                                         }
 
-                                        // Checkbox for additional download
-                                        Checkbox(
-                                            checked = isSelected,
-                                            onCheckedChange = { checked ->
-                                                if (checked) {
-                                                    if (!selectedDownloadIds.contains(item.id)) selectedDownloadIds.add(item.id)
-                                                } else {
-                                                    if (item.id != selectedCoverId) selectedDownloadIds.remove(item.id)
-                                                }
-                                            },
+                                        // Cover Checkbox & Label (Top End)
+                                        Surface(
+                                            color = if (isCover) Color(0xFFFF9800) else Color.Black.copy(alpha = 0.6f),
+                                            shape = RoundedCornerShape(bottomStart = 8.dp),
                                             modifier = Modifier.align(Alignment.TopEnd)
-                                        )
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier
+                                                    .clickable {
+                                                        selectedCoverId = item.id
+                                                        if (!selectedDownloadIds.contains(item.id)) {
+                                                            selectedDownloadIds.add(item.id)
+                                                        }
+                                                    }
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Checkbox(
+                                                    checked = isCover,
+                                                    onCheckedChange = { checked ->
+                                                        if (checked) {
+                                                            selectedCoverId = item.id
+                                                            if (!selectedDownloadIds.contains(item.id)) {
+                                                                selectedDownloadIds.add(item.id)
+                                                            }
+                                                        }
+                                                    },
+                                                    colors = CheckboxDefaults.colors(
+                                                        checkedColor = Color.White,
+                                                        checkmarkColor = Color(0xFFFF9800),
+                                                        uncheckedColor = Color.White
+                                                    ),
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(2.dp))
+                                                Text(
+                                                    text = if (isCover) "★ COVER" else "Cover",
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontWeight = if (isCover) FontWeight.ExtraBold else FontWeight.Medium,
+                                                        fontSize = 10.sp
+                                                    ),
+                                                    color = Color.White
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }

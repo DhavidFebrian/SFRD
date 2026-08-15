@@ -637,6 +637,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     val meetingSyncStatus: StateFlow<SyncState> = _meetingSyncStatus.asStateFlow()
 
     val weeklyMeetingIgListings = MutableStateFlow<List<com.example.network.MeetingListing>>(emptyList())
+    val allMonthlyMeetingListings = MutableStateFlow<List<com.example.network.MeetingListing>>(emptyList())
     private val _weeklyMeetingIgSyncStatus = MutableStateFlow<SyncState>(SyncState.Idle)
     val weeklyMeetingIgSyncStatus: StateFlow<SyncState> = _weeklyMeetingIgSyncStatus.asStateFlow()
 
@@ -868,6 +869,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                     base.copy(namaMe = mergedNamaMe)
                 }
                 
+                allMonthlyMeetingListings.value = mergedListings
                 val filtered = mergedListings.filter { 
                     it.keterangan.trim().equals("IG", ignoreCase = true) 
                 }
@@ -2538,6 +2540,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
             repository.seedMockDataIfEmpty()
             if (preferenceManager.appsScriptUrl.isNotBlank()) {
                 syncData()
+                selectRelevantMeetingDateAutomatically()
                 fetchWeeklyMeetingIgListings(selectedMonth.value)
                 fetchYearlyIgPostingHistory()
             }

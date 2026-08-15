@@ -135,7 +135,7 @@ fun SchedulingDialog(
         val scheduled = filteredListings.filter {
             val jadwal = it.jadwalPosting.trim()
             jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
-        }.sortedByDescending { listing ->
+        }.sortedBy { listing ->
             parseJadwalPostingDateToDate(listing.jadwalPosting)
         }
 
@@ -1531,7 +1531,8 @@ private fun formatJadwalPostingDate(rawDate: String): String {
  */
 private fun parseJadwalPostingDateToDate(rawDate: String): Date {
     val trimmed = rawDate.trim()
-    if (trimmed.isEmpty() || trimmed == "-") return Date(0)
+    val fallbackFuture = Date(253402300799000L)
+    if (trimmed.isEmpty() || trimmed == "-" || trimmed.lowercase().contains("belum")) return fallbackFuture
 
     try {
         if (trimmed.contains("T")) {
@@ -1554,6 +1555,7 @@ private fun parseJadwalPostingDateToDate(rawDate: String): Date {
         "yyyy-MM-dd",
         "dd/MM/yyyy",
         "dd-MM-yyyy",
+        "yyyy/MM/dd",
         "EEEE, dd MMMM yyyy",
         "EEEE, d MMMM yyyy",
         "EEEE, dd-MMMM-yyyy",
@@ -1574,25 +1576,15 @@ private fun parseJadwalPostingDateToDate(rawDate: String): Date {
         } catch (e: Exception) {}
     }
 
-    try {
-        var clean = trimmed
-        clean = clean.replace(Regex("\\b\\d{1,2}[:\\.]\\d{2}([:\\.]\\d{2})?\\b"), "")
-        clean = clean.replace(Regex("(?i)\\bGMT[+\\-\\d:]*\\b"), "")
-        clean = clean.replace(Regex("\\([^)]*\\)"), "")
-        val tzAbbrev = listOf("WIB", "WITA", "WIT", "UTC", "PST", "PDT", "EST", "EDT")
-        for (abbrev in tzAbbrev) {
-            clean = clean.replace(Regex("(?i)\\b$abbrev\\b"), "")
-        }
-        clean = clean.replace(Regex("\\s+"), " ").trim()
-        val tokens = clean.split(" ").filter { it.isNotBlank() }
-        if (tokens.size >= 4) {
-            val firstFour = tokens.take(4).joinToString(" ")
-            val parser = SimpleDateFormat("EEE MMM dd yyyy", Locale.US)
-            parser.parse(firstFour)?.let { return it }
-        }
-    } catch (e: Exception) {}
+    val norm = com.example.data.normalizeDate(trimmed)
+    if (norm.isNotBlank()) {
+        try {
+            val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+            parser.parse(norm)?.let { return it }
+        } catch (e: Exception) {}
+    }
 
-    return Date(0)
+    return fallbackFuture
 }
 
 /**
@@ -1650,7 +1642,7 @@ fun SchedulingScreenContent(
         val scheduled = filteredListings.filter {
             val jadwal = it.jadwalPosting.trim()
             jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
-        }.sortedByDescending { parseJadwalPostingDateToDate(it.jadwalPosting) }
+        }.sortedBy { parseJadwalPostingDateToDate(it.jadwalPosting) }
         Pair(unscheduled, scheduled)
     }
 
@@ -1666,37 +1658,7 @@ fun SchedulingScreenContent(
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = "Instagram Scheduling",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = "Mengatur jadwal posting konten IG dari Google Sheets",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = { viewModel.fetchWeeklyMeetingIgListings(dialogMonth, forceRefresh = true) },
-                        enabled = igSyncStatus !is SyncState.Loading
-                    ) {
-                        if (igSyncStatus is SyncState.Loading) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        } else {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh")
-                        }
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
-            )
-        }
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { paddingValues ->
         Column(
             modifier = Modifier

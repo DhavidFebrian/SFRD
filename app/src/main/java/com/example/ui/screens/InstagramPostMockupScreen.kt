@@ -143,7 +143,7 @@ fun InstagramPostMockupScreen(
                     colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                         containerColor = Color(0xFF000000)
                     ),
-                    modifier = Modifier.height(56.dp)
+                    modifier = Modifier.height(48.dp)
                 )
 
                 // Scrollable feed content
@@ -156,7 +156,7 @@ fun InstagramPostMockupScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Profile picture (Stylized Ray White yellow corporate logo)
@@ -232,11 +232,11 @@ fun InstagramPostMockupScreen(
                         }
                     }
 
-                    // Feed Image Container with overlaid spec card and sliding pager
+                    // Feed Image Container with overlaid spec card and sliding pager (Ratio 3:4, Compact, Full Width)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .aspectRatio(1f) // Square image standard
+                            .aspectRatio(3f / 4f) // Standard 3:4 portrait ratio
                             .background(Color(0xFF121212))
                     ) {
                         if (imagesToDisplay.isNotEmpty()) {
@@ -290,26 +290,28 @@ fun InstagramPostMockupScreen(
                             }
                         }
 
-                        // Bottom gradient overlay to make text highly readable
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(160.dp)
-                                .align(Alignment.BottomCenter)
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                        // Property Spec Overlay (Visible on ALL Slides)
+                        if (imagesToDisplay.isNotEmpty()) {
+                            // Bottom gradient overlay to make text highly readable
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(160.dp)
+                                    .align(Alignment.BottomCenter)
+                                    .background(
+                                        Brush.verticalGradient(
+                                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                                        )
                                     )
-                                )
-                        )
+                            )
 
-                        // Overlaid Property spec card exactly like user screenshot
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .align(Alignment.BottomStart)
-                                .padding(horizontal = 14.dp, vertical = 10.dp)
-                        ) {
+                            // Overlaid Property spec card
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .align(Alignment.BottomStart)
+                                    .padding(horizontal = 14.dp, vertical = 10.dp)
+                            ) {
                             // Location Pin + Name
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
@@ -407,6 +409,7 @@ fun InstagramPostMockupScreen(
                                     fontWeight = FontWeight.Bold
                                 )
                             }
+                        }
                         }
                     }
 
@@ -1636,18 +1639,34 @@ private fun buildInstagramCaption(
     // Multi-contact resolver
     val contactsStr = getInstagramCaptionContacts(namaMe, rawDesc, scrapedTitle, judulTask, idListing)
 
-    // Extract specs ONLY from "Deskripsi Lengkap" or main cleaned description body (NEVER from "Dengan Spek")
+    // Extract specs from "Deskripsi Lengkap" if rich and detailed, otherwise fall back to top specs ("Dengan Spek Sebagai Berikut:")
     val parsedBulletPoints = mutableListOf<String>()
     val linesToProcess = mutableListOf<String>()
 
     val deskripsiLengkapIndex = clean.indexOf("Deskripsi Lengkap:", ignoreCase = true)
     val deskripsiLengkapAltIndex = if (deskripsiLengkapIndex == -1) clean.indexOf("Deskripsi Lengkap", ignoreCase = true) else deskripsiLengkapIndex
 
+    var useDeskripsiLengkapOnly = false
     if (deskripsiLengkapAltIndex != -1) {
         val headerLength = if (deskripsiLengkapIndex != -1) "Deskripsi Lengkap:".length else "Deskripsi Lengkap".length
-        val deskripsiText = clean.substring(deskripsiLengkapAltIndex + headerLength)
-        deskripsiText.split("\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach { linesToProcess.add(it) }
-    } else {
+        val deskripsiText = clean.substring(deskripsiLengkapAltIndex + headerLength).trim()
+        val lowerDesk = deskripsiText.lowercase()
+        val cleanDeskText = deskripsiText.replace("(?i)zON\\s*AK".toRegex(), "").trim()
+        
+        val hasRealSpecs = (lowerDesk.contains("luas") || lowerDesk.contains("lt") || lowerDesk.contains("lb") ||
+                            lowerDesk.contains("kamar") || lowerDesk.contains("kt") || lowerDesk.contains("km") ||
+                            lowerDesk.contains("shm") || lowerDesk.contains("sertifikat") || lowerDesk.contains("lantai") ||
+                            lowerDesk.contains("dimensi") || lowerDesk.contains("garasi") || lowerDesk.contains("carport"))
+        
+        if (cleanDeskText.length >= 35 && hasRealSpecs) {
+            useDeskripsiLengkapOnly = true
+            deskripsiText.split("\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach { linesToProcess.add(it) }
+        }
+    }
+
+    if (!useDeskripsiLengkapOnly) {
+        // Fallback: If "Deskripsi Lengkap" is short/empty or contains dummy text like "zON AK",
+        // automatically process the ENTIRE description including top specs section under "Dengan Spek Sebagai Berikut:"
         clean.split("\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach { linesToProcess.add(it) }
     }
 
