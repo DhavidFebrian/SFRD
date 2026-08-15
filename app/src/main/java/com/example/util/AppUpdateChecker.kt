@@ -17,7 +17,8 @@ import java.io.IOException
 
 object AppUpdateChecker {
     private const val TAG = "AppUpdateChecker"
-    private const val GITHUB_RELEASE_URL = "https://api.github.com/repos/DhavidFebrian/SFRD-5.0/releases/latest"
+    private const val GITHUB_RELEASE_URL = "https://api.github.com/repos/DhavidFebrian/SFRD/releases/latest"
+    private const val GITHUB_FALLBACK_URL = "https://api.github.com/repos/DhavidFebrian/SFRD-5.0/releases/latest"
 
     data class GithubReleaseAsset(
         val name: String,
@@ -25,9 +26,11 @@ object AppUpdateChecker {
     )
 
     data class GithubRelease(
-        val tag_name: String,
-        val assets: List<GithubReleaseAsset>,
-        val body: String?
+        val tag_name: String? = null,
+        val assets: List<GithubReleaseAsset>? = null,
+        val body: String? = null,
+        val message: String? = null,
+        val url: String? = null
     )
 
     data class UpdateInfo(
@@ -41,68 +44,95 @@ object AppUpdateChecker {
         onNewVersionFound: (UpdateInfo) -> Unit,
         onNoUpdate: () -> Unit = {}
     ) {
-        val client = OkHttpClient()
-        val request = Request.Builder()
-            .url(GITHUB_RELEASE_URL)
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+        val client = OkHttpClient.Builder()
+            .followRedirects(true)
+            .followSslRedirects(true)
             .build()
 
-        client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                Log.e(TAG, "Update check failed", e)
-                onNoUpdate()
-            }
+        fun executeRequest(targetUrl: String, isFallback: Boolean = false) {
+            val request = Request.Builder()
+                .url(targetUrl)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) SFRD-App")
+                .header("Accept", "application/vnd.github.v3+json")
+                .build()
 
-            override fun onResponse(call: Call, response: Response) {
-                response.use { resp ->
-                    if (!resp.isSuccessful) {
-                        Log.e(TAG, "Server responded with code ${resp.code}")
-                        onNoUpdate()
-                        return
-                    }
-
-                    val bodyString = resp.body?.string()
-                    if (bodyString.isNullOrBlank()) {
-                        onNoUpdate()
-                        return
-                    }
-
-                    try {
-                        val moshi = Moshi.Builder()
-                            .addLast(KotlinJsonAdapterFactory())
-                            .build()
-                        val adapter = moshi.adapter(GithubRelease::class.java)
-                        val release = adapter.fromJson(bodyString)
-
-                        if (release != null) {
-                            val remoteVersion = release.tag_name
-                            val currentVersion = BuildConfig.VERSION_NAME
-
-                            if (isVersionNewer(currentVersion, remoteVersion)) {
-                                // Find APK asset
-                                val apkAsset = release.assets.firstOrNull { 
-                                    it.name.endsWith(".apk", ignoreCase = true) 
-                                }
-                                if (apkAsset != null) {
-                                    onNewVersionFound(
-                                        UpdateInfo(
-                                            versionName = remoteVersion,
-                                            downloadUrl = apkAsset.browser_download_url,
-                                            releaseNotes = release.body ?: ""
-                                        )
-                                    )
-                                    return
-                                }
-                            }
-                        }
-                        onNoUpdate()
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error parsing GitHub release JSON", e)
+            client.newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    Log.e(TAG, "Update check failed for $targetUrl", e)
+                    if (!isFallback) {
+                        executeRequest(GITHUB_FALLBACK_URL, isFallback = true)
+                    } else {
                         onNoUpdate()
                     }
                 }
-            }
-        })
+
+                override fun onResponse(call: Call, response: Response) {
+                    response.use { resp ->
+                        if (!resp.isSuccessful) {
+                            Log.e(TAG, "Server responded with code ${resp.code}")
+                            if (!isFallback) {
+                                executeRequest(GITHUB_FALLBACK_URL, isFallback = true)
+                            } else {
+                                onNoUpdate()
+                            }
+                            return
+                        }
+
+                        val bodyString = resp.body?.string()
+                        if (bodyString.isNullOrBlank()) {
+                            onNoUpdate()
+                            return
+                        }
+
+                        try {
+                            val moshi = Moshi.Builder()
+                                .addLast(KotlinJsonAdapterFactory())
+                                .build()
+                            val adapter = moshi.adapter(GithubRelease::class.java)
+                            val release = adapter.fromJson(bodyString)
+
+                            if (release != null) {
+                                // If GitHub API returned a redirect payload like {"message": "Moved Permanently", "url": "..."}
+                                if (release.tag_name == null && !release.url.isNullOrBlank() && !isFallback) {
+                                    executeRequest(release.url, isFallback = true)
+                                    return
+                                }
+
+                                val remoteVersion = release.tag_name
+                                val currentVersion = BuildConfig.VERSION_NAME
+
+                                if (!remoteVersion.isNullOrBlank() && isVersionNewer(currentVersion, remoteVersion)) {
+                                    // Find APK asset
+                                    val apkAsset = release.assets?.firstOrNull { 
+                                        it.name.endsWith(".apk", ignoreCase = true) 
+                                    }
+                                    if (apkAsset != null) {
+                                        onNewVersionFound(
+                                            UpdateInfo(
+                                                versionName = remoteVersion,
+                                                downloadUrl = apkAsset.browser_download_url,
+                                                releaseNotes = release.body ?: ""
+                                            )
+                                        )
+                                        return
+                                    }
+                                }
+                            }
+                            onNoUpdate()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error parsing GitHub release JSON", e)
+                            if (!isFallback) {
+                                executeRequest(GITHUB_FALLBACK_URL, isFallback = true)
+                            } else {
+                                onNoUpdate()
+                            }
+                        }
+                    }
+                }
+            })
+        }
+
+        executeRequest(GITHUB_RELEASE_URL)
     }
 
     fun isVersionNewer(current: String, remote: String): Boolean {
