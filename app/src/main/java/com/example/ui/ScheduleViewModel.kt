@@ -946,23 +946,20 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
                 
-                // Group by idListing and merge namaMe if multiple MEs co-listing
-                val groupedById = combinedListings.groupBy { it.idListing.trim() }
-                val mergedListings = groupedById.map { (id, listings) ->
-                    val base = listings.first()
-                    val allNames = listings.map { it.namaMe.trim() }.filter { it.isNotBlank() }
+                // Process each listing item so all meetings in the month are fully displayed without dropping double IDs
+                val processedListings = combinedListings.map { listing ->
+                    val id = listing.idListing.trim()
+                    val cleanNamaMe = listing.namaMe.trim()
                     val mergedNamaMe = if (id == "11091") {
                         "Hilda / Remmy"
-                    } else if (allNames.size > 1) {
-                        allNames.distinct().joinToString(" / ")
                     } else {
-                        base.namaMe.trim()
+                        cleanNamaMe
                     }
-                    base.copy(namaMe = mergedNamaMe)
+                    listing.copy(namaMe = mergedNamaMe)
                 }
                 
-                allMonthlyMeetingListings.value = mergedListings
-                val filtered = mergedListings.filter { 
+                allMonthlyMeetingListings.value = processedListings
+                val filtered = processedListings.filter { 
                     it.keterangan.trim().equals("IG", ignoreCase = true) 
                 }
                 igListingsCache[cacheKey] = filtered
