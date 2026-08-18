@@ -286,6 +286,30 @@ fun WorkflowDashboardScreen(
         }
     }
 
+    // Hitung berapa ID Listing yang dijadwalkan untuk Post Hari Ini (dari data Publish / IG listings)
+    val postHariIniCount = remember(igListings, allMonthlyMeetingListings, editFotoTasks, todayStr) {
+        val targetIds = mutableSetOf<String>()
+        igListings.forEach { item ->
+            val d = normalizeDate(item.jadwalPosting)
+            if (d == todayStr && item.idListing.trim().isNotBlank()) {
+                targetIds.add(item.idListing.trim())
+            }
+        }
+        allMonthlyMeetingListings.forEach { item ->
+            val d = normalizeDate(item.jadwalPosting)
+            if (d == todayStr && item.idListing.trim().isNotBlank()) {
+                targetIds.add(item.idListing.trim())
+            }
+        }
+        editFotoTasks.forEach { task ->
+            val d = normalizeDate(task.jadwalPosting)
+            if (d == todayStr && task.idListing.trim().isNotBlank()) {
+                targetIds.add(task.idListing.trim())
+            }
+        }
+        targetIds.size
+    }
+
     val publishWeeklyStats = remember(weeklyMeetingIgItems) {
         val total = weeklyMeetingIgItems.size
         val scheduled = weeklyMeetingIgItems.count { l ->
@@ -461,7 +485,8 @@ fun WorkflowDashboardScreen(
                     progress = overallProgress,
                     todayCount = mediaStats.hariIni,
                     tomorrowCount = fotoBesokCount,
-                    pendingTasks = contentStats.total,
+                    pendingTasks = mediaStats.aktif,
+                    postHariIniCount = postHariIniCount,
                     unscheduledPublish = publishWeeklyStats.unposted
                 )
             }
@@ -732,6 +757,7 @@ private fun OverallProgressCard(
     todayCount: Int,
     tomorrowCount: Int,
     pendingTasks: Int,
+    postHariIniCount: Int,
     unscheduledPublish: Int
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "overall_progress_loop")
@@ -897,7 +923,7 @@ private fun OverallProgressCard(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Stats Row with "Foto Besok" instead of "Total"
+                // Stats Row with 5 Metrics
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -905,6 +931,7 @@ private fun OverallProgressCard(
                     ProgressStatItem(label = "Hari Ini", value = todayCount.toString(), badgeColor = Color(0xFF34D399))
                     ProgressStatItem(label = "Foto Besok", value = tomorrowCount.toString(), badgeColor = Color(0xFFFBBF24))
                     ProgressStatItem(label = "Pending", value = pendingTasks.toString(), badgeColor = Color(0xFFF87171))
+                    ProgressStatItem(label = "Post Hari Ini", value = postHariIniCount.toString(), badgeColor = Color(0xFF38BDF8))
                     ProgressStatItem(label = "Belum Post", value = unscheduledPublish.toString(), badgeColor = Color(0xFFC084FC))
                 }
             }

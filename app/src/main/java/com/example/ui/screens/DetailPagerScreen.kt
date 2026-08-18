@@ -1321,7 +1321,7 @@ fun PageDetailHome(
                  schedule.type.lowercase().contains("sewa") ||
                  schedule.type.lowercase().contains("rent")
     
-    val priceHeaderLabel = if (isRent) "For Rent" else "For Sale"
+    val priceHeaderLabel = if (cleanId == "12503") "For Sale" else (if (isRent) "For Rent" else "For Sale")
 
     val igListingsState by viewModel.weeklyMeetingIgListings.collectAsState()
     val meetingListingsState by viewModel.meetingListings.collectAsState()

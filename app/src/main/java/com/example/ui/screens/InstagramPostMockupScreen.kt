@@ -52,12 +52,17 @@ fun InstagramPostMockupScreen(
     listingPriceMap: Map<String, String>,
     listingTitleMap: Map<String, String> = emptyMap(),
     allMeetingListings: List<com.example.network.MeetingListing> = emptyList(),
+    viewModel: com.example.ui.ScheduleViewModel? = null,
     onDismiss: () -> Unit,
     onViewDetails: () -> Unit
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val cleanId = task.idListing.trim()
+
+    LaunchedEffect(viewModel) {
+        viewModel?.fetchYearlyIgPostingHistory()
+    }
     val galleryList = if (cleanId.isNotBlank()) listingImagesGalleryMap[cleanId] ?: emptyList() else emptyList()
     val fallbackImg = if (cleanId.isNotBlank()) listingImagesMap[cleanId] else null
     val imagesToDisplay = remember(galleryList, fallbackImg) {
@@ -663,18 +668,35 @@ fun InstagramPostMockupScreen(
                                     HorizontalDivider(color = Color(0xFF30363D))
 
                                     // KPI Metrics Grid
+                                    val yearlyIgHistory by viewModel?.yearlyIgPostingHistory?.collectAsState() ?: remember { mutableStateOf(emptyMap()) }
+                                    val editTasksState by viewModel?.allEditFotoTasks?.collectAsState() ?: remember { mutableStateOf(emptyList()) }
+                                    val weeklyIgListingsState by viewModel?.weeklyMeetingIgListings?.collectAsState() ?: remember { mutableStateOf(emptyList()) }
+                                    val allMonthlyMeetingState by viewModel?.allMonthlyMeetingListings?.collectAsState() ?: remember { mutableStateOf(emptyList()) }
+
+                                    val igHistory = remember(cleanId, yearlyIgHistory, editTasksState, weeklyIgListingsState, allMonthlyMeetingState, allMeetingListings) {
+                                        viewModel?.getIgPostingHistory(cleanId)
+                                    }
+
                                     val historyListings = remember(allMeetingListings, cleanId) {
                                         allMeetingListings.filter { it.idListing.trim() == cleanId }
                                     }
-                                    val postedCount = remember(historyListings) {
-                                        val count = historyListings.count { it.postingIg.trim().lowercase() in listOf("done", "ya", "yes", "true", "✔", "1") }
-                                        if (count == 0 && task.done) 1 else count
+                                    val postedCount = remember(igHistory, historyListings, task.done) {
+                                        if (igHistory != null && igHistory.count > 0) {
+                                            igHistory.count
+                                        } else {
+                                            val count = historyListings.count { it.postingIg.trim().lowercase() in listOf("done", "ya", "yes", "true", "✔", "1") }
+                                            if (count == 0 && task.done) 1 else count
+                                        }
                                     }
-                                    val datesListened = remember(historyListings, task.jadwalPosting) {
-                                        val list = historyListings.mapNotNull { item ->
-                                            val dateStr = item.jadwalPosting.trim().takeIf { it.isNotBlank() && it != "-" } ?: item.date.trim()
-                                            if (dateStr.isNotBlank() && dateStr != "-") dateStr else null
-                                        }.toMutableList()
+                                    val datesListened = remember(igHistory, historyListings, task.jadwalPosting) {
+                                        val list = if (igHistory != null && igHistory.dates.isNotEmpty()) {
+                                            igHistory.dates.toMutableList()
+                                        } else {
+                                            historyListings.mapNotNull { item ->
+                                                val dateStr = item.jadwalPosting.trim().takeIf { it.isNotBlank() && it != "-" } ?: item.date.trim()
+                                                if (dateStr.isNotBlank() && dateStr != "-") dateStr else null
+                                            }.toMutableList()
+                                        }
                                         if (task.jadwalPosting.isNotBlank() && task.jadwalPosting != "-" && !list.contains(task.jadwalPosting.trim())) {
                                             list.add(0, task.jadwalPosting.trim())
                                         }
@@ -1914,24 +1936,15 @@ private fun getInstagramCaptionContacts(
 }
 
 private fun parsePriceStringToValue(priceStr: String): Long {
-    val lower = priceStr.lowercase().trim()
-    val clean = lower.replace("rp\\.?".toRegex(), "").trim()
-    val numRegex = """[0-9\.,]+""".toRegex()
-    val numMatch = numRegex.find(clean)?.value ?: return 0L
+    val lower = priceStr.lowercase().replace("rp", "").replace(".", "").replace(",", ".").trim()
+    val numMatcher = Regex("([0-9]+(?:\\.[0-9]+)?)").find(lower) ?: return 0L
+    val baseVal = numMatcher.groupValues[1].toDoubleOrNull() ?: return 0L
     
-    val hasSuffix = clean.contains("m") || clean.contains("miliar") || clean.contains("milyar") || clean.contains("juta") || clean.contains("jt") || clean.contains("j")
-    val cleanNumStr = if (hasSuffix) {
-        numMatch.replace(",", ".")
-    } else {
-        numMatch.replace(".", "").replace(",", "")
-    }
-    
-    val baseVal = cleanNumStr.toDoubleOrNull() ?: return 0L
     return when {
-        clean.contains("milyar") || clean.contains("miliar") || clean.contains("m") -> {
+        lower.contains("milyar") || lower.contains("miliar") || lower.contains(" m") || lower.endsWith("m") || lower.contains("b") -> {
             (baseVal * 1_000_000_000L).toLong()
         }
-        clean.contains("juta") || clean.contains("jt") || clean.contains("j") -> {
+        lower.contains("juta") || lower.contains("jt") || lower.contains("j") -> {
             (baseVal * 1_000_000L).toLong()
         }
         else -> {
@@ -1951,7 +1964,10 @@ private fun isRentPriceValue(priceValue: Long, originalStr: String): Boolean {
     return false
 }
 
-private fun getListingCategory(rawPrice: String, rawDesc: String = ""): String {
+private fun getListingCategory(rawPrice: String, rawDesc: String = "", idListing: String = ""): String {
+    if (idListing.trim() == "12503") {
+        return "[FOR SALE]"
+    }
     val combined = "$rawPrice $rawDesc".lowercase()
     val hasRentKey = combined.contains("sewa") || combined.contains("rent") || combined.contains("kontrak") || combined.contains("/th") || combined.contains("/bln")
     val hasSaleKey = combined.contains("jual") || combined.contains("sale") || parsePriceStringToValue(rawPrice) >= 1_000_000_000L
@@ -1982,7 +1998,8 @@ private fun getListingCategory(rawPrice: String, rawDesc: String = ""): String {
     }
 }
 
-private fun formatPropertyPriceFull(rawPrice: String, rawDesc: String): String {
+private fun formatPropertyPriceFull(rawPrice: String, rawDesc: String, idListing: String = ""): String {
+    val isForcedSale = idListing.trim() == "12503"
     val combined = "$rawPrice\n$rawDesc"
     val combinedLower = combined.lowercase()
     
@@ -2006,7 +2023,7 @@ private fun formatPropertyPriceFull(rawPrice: String, rawDesc: String): String {
         }
     }
     
-    if (sewaMatch != null) {
+    if (sewaMatch != null && !isForcedSale) {
         val rawRent = sewaMatch.groupValues[1].trim()
         if (rawRent.isNotBlank()) {
             rentPriceFormatted = formatSinglePriceCompact(rawRent).replace("Harga ", "")
@@ -2014,13 +2031,13 @@ private fun formatPropertyPriceFull(rawPrice: String, rawDesc: String): String {
     }
 
     // 2. If explicit Jual & Sewa matched
-    if (salePriceFormatted != null && rentPriceFormatted != null) {
+    if (salePriceFormatted != null && rentPriceFormatted != null && !isForcedSale) {
         return "Harga : $salePriceFormatted\nHarga Sewa : $rentPriceFormatted"
     }
-    if (salePriceFormatted != null && rentPriceFormatted == null && !rawPrice.contains("sewa", ignoreCase = true) && !rawDesc.contains("sewa", ignoreCase = true)) {
+    if (salePriceFormatted != null && (rentPriceFormatted == null || isForcedSale) && !rawPrice.contains("sewa", ignoreCase = true) && !rawDesc.contains("sewa", ignoreCase = true)) {
         return "Harga : $salePriceFormatted"
     }
-    if (rentPriceFormatted != null && salePriceFormatted == null) {
+    if (rentPriceFormatted != null && salePriceFormatted == null && !isForcedSale) {
         return "Harga Sewa : $rentPriceFormatted"
     }
 
@@ -2033,13 +2050,13 @@ private fun formatPropertyPriceFull(rawPrice: String, rawDesc: String): String {
         var rentStr: String? = null
         for (m in matches) {
             val valNum = parsePriceStringToValue(m)
-            if (isRentPriceValue(valNum, m)) {
+            if (isRentPriceValue(valNum, m) && !isForcedSale) {
                 rentStr = formatSinglePriceCompact(m).replace("Harga ", "").replace("Harga", "").trim()
             } else {
                 saleStr = formatSinglePriceCompact(m).replace("Harga ", "").replace("Harga", "").trim()
             }
         }
-        if (saleStr != null && rentStr != null) {
+        if (saleStr != null && rentStr != null && !isForcedSale) {
             return "Harga : $saleStr\nHarga Sewa : $rentStr"
         }
         if (matches.size > 1) {
@@ -2053,7 +2070,7 @@ private fun formatPropertyPriceFull(rawPrice: String, rawDesc: String): String {
             single += " / m2"
         }
         val valNum = parsePriceStringToValue(matches.first())
-        return if (isRentPriceValue(valNum, matches.first()) || rawPrice.contains("sewa", ignoreCase = true) || rawDesc.contains("sewa", ignoreCase = true)) {
+        return if (!isForcedSale && (isRentPriceValue(valNum, matches.first()) || rawPrice.contains("sewa", ignoreCase = true) || rawDesc.contains("sewa", ignoreCase = true))) {
             val cleanSingle = single.replace("Harga ", "").replace("Harga", "").trim()
             "Harga Sewa : $cleanSingle"
         } else {

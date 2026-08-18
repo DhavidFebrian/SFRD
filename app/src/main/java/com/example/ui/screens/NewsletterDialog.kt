@@ -5,6 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -41,6 +44,7 @@ import androidx.compose.foundation.lazy.items
 import java.text.SimpleDateFormat
 import java.util.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NewsletterDialog(
     dateStr: String,
@@ -69,6 +73,25 @@ fun NewsletterDialog(
 
     val calculatedTitle = remember(dateStr) { calculateNewsletterTitle(dateStr) }
     var titleInput by remember { mutableStateOf(calculatedTitle) }
+
+    var coverPreviewBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var isPreviewLoading by remember { mutableStateOf(false) }
+
+    LaunchedEffect(includeCover, titleInput, selectedCoverPhotoUrl) {
+        if (includeCover) {
+            isPreviewLoading = true
+            try {
+                val bmp = NewsletterDownloader.generateCoverPreview(context, titleInput, selectedCoverPhotoUrl)
+                coverPreviewBitmap = bmp
+            } catch (e: Exception) {
+                // Ignore error in preview
+            } finally {
+                isPreviewLoading = false
+            }
+        } else {
+            coverPreviewBitmap = null
+        }
+    }
 
     var status by remember { mutableStateOf("idle") } // idle, running, success, error
     var progressMessage by remember { mutableStateOf("") }
@@ -191,29 +214,118 @@ fun NewsletterDialog(
                             }
 
                             if (includeCover) {
+                                // 1. Live Preview Template Cover
+                                item {
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Visibility,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Text(
+                                                    text = "Live Preview Cover (3:4 HD):",
+                                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                            if (isPreviewLoading) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(14.dp),
+                                                    strokeWidth = 2.dp,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(280.dp),
+                                            shape = RoundedCornerShape(16.dp),
+                                            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
+                                            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F172A)),
+                                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (coverPreviewBitmap != null) {
+                                                    Image(
+                                                        bitmap = coverPreviewBitmap!!.asImageBitmap(),
+                                                        contentDescription = "Cover Template Live Preview",
+                                                        modifier = Modifier
+                                                            .fillMaxHeight()
+                                                            .aspectRatio(3f / 4f)
+                                                            .clip(RoundedCornerShape(12.dp)),
+                                                        contentScale = ContentScale.Fit
+                                                    )
+                                                } else if (isPreviewLoading) {
+                                                    Column(
+                                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        CircularProgressIndicator(
+                                                            modifier = Modifier.size(32.dp),
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                        Text(
+                                                            text = "Memuat template cover...",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = Color.White.copy(alpha = 0.7f)
+                                                        )
+                                                    }
+                                                } else {
+                                                    Text(
+                                                        text = "Pilih listing & foto untuk melihat preview cover",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = Color.White.copy(alpha = 0.5f)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 2. Listing Selection (Diperbesar)
                                 item {
                                     Column(modifier = Modifier.fillMaxWidth()) {
                                         Text(
-                                            text = "Listing untuk Cover Foto:",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.outline
+                                            text = "Pilih Listing untuk Foto Cover:",
+                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
-                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Spacer(modifier = Modifier.height(6.dp))
                                         Card(
                                             modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(12.dp),
+                                            shape = RoundedCornerShape(14.dp),
                                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.1f))
+                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f))
                                         ) {
                                             Box(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .height(180.dp)
-                                                    .padding(6.dp)
+                                                    .height(230.dp)
+                                                    .padding(8.dp)
                                             ) {
                                                 LazyColumn(
                                                     modifier = Modifier.fillMaxSize(),
-                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                    verticalArrangement = Arrangement.spacedBy(10.dp)
                                                 ) {
                                                     items(listings) { listing ->
                                                         val cleanId = listing.idListing.trim()
@@ -225,17 +337,16 @@ fun NewsletterDialog(
                                                                 .fillMaxWidth()
                                                                 .clickable { 
                                                                     selectedCoverListing = listing
-                                                                    // Reset selected photo URL to trigger default photo search
                                                                     selectedCoverPhotoUrl = ""
                                                                 },
-                                                            shape = RoundedCornerShape(8.dp),
+                                                            shape = RoundedCornerShape(10.dp),
                                                             border = BorderStroke(
                                                                 width = if (isSelected) 2.dp else 1.dp,
                                                                 color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                                                             ),
                                                             colors = CardDefaults.cardColors(
                                                                 containerColor = if (isSelected) {
-                                                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
+                                                                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)
                                                                 } else {
                                                                     MaterialTheme.colorScheme.surface
                                                                 }
@@ -244,21 +355,21 @@ fun NewsletterDialog(
                                                             Row(
                                                                 modifier = Modifier
                                                                     .fillMaxWidth()
-                                                                    .padding(8.dp),
+                                                                    .padding(10.dp),
                                                                 verticalAlignment = Alignment.CenterVertically,
-                                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                                                             ) {
                                                                 Box(
                                                                     modifier = Modifier
-                                                                        .size(48.dp)
-                                                                        .background(MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(6.dp)),
+                                                                        .size(60.dp)
+                                                                        .background(MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(8.dp)),
                                                                     contentAlignment = Alignment.Center
                                                                 ) {
                                                                     if (imageUrl != null) {
                                                                         AsyncImage(
                                                                             model = imageUrl,
                                                                             contentDescription = null,
-                                                                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(6.dp)),
+                                                                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)),
                                                                             contentScale = ContentScale.Crop
                                                                         )
                                                                     } else {
@@ -266,22 +377,31 @@ fun NewsletterDialog(
                                                                             imageVector = Icons.Default.Image,
                                                                             contentDescription = null,
                                                                             tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
-                                                                            modifier = Modifier.size(20.dp)
+                                                                            modifier = Modifier.size(24.dp)
                                                                         )
                                                                     }
                                                                 }
                                                                 
                                                                 Column(modifier = Modifier.weight(1f)) {
                                                                     Text(
-                                                                        text = listing.idListing,
-                                                                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                                        text = "ID #${listing.idListing}",
+                                                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                                                         color = MaterialTheme.colorScheme.onSurface
                                                                     )
+                                                                    Spacer(modifier = Modifier.height(2.dp))
                                                                     Text(
-                                                                        text = listing.namaMe,
-                                                                        style = MaterialTheme.typography.bodySmall,
-                                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                        text = "ME: ${listing.namaMe}",
+                                                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                                                                        color = MaterialTheme.colorScheme.primary
                                                                     )
+                                                                    if (listing.catatan.isNotBlank()) {
+                                                                        Text(
+                                                                            text = listing.catatan.take(40),
+                                                                            style = MaterialTheme.typography.labelSmall,
+                                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                            maxLines = 1
+                                                                        )
+                                                                    }
                                                                 }
                                                                 
                                                                 if (isSelected) {
@@ -289,7 +409,7 @@ fun NewsletterDialog(
                                                                         imageVector = Icons.Default.CheckCircle,
                                                                         contentDescription = "Selected",
                                                                         tint = MaterialTheme.colorScheme.primary,
-                                                                        modifier = Modifier.size(20.dp)
+                                                                        modifier = Modifier.size(24.dp)
                                                                     )
                                                                 }
                                                             }
@@ -301,6 +421,7 @@ fun NewsletterDialog(
                                     }
                                 }
 
+                                // 3. Photo Thumbnail Row (Diperbesar)
                                 selectedCoverListing?.let { listing ->
                                     val cleanId = listing.idListing.trim()
                                     val gallery = listingImagesGalleryMap[cleanId] ?: emptyList()
@@ -311,13 +432,13 @@ fun NewsletterDialog(
                                         item {
                                             Column(modifier = Modifier.fillMaxWidth()) {
                                                 Text(
-                                                    text = "Pilih Foto untuk Cover:",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.outline
+                                                    text = "Pilih Foto Spesifik untuk Cover (${images.size} Foto Tersedia):",
+                                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
+                                                    color = MaterialTheme.colorScheme.onSurface
                                                 )
-                                                Spacer(modifier = Modifier.height(6.dp))
+                                                Spacer(modifier = Modifier.height(8.dp))
                                                 LazyRow(
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                                                     modifier = Modifier.fillMaxWidth()
                                                 ) {
                                                     items(images) { imgUrl ->
@@ -325,17 +446,35 @@ fun NewsletterDialog(
                                                         val border = if (isSelected) BorderStroke(3.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
                                                         Card(
                                                             modifier = Modifier
-                                                                .size(80.dp)
+                                                                .size(96.dp)
                                                                 .clickable { selectedCoverPhotoUrl = imgUrl },
-                                                            shape = RoundedCornerShape(8.dp),
-                                                            border = border
+                                                            shape = RoundedCornerShape(12.dp),
+                                                            border = border,
+                                                            elevation = if (isSelected) CardDefaults.cardElevation(defaultElevation = 4.dp) else CardDefaults.cardElevation(defaultElevation = 1.dp)
                                                         ) {
-                                                            AsyncImage(
-                                                                model = imgUrl,
-                                                                contentDescription = null,
-                                                                modifier = Modifier.fillMaxSize(),
-                                                                contentScale = ContentScale.Crop
-                                                            )
+                                                            Box(modifier = Modifier.fillMaxSize()) {
+                                                                AsyncImage(
+                                                                    model = imgUrl,
+                                                                    contentDescription = null,
+                                                                    modifier = Modifier.fillMaxSize(),
+                                                                    contentScale = ContentScale.Crop
+                                                                )
+                                                                if (isSelected) {
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .fillMaxSize()
+                                                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+                                                                        contentAlignment = Alignment.TopEnd
+                                                                    ) {
+                                                                        Icon(
+                                                                            imageVector = Icons.Default.CheckCircle,
+                                                                            contentDescription = null,
+                                                                            tint = MaterialTheme.colorScheme.primary,
+                                                                            modifier = Modifier.padding(4.dp).size(18.dp)
+                                                                        )
+                                                                    }
+                                                                }
+                                                            }
                                                         }
                                                     }
                                                 }

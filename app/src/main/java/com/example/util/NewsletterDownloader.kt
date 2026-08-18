@@ -17,6 +17,8 @@ import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.util.Log
 import androidx.core.content.FileProvider
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.*
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import java.io.File
@@ -351,7 +353,29 @@ object NewsletterDownloader {
         }
     }
 
-    private fun drawCoverPage(
+    suspend fun generateCoverPreview(
+        context: Context,
+        pdfTitle: String,
+        coverPhotoUrl: String?
+    ): Bitmap = withContext(Dispatchers.IO) {
+        var coverPhotoBitmap: Bitmap? = null
+        if (!coverPhotoUrl.isNullOrBlank()) {
+            try {
+                val imgRequest = Request.Builder().url(coverPhotoUrl).build()
+                val response = client.newCall(imgRequest).execute()
+                if (response.isSuccessful) {
+                    response.body?.byteStream()?.use { input ->
+                        coverPhotoBitmap = BitmapFactory.decodeStream(input)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Gagal mengunduh cover preview photo", e)
+            }
+        }
+        drawCoverPage(context, pdfTitle, coverPhotoBitmap)
+    }
+
+    fun drawCoverPage(
         context: Context,
         pdfTitle: String,
         coverPhotoBitmap: Bitmap?

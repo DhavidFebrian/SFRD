@@ -933,6 +933,7 @@ fun TaskDashboardScreen(
                 listingPriceMap = viewModel.listingPriceMap.collectAsState().value,
                 listingTitleMap = viewModel.listingTitleMap.collectAsState().value,
                 allMeetingListings = weeklyMeetingIgListings,
+                viewModel = viewModel,
                 onDismiss = { selectedTaskForIgMockup = null },
                 onViewDetails = {
                     selectedScheduleForDetail = mapEditFotoToSchedule(task)

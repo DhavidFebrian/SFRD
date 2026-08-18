@@ -3173,6 +3173,31 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 }
             }
         }
+
+        // 3. Dari data weeklyMeetingIgListings & allMonthlyMeetingListings
+        val combinedMeetingListings = weeklyMeetingIgListings.value + allMonthlyMeetingListings.value
+        combinedMeetingListings.forEach { listing ->
+            val lId = listing.idListing.trim().lowercase()
+            val lIdNoDot = if (lId.endsWith(".0")) lId.substring(0, lId.length - 2) else lId
+            val lIdInt = lIdNoDot.toIntOrNull()
+
+            val isMatch = if (idInt != null && lIdInt != null) {
+                idInt == lIdInt
+            } else {
+                lIdNoDot == cleanIdNoDot
+            }
+
+            if (isMatch) {
+                val isPosted = listing.postingIg.trim().lowercase() in listOf("done", "ya", "yes", "true", "✔", "1")
+                if (isPosted) {
+                    val dateStr = listing.jadwalPosting.trim().takeIf { it.isNotBlank() && it != "-" } ?: listing.date.trim()
+                    if (dateStr.isNotBlank() && dateStr != "-" && !dateStr.contains("2024") && !dateStr.contains("2025")) {
+                        val formatted = formatToSpreadsheetDate(dateStr)
+                        if (formatted.isNotBlank()) dates.add(formatted)
+                    }
+                }
+            }
+        }
         
         val sortedDates = dates.toList().sortedBy { parseToComparableDate(it) }
         return IgPostingHistory(
