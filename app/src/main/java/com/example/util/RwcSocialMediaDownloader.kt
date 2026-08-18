@@ -173,26 +173,32 @@ object RwcSocialMediaDownloader {
         var firstImageUri: Uri? = null
 
         val allIdsToDownload = mutableListOf<String>()
-        allIdsToDownload.add(coverImageId)
+        if (coverImageId.isNotBlank() && selectedImageIds.contains(coverImageId)) {
+            allIdsToDownload.add(coverImageId)
+        }
         selectedImageIds.forEach { id ->
-            if (id != coverImageId && !allIdsToDownload.contains(id)) {
+            if (!allIdsToDownload.contains(id)) {
                 allIdsToDownload.add(id)
             }
         }
 
         val total = allIdsToDownload.size
+        if (total == 0) {
+            mainHandler.post { callback.onFailure("Tidak ada foto yang dipilih untuk di-download.") }
+            return
+        }
 
         Thread {
             try {
                 for (idx in allIdsToDownload.indices) {
                     val imgId = allIdsToDownload[idx]
-                    val isCover = idx == 0
+                    val isCover = coverImageId.isNotBlank() && imgId == coverImageId
 
                     val msg = if (isCover) "Downloading Design 3 Cover..." else "Downloading photo ${idx + 1} / $total..."
                     mainHandler.post { callback.onProgress(msg) }
 
                     val encodedTitle = URLEncoder.encode(coverTitle, "UTF-8")
-                    val dlUrl = if (isCover) {
+                    val dlUrl = if (isCover && coverTitle.isNotBlank()) {
                         "https://raywhitecipete.net/SocialMedia/Home/DownloadListingSocialMediaV3?idlistingimage=$imgId&headline1=$encodedTitle"
                     } else {
                         "https://raywhitecipete.net/SocialMedia/Home/DownloadListingSocialMediaV3?idlistingimage=$imgId"
@@ -211,7 +217,7 @@ object RwcSocialMediaDownloader {
                             val uri = saveImageToStorage(context, fileName, bytes)
                             if (uri != null) {
                                 downloadedUris.add(uri)
-                                if (isCover) firstImageUri = uri
+                                if (isCover || firstImageUri == null) firstImageUri = uri
                             }
                         }
                     }

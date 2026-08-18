@@ -14,6 +14,8 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
@@ -640,6 +642,96 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     val allMonthlyMeetingListings = MutableStateFlow<List<com.example.network.MeetingListing>>(emptyList())
     private val _weeklyMeetingIgSyncStatus = MutableStateFlow<SyncState>(SyncState.Idle)
     val weeklyMeetingIgSyncStatus: StateFlow<SyncState> = _weeklyMeetingIgSyncStatus.asStateFlow()
+
+    // Saved Captions Sheet Database States
+    val savedCaptionsMap = MutableStateFlow<Map<String, String>>(emptyMap())
+    private val _saveCaptionStatus = MutableStateFlow<SyncState>(SyncState.Idle)
+    val saveCaptionStatus: StateFlow<SyncState> = _saveCaptionStatus.asStateFlow()
+
+    fun fetchSavedCaptions() {
+        val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
+        if (baseUrl.isBlank()) return
+
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val separator = if (baseUrl.contains("?")) "&" else "?"
+                val url = "$baseUrl${separator}action=get_captions"
+                val request = okhttp3.Request.Builder().url(url).build()
+                val client = okhttp3.OkHttpClient()
+                val response = client.newCall(request).execute()
+                val body = response.body?.string()
+                if (response.isSuccessful && !body.isNullOrBlank()) {
+                    val jsonObj = org.json.JSONObject(body)
+                    if (jsonObj.optString("status").equals("success", ignoreCase = true)) {
+                        val captionsObj = jsonObj.optJSONObject("captions")
+                        val map = mutableMapOf<String, String>()
+                        if (captionsObj != null) {
+                            val keys = captionsObj.keys()
+                            while (keys.hasNext()) {
+                                val key = keys.next()
+                                map[key.trim()] = captionsObj.optString(key)
+                            }
+                        }
+                        savedCaptionsMap.value = map
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore error on silent fetch
+            }
+        }
+    }
+
+    fun saveCaptionToDatabase(
+        idListing: String,
+        caption: String,
+        onResult: (Boolean, String) -> Unit
+    ) {
+        val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
+        if (baseUrl.isBlank()) {
+            onResult(false, "URL Google Apps Script belum diatur.")
+            return
+        }
+
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val client = okhttp3.OkHttpClient()
+                val jsonBody = org.json.JSONObject().apply {
+                    put("action", "save_caption")
+                    put("idListing", idListing.trim())
+                    put("caption", caption)
+                }
+                val reqBody = jsonBody.toString().toRequestBody("application/json; charset=utf-8".toMediaTypeOrNull())
+                val request = okhttp3.Request.Builder()
+                    .url(baseUrl)
+                    .post(reqBody)
+                    .build()
+
+                val response = client.newCall(request).execute()
+                val body = response.body?.string()
+                if (response.isSuccessful && !body.isNullOrBlank()) {
+                    val resJson = org.json.JSONObject(body)
+                    val isSuccess = resJson.optString("status").equals("success", ignoreCase = true)
+                    val msg = resJson.optString("message", if (isSuccess) "Caption berhasil disimpan ke Sheet Captions!" else "Gagal menyimpan caption")
+
+                    if (isSuccess) {
+                        savedCaptionsMap.value = savedCaptionsMap.value + (idListing.trim() to caption)
+                    }
+
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onResult(isSuccess, msg)
+                    }
+                } else {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        onResult(false, "Respon server tidak valid.")
+                    }
+                }
+            } catch (e: Exception) {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onResult(false, "Gagal menyimpan caption: ${e.localizedMessage ?: "Masalah koneksi"}")
+                }
+            }
+        }
+    }
 
     // Absensi Meeting 2026 States
     val absensiData = MutableStateFlow<com.example.network.AbsensiResponse?>(null)
@@ -2543,6 +2635,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 selectRelevantMeetingDateAutomatically()
                 fetchWeeklyMeetingIgListings(selectedMonth.value)
                 fetchYearlyIgPostingHistory()
+                fetchSavedCaptions()
             }
             // Real-time background sync loop every 10 seconds
             while (true) {

@@ -104,16 +104,30 @@ fun InstagramPostMockupScreen(
     var repostCount by remember { mutableStateOf((1..15).random()) }
     var isReposted by remember { mutableStateOf(false) }
 
+    val savedCaptionsMap = viewModel?.savedCaptionsMap?.collectAsState()?.value ?: emptyMap()
     var isSaved by remember { mutableStateOf(false) }
+    var isSavingCaption by remember { mutableStateOf(false) }
     var showWaChooserDialog by remember { mutableStateOf(false) }
 
     var showRwcDownloadDialog by remember { mutableStateOf(false) }
     var showWaBlastDialog by remember { mutableStateOf(false) }
     var downloadedUris by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
 
-    // Build the dynamic Instagram caption/description text
-    val captionText = remember(rawDesc, cleanId, rawPrice, task.namaMe, task.judul, task.editNotes, scrapedTitle) {
+    // Build the dynamic default Instagram caption/description text
+    val defaultCaptionText = remember(rawDesc, cleanId, rawPrice, task.namaMe, task.judul, task.editNotes, scrapedTitle) {
         buildInstagramCaption(rawDesc, cleanId, rawPrice, task.namaMe, task.judul, scrapedTitle, editNotes = task.editNotes)
+    }
+
+    var editedCaption by remember { mutableStateOf(defaultCaptionText) }
+    val captionText = editedCaption
+
+    // Sync saved caption from database if exists
+    LaunchedEffect(cleanId, savedCaptionsMap) {
+        val saved = savedCaptionsMap[cleanId]
+        if (!saved.isNullOrBlank()) {
+            editedCaption = saved
+            isSaved = true
+        }
     }
 
     // Full screen-ish dialog matching IG black style
@@ -548,9 +562,9 @@ fun InstagramPostMockupScreen(
                                         .clickable {
                                             val intent = Intent(Intent.ACTION_SEND).apply {
                                                 type = "text/plain"
-                                                putExtra(Intent.EXTRA_TEXT, captionText)
+                                                putExtra(Intent.EXTRA_TEXT, editedCaption)
                                             }
-                                            context.startActivity(Intent.createChooser(intent, "Bagikan ke WhatsApp"))
+                                            context.startActivity(Intent.createChooser(intent, "Bagikan Caption ke WhatsApp"))
                                         }
                                         .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
                                         .padding(horizontal = 10.dp, vertical = 6.dp)
@@ -565,37 +579,157 @@ fun InstagramPostMockupScreen(
 
                                 Spacer(modifier = Modifier.weight(1f))
 
-                                // Save
+                                // Save Caption to Database
                                 Box(
                                     modifier = Modifier
-                                        .clickable { isSaved = !isSaved }
-                                        .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            if (!isSavingCaption) {
+                                                isSavingCaption = true
+                                                viewModel?.saveCaptionToDatabase(cleanId, editedCaption) { success, msg ->
+                                                    isSavingCaption = false
+                                                    if (success) {
+                                                        isSaved = true
+                                                        Toast.makeText(context, "✓ $msg", Toast.LENGTH_SHORT).show()
+                                                    } else {
+                                                        Toast.makeText(context, "✗ $msg", Toast.LENGTH_LONG).show()
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        .background(
+                                            if (isSaved) Color(0xFFFFDF00).copy(alpha = 0.15f) else Color.White.copy(alpha = 0.05f),
+                                            RoundedCornerShape(8.dp)
+                                        )
+                                        .border(
+                                            1.dp,
+                                            if (isSaved) Color(0xFFFFDF00).copy(alpha = 0.4f) else Color.Transparent,
+                                            RoundedCornerShape(8.dp)
+                                        )
                                         .padding(horizontal = 10.dp, vertical = 6.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = if (isSaved) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
-                                        contentDescription = "Save",
-                                        tint = Color.White,
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                                    if (isSavingCaption) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(20.dp),
+                                            strokeWidth = 2.dp,
+                                            color = Color(0xFFFFDF00)
+                                        )
+                                    } else {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isSaved) Icons.Default.Bookmark else Icons.Outlined.BookmarkBorder,
+                                                contentDescription = "Save Caption",
+                                                tint = if (isSaved) Color(0xFFFFDF00) else Color.White,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            if (isSaved) {
+                                                Text(
+                                                    text = "Saved",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color(0xFFFFDF00)
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
                             HorizontalDivider(color = Color.White.copy(alpha = 0.1f))
 
-                            // Caption Text
-                            Text(
-                                text = "Pratinjau Caption Posting:",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = Color(0xFFFFDF00),
-                                letterSpacing = 0.5.sp
-                            )
-                            Text(
-                                text = captionText,
-                                color = Color.White.copy(alpha = 0.9f),
-                                fontSize = 13.sp,
-                                lineHeight = 18.sp
-                            )
+                            // Editable Caption Section
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.EditNote,
+                                            contentDescription = null,
+                                            tint = Color(0xFFFFDF00),
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Text(
+                                            text = "Pratinjau Caption Posting (Bisa Di-edit):",
+                                            style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                            color = Color(0xFFFFDF00),
+                                            letterSpacing = 0.5.sp
+                                        )
+                                    }
+
+                                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        // Reset button
+                                        if (editedCaption != defaultCaptionText) {
+                                            TextButton(
+                                                onClick = { editedCaption = defaultCaptionText },
+                                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Reset",
+                                                    fontSize = 11.sp,
+                                                    color = Color.White.copy(alpha = 0.6f)
+                                                )
+                                            }
+                                        }
+
+                                        // Copy button
+                                        IconButton(
+                                            onClick = {
+                                                clipboardManager.setText(AnnotatedString(editedCaption))
+                                                Toast.makeText(context, "Caption berhasil disalin ke clipboard!", Toast.LENGTH_SHORT).show()
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ContentCopy,
+                                                contentDescription = "Salin Caption",
+                                                tint = Color.White.copy(alpha = 0.8f),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                OutlinedTextField(
+                                    value = editedCaption,
+                                    onValueChange = {
+                                        editedCaption = it
+                                        isSaved = false
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                        color = Color.White,
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp
+                                    ),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = Color(0xFF0D1117),
+                                        unfocusedContainerColor = Color(0xFF0D1117),
+                                        focusedBorderColor = Color(0xFFFFDF00).copy(alpha = 0.8f),
+                                        unfocusedBorderColor = Color(0xFF30363D),
+                                        focusedTextColor = Color.White,
+                                        unfocusedTextColor = Color.White
+                                    ),
+                                    placeholder = {
+                                        Text(
+                                            text = "Tulis caption postingan...",
+                                            color = Color.Gray,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                )
+                            }
 
                             // ── Professional Dashboard: Monitoring Data Listing ───────────────────
                             Card(

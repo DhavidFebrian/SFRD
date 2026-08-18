@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -101,6 +102,18 @@ fun DownloadImagesScreen(
     // Download Status State
     var isDownloading by remember { mutableStateOf(false) }
     var downloadProgressText by remember { mutableStateOf("") }
+    var previewFullscreenIndex by remember { mutableStateOf<Int?>(null) }
+
+    // Fullscreen Hold to Preview dialog
+    previewFullscreenIndex?.let { index ->
+        FullScreenImagePagerViewer(
+            images = imageUrls,
+            initialIndex = index,
+            title = "Preview Foto Listing",
+            subtitle = "ID: $cleanId • Hold to Preview",
+            onDismiss = { previewFullscreenIndex = null }
+        )
+    }
     
     // Using full-screen Dialog to prevent overlap/layout cut-off and intercept physical back button perfectly
     Dialog(
@@ -275,9 +288,9 @@ fun DownloadImagesScreen(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                         Text(
-                                            text = "Hanya foto properti (Foto marketing diabaikan)",
+                                            text = "Hold foto untuk preview besar • Hanya foto properti",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.outline
+                                            color = MaterialTheme.colorScheme.primary
                                         )
                                     }
                                 }
@@ -291,7 +304,7 @@ fun DownloadImagesScreen(
                                 verticalArrangement = Arrangement.spacedBy(12.dp),
                                 modifier = Modifier.fillMaxSize()
                             ) {
-                                items(imageUrls) { url ->
+                                itemsIndexed(imageUrls) { index, url ->
                                     val isSelected = selectedUrls.contains(url)
                                     
                                     Card(
@@ -306,6 +319,9 @@ fun DownloadImagesScreen(
                                                     } else {
                                                         selectedUrls.add(url)
                                                     }
+                                                },
+                                                onLongClick = {
+                                                    previewFullscreenIndex = index
                                                 }
                                             ),
                                         border = BorderStroke(

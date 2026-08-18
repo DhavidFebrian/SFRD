@@ -84,6 +84,9 @@ function doGet(e) {
     if (action === "get_absensi_meeting") {
       return getAbsensiMeeting(e);
     }
+    if (action === "get_captions" || action === "get_saved_captions") {
+      return getSavedCaptions(e);
+    }
     
     // 2. Aksi Bawaan: Ambil Jadwal Foto & Edit Foto
     var sheetName = (e && e.parameter && e.parameter.sheetName) || "Juni 2026";
@@ -277,6 +280,9 @@ function doPost(e) {
     }
     if (action === "update_absensi_meeting") {
       return updateAbsensiMeeting(params);
+    }
+    if (action === "save_caption") {
+      return saveCaption(params);
     }
     
     var sheetName = params.sheetName || (e && e.parameter && e.parameter.sheetName) || "Juni 2026";
@@ -1518,6 +1524,106 @@ function getYearlyIgPostingHistory(e) {
 function getIndonesianDayName(dayNum) {
   var days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
   return days[dayNum] || "Selasa";
+}
+
+function getSavedCaptions(e) {
+  try {
+    var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+    var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+    var sheet = ss.getSheetByName("Captions") || ss.getSheetByName("captions");
+    
+    if (!sheet) {
+      return ContentService.createTextOutput(JSON.stringify({
+        "status": "success",
+        "captions": {}
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      return ContentService.createTextOutput(JSON.stringify({
+        "status": "success",
+        "captions": {}
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    var values = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+    var captionsMap = {};
+    for (var i = 0; i < values.length; i++) {
+      var idListing = values[i][0] ? values[i][0].toString().trim() : "";
+      var captionText = values[i][1] ? values[i][1].toString() : "";
+      if (idListing !== "") {
+        captionsMap[idListing] = captionText;
+      }
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "success",
+      "captions": captionsMap
+    })).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": err.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function saveCaption(data) {
+  try {
+    var idListing = data.idListing ? data.idListing.toString().trim() : "";
+    var caption = data.caption ? data.caption.toString() : "";
+    
+    if (!idListing) {
+      return ContentService.createTextOutput(JSON.stringify({
+        "status": "error",
+        "message": "ID Listing tidak boleh kosong."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+    var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+    var sheet = ss.getSheetByName("Captions") || ss.getSheetByName("captions");
+    
+    if (!sheet) {
+      sheet = ss.insertSheet("Captions");
+      sheet.getRange(1, 1, 1, 3).setValues([["ID Listing", "Caption", "Updated At"]]);
+      sheet.getRange(1, 1, 1, 3).setFontWeight("bold").setBackground("#D9EAD3");
+    }
+    
+    var lastRow = sheet.getLastRow();
+    var foundRow = -1;
+    
+    if (lastRow >= 2) {
+      var idValues = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+      for (var i = 0; i < idValues.length; i++) {
+        var existingId = idValues[i][0] ? idValues[i][0].toString().trim() : "";
+        if (existingId === idListing) {
+          foundRow = i + 2;
+          break;
+        }
+      }
+    }
+    
+    var nowStr = Utilities.formatDate(new Date(), "Asia/Jakarta", "yyyy-MM-dd HH:mm:ss");
+    if (foundRow !== -1) {
+      sheet.getRange(foundRow, 2).setValue(caption);
+      sheet.getRange(foundRow, 3).setValue(nowStr);
+    } else {
+      var newRow = Math.max(lastRow + 1, 2);
+      sheet.getRange(newRow, 1, 1, 3).setValues([[idListing, caption, nowStr]]);
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "success",
+      "message": "Caption ID " + idListing + " berhasil disimpan ke sheet Captions"
+    })).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": err.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
 }
 """.trimIndent()
 

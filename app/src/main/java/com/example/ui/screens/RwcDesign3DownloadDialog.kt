@@ -2,13 +2,15 @@ package com.example.ui.screens
 
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -34,7 +36,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import kotlinx.coroutines.delay
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun RwcDesign3DownloadDialog(
     listingId: String,
@@ -54,6 +56,7 @@ fun RwcDesign3DownloadDialog(
     var selectedCoverId by remember { mutableStateOf("") }
     val selectedDownloadIds = remember { mutableStateListOf<String>() }
     var coverTitle by remember { mutableStateOf(initialCoverTitle) }
+    var previewFullscreenIndex by remember { mutableStateOf<Int?>(null) }
 
     // Fetch images on open
     LaunchedEffect(listingId) {
@@ -82,6 +85,17 @@ fun RwcDesign3DownloadDialog(
                     onDismiss()
                 }
             }
+        )
+    }
+
+    // Full screen Hold-to-Preview dialog
+    previewFullscreenIndex?.let { index ->
+        FullScreenImagePagerViewer(
+            images = images.map { it.imageUrl },
+            initialIndex = index,
+            title = "Preview Foto Listing",
+            subtitle = "ID #$listingId • Hold to Preview",
+            onDismiss = { previewFullscreenIndex = null }
         )
     }
 
@@ -183,11 +197,18 @@ fun RwcDesign3DownloadDialog(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "Pilih Cover & Foto Tambahan:",
-                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            Column {
+                                Text(
+                                    text = "Pilih Foto & Cover:",
+                                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Hold foto untuk preview besar • Cover bersifat opsional",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
                             val totalImages = images.size
                             val selectedCount = selectedDownloadIds.size
                             Surface(
@@ -212,7 +233,7 @@ fun RwcDesign3DownloadDialog(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier.weight(1f)
                         ) {
-                            items(images) { item ->
+                            itemsIndexed(images) { index, item ->
                                 val isCover = selectedCoverId == item.id
                                 val isSelected = selectedDownloadIds.contains(item.id)
 
@@ -226,20 +247,22 @@ fun RwcDesign3DownloadDialog(
                                             color = if (isCover) Color(0xFFFF9800) else if (isSelected) MaterialTheme.colorScheme.primary else Color.LightGray.copy(alpha = 0.5f),
                                             shape = RoundedCornerShape(12.dp)
                                         )
-                                        .clickable {
-                                            // Click preview image to toggle download selection
-                                            if (isSelected) {
-                                                selectedDownloadIds.remove(item.id)
-                                                if (isCover) {
-                                                    selectedCoverId = selectedDownloadIds.firstOrNull() ?: ""
+                                        .combinedClickable(
+                                            onClick = {
+                                                // Click preview image to toggle download selection
+                                                if (isSelected) {
+                                                    selectedDownloadIds.remove(item.id)
+                                                    if (isCover) {
+                                                        selectedCoverId = ""
+                                                    }
+                                                } else {
+                                                    selectedDownloadIds.add(item.id)
                                                 }
-                                            } else {
-                                                selectedDownloadIds.add(item.id)
-                                                if (selectedCoverId.isEmpty()) {
-                                                    selectedCoverId = item.id
-                                                }
+                                            },
+                                            onLongClick = {
+                                                previewFullscreenIndex = index
                                             }
-                                        },
+                                        ),
                                     shape = RoundedCornerShape(12.dp)
                                 ) {
                                     Box(modifier = Modifier.fillMaxSize()) {
@@ -286,7 +309,7 @@ fun RwcDesign3DownloadDialog(
                                             }
                                         }
 
-                                        // Cover Checkbox & Label (Top End)
+                                        // Cover Checkbox & Label (Top End) - Optional Toggle
                                         Surface(
                                             color = if (isCover) Color(0xFFFF9800) else Color.Black.copy(alpha = 0.6f),
                                             shape = RoundedCornerShape(bottomStart = 8.dp),
@@ -296,9 +319,13 @@ fun RwcDesign3DownloadDialog(
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 modifier = Modifier
                                                     .clickable {
-                                                        selectedCoverId = item.id
-                                                        if (!selectedDownloadIds.contains(item.id)) {
-                                                            selectedDownloadIds.add(item.id)
+                                                        if (isCover) {
+                                                            selectedCoverId = ""
+                                                        } else {
+                                                            selectedCoverId = item.id
+                                                            if (!selectedDownloadIds.contains(item.id)) {
+                                                                selectedDownloadIds.add(item.id)
+                                                            }
                                                         }
                                                     }
                                                     .padding(horizontal = 6.dp, vertical = 2.dp)
@@ -311,6 +338,8 @@ fun RwcDesign3DownloadDialog(
                                                             if (!selectedDownloadIds.contains(item.id)) {
                                                                 selectedDownloadIds.add(item.id)
                                                             }
+                                                        } else {
+                                                            selectedCoverId = ""
                                                         }
                                                     },
                                                     colors = CheckboxDefaults.colors(
@@ -322,7 +351,7 @@ fun RwcDesign3DownloadDialog(
                                                 )
                                                 Spacer(modifier = Modifier.width(2.dp))
                                                 Text(
-                                                    text = if (isCover) "★ COVER" else "Cover",
+                                                    text = if (isCover) "★ COVER" else "Set Cover",
                                                     style = MaterialTheme.typography.labelSmall.copy(
                                                         fontWeight = if (isCover) FontWeight.ExtraBold else FontWeight.Medium,
                                                         fontSize = 10.sp
@@ -342,21 +371,19 @@ fun RwcDesign3DownloadDialog(
                     // Bottom Download Button
                     Button(
                         onClick = {
-                            if (selectedCoverId.isBlank()) {
-                                Toast.makeText(context, "Pilih foto cover terlebih dahulu!", Toast.LENGTH_SHORT).show()
+                            if (selectedDownloadIds.isEmpty()) {
+                                Toast.makeText(context, "Pilih minimal 1 foto untuk di-download!", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
-                            if (coverTitle.isBlank()) {
-                                Toast.makeText(context, "Judul cover (headline 1) tidak boleh kosong!", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
+
+                            val finalCoverTitle = if (coverTitle.isBlank()) initialCoverTitle.ifBlank { "PROPERTI PILIHAN" } else coverTitle
 
                             isDownloading = true
                             RwcSocialMediaDownloader.downloadDesign3Photos(
                                 context = context,
                                 listingId = listingId,
                                 coverImageId = selectedCoverId,
-                                coverTitle = coverTitle,
+                                coverTitle = finalCoverTitle,
                                 selectedImageIds = selectedDownloadIds.toList(),
                                 callback = object : RwcSocialMediaDownloader.DownloadDesign3Callback {
                                     override fun onProgress(message: String) {
@@ -365,8 +392,9 @@ fun RwcDesign3DownloadDialog(
 
                                     override fun onSuccess(downloadedUris: List<Uri>, firstImageUri: Uri?) {
                                         isDownloading = false
-                                        Toast.makeText(context, "✓ Berhasil mengunduh ${downloadedUris.size} foto Design 3!", Toast.LENGTH_SHORT).show()
-                                        onDownloadSuccess(downloadedUris, coverTitle)
+                                        val coverInfo = if (selectedCoverId.isNotBlank()) " dengan Cover" else ""
+                                        Toast.makeText(context, "✓ Berhasil mengunduh ${downloadedUris.size} foto$coverInfo!", Toast.LENGTH_SHORT).show()
+                                        onDownloadSuccess(downloadedUris, finalCoverTitle)
                                     }
 
                                     override fun onFailure(error: String) {
@@ -383,7 +411,10 @@ fun RwcDesign3DownloadDialog(
                     ) {
                         Icon(Icons.Default.Download, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Download", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        Text(
+                            text = if (selectedCoverId.isNotBlank()) "Download (${selectedDownloadIds.size} Foto + Cover)" else "Download (${selectedDownloadIds.size} Foto)",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
                     }
                 }
             }
