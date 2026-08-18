@@ -12,15 +12,15 @@ class PreferenceManager(context: Context) {
         private const val KEY_WEEKLY_MEETING_URL = "weekly_meeting_url"
         
         // DEFAULT_URL: Paste your Google Apps Script URL here so new devices connect auto-magically!
-        const val DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw7Bgmn_vkExGXWlTyO_AOgW2cULo_E2FDeAtJD0xoYf8LJtA24TqqBqFAqIxbn8CH8/exec"
-        const val DEFAULT_WEEKLY_MEETING_URL = "https://script.google.com/macros/s/AKfycbw7Bgmn_vkExGXWlTyO_AOgW2cULo_E2FDeAtJD0xoYf8LJtA24TqqBqFAqIxbn8CH8/exec"
+        const val DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbytrM7-rYQ_EjK9pzHJn4GvFL8j9ypajc6-BzzAqbCCbawXoXf9Gi9E0ECPNmjVsXIH/exec"
+        const val DEFAULT_WEEKLY_MEETING_URL = "https://script.google.com/macros/s/AKfycbytrM7-rYQ_EjK9pzHJn4GvFL8j9ypajc6-BzzAqbCCbawXoXf9Gi9E0ECPNmjVsXIH/exec"
     }
 
     var appsScriptUrl: String
         get() {
             val url = prefs.getString(KEY_APPS_SCRIPT_URL, DEFAULT_APPS_SCRIPT_URL)
             val oldUrls = setOf(
-                "https://script.google.com/macros/s/AKfycbytrM7-rYQ_EjK9pzHJn4GvFL8j9ypajc6-BzzAqbCCbawXoXf9Gi9E0ECPNmjVsXIH/exec",
+                "https://script.google.com/macros/s/AKfycbw7Bgmn_vkExGXWlTyO_AOgW2cULo_E2FDeAtJD0xoYf8LJtA24TqqBqFAqIxbn8CH8/exec",
                 "https://script.google.com/macros/s/AKfycbwrCQKzNu047yMnQQEhkty1rvCsujrAHtyZGrczgB5-awZAh0R03XnMBIxqA1sHXwgL/exec",
                 "https://script.google.com/macros/s/AKfycbwimHayI2ub4x6xabamVvCribr97G3CUIJgEAlFF0MVqOVSHrsni6Zvs6A5MUY2UQMh/exec",
                 "https://script.google.com/macros/s/AKfycbziazZC-ynPJ5jDNGPGzdkEKd2Cjh3fmmsaskuLf6ZexclD8bGUJnfDcTge5F0n9GSc/exec",
@@ -52,7 +52,7 @@ class PreferenceManager(context: Context) {
         get() {
             val url = prefs.getString(KEY_WEEKLY_MEETING_URL, DEFAULT_WEEKLY_MEETING_URL) ?: DEFAULT_WEEKLY_MEETING_URL
             val oldWeeklyUrls = setOf(
-                "https://script.google.com/macros/s/AKfycbytrM7-rYQ_EjK9pzHJn4GvFL8j9ypajc6-BzzAqbCCbawXoXf9Gi9E0ECPNmjVsXIH/exec",
+                "https://script.google.com/macros/s/AKfycbw7Bgmn_vkExGXWlTyO_AOgW2cULo_E2FDeAtJD0xoYf8LJtA24TqqBqFAqIxbn8CH8/exec",
                 "https://script.google.com/macros/s/AKfycbnjoXMwvPMSLKdrcE7Pcvzj0O_8WRZZFNmetZ_a1KmVi9ahwAaINQ9aVZFVLMToX9g/exec",
                 "https://script.google.com/macros/s/AKfycbyRNk1K74ju5jFMqlR-eVebsGWgsQ73Mv666pgDF4F80DVRBk4I9BHRGYfao-QvwVZ6Rw/exec",
                 "https://script.google.com/macros/s/AKfycbywA2HD3yfOn8NtmLFQNN_KHIhxDbvpIIzIopG8X-0zmn1OGGYbEuV1RqEltd9z2h1g/exec",
