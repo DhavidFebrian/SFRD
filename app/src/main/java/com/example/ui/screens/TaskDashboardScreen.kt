@@ -86,13 +86,10 @@ fun TaskDashboardScreen(
     val defaultUploadIgMonth = remember {
         val cal = Calendar.getInstance()
         val yr = cal.get(Calendar.YEAR)
-        val mth = cal.get(Calendar.MONTH) // 0-indexed, August is 7
-        val day = cal.get(Calendar.DAY_OF_MONTH)
-        if (yr > 2026 || (yr == 2026 && mth > 7) || (yr == 2026 && mth == 7 && day >= 4)) {
-            "Agustus 2026"
-        } else {
-            "Juli 2026"
-        }
+        val mth = cal.get(Calendar.MONTH) // 0-indexed
+        val monthNames = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
+        val mName = monthNames.getOrElse(mth) { "September" }
+        "$mName $yr"
     }
     var selectedUploadIgMonth by remember { mutableStateOf(defaultUploadIgMonth) }
     val igSyncStatus by viewModel.weeklyMeetingIgSyncStatus.collectAsState()

@@ -1140,10 +1140,7 @@ fun AddMeetingListingDialog(
     var catatanManual by remember { mutableStateOf("") }
     
     var isLoading by remember { mutableStateOf(false) }
-
-    var isVoiceListening by remember { mutableStateOf(false) }
-    var voiceStatusText by remember { mutableStateOf<String?>(null) }
-    var jarvisVoiceManager by remember { mutableStateOf<JarvisVoiceManager?>(null) }
+    var showScanIdDialog by remember { mutableStateOf(false) }
 
     val listingImagesMap by viewModel.listingImagesMap.collectAsState()
     val listingImagesGalleryMap by viewModel.listingImagesGalleryMap.collectAsState()
@@ -1159,45 +1156,6 @@ fun AddMeetingListingDialog(
         val formattedOptions = if (selectedEditOptions.isNotEmpty()) "edit ${selectedEditOptions.joinToString(" ")}" else ""
         val formattedJudul = if (inputJudul.isNotBlank()) "judul $inputJudul" else ""
         listOf(formattedOptions, formattedJudul, catatanManual).filter { it.isNotBlank() }.joinToString(", ")
-    }
-
-    DisposableEffect(Unit) {
-        val manager = JarvisVoiceManager(
-            context = context,
-            onOptionRecognized = { option ->
-                selectedKeterangan = option
-                val currentCleanId = idListing.trim()
-                val isDup = currentCleanId.isNotBlank() && existingMeetingListings.any { it.idListing.trim().equals(currentCleanId, ignoreCase = true) }
-                if (currentCleanId.isNotBlank() && !isDup && !isLoading) {
-                    isLoading = true
-                    viewModel.addWeeklyMeetingListing(
-                        month = month,
-                        dateStr = dateStr,
-                        idListing = currentCleanId,
-                        namaMe = namaMe,
-                        keterangan = option,
-                        catatan = computedCatatan,
-                        onResult = { success, message ->
-                            isLoading = false
-                            (context as? android.app.Activity)?.runOnUiThread {
-                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                                if (success) {
-                                    onDismiss()
-                                }
-                            }
-                        }
-                    )
-                }
-            },
-            onStateChanged = { listening, text ->
-                isVoiceListening = listening
-                voiceStatusText = text
-            }
-        )
-        jarvisVoiceManager = manager
-        onDispose {
-            manager.destroy()
-        }
     }
 
     val addTemplates = listOf("ratio", "perspective", "remove object")
@@ -1231,6 +1189,16 @@ fun AddMeetingListingDialog(
     }
 
     val addOptions = listOf("HOT PROPERTY", "IG", "FOTO ULANG")
+
+    if (showScanIdDialog) {
+        ScanIdCameraDialog(
+            onIdSelected = { scannedId ->
+                idListing = scannedId
+                showScanIdDialog = false
+            },
+            onDismiss = { showScanIdDialog = false }
+        )
+    }
 
     Dialog(
         onDismissRequest = { if (!isLoading) onDismiss() },
@@ -1289,33 +1257,27 @@ fun AddMeetingListingDialog(
                             }
 
                             OutlinedButton(
-                                onClick = {
-                                    if (isVoiceListening) {
-                                        jarvisVoiceManager?.stopListening()
-                                    } else {
-                                        jarvisVoiceManager?.startJarvisCommandFlow()
-                                    }
-                                },
+                                onClick = { showScanIdDialog = true },
                                 modifier = Modifier.weight(1.1f),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = if (isVoiceListening) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                                    contentColor = if (isVoiceListening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                                    contentColor = MaterialTheme.colorScheme.primary
                                 ),
-                                border = BorderStroke(1.dp, if (isVoiceListening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Icon(
-                                        imageVector = if (isVoiceListening) Icons.Default.Mic else Icons.Default.MicNone,
-                                        contentDescription = "Voice",
-                                        tint = if (isVoiceListening) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(16.dp)
+                                        imageVector = Icons.Default.QrCodeScanner,
+                                        contentDescription = "Scan Id",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                     Text(
-                                        text = if (isVoiceListening) (voiceStatusText ?: "Voice") else "Voice",
+                                        text = "Scan Id",
                                         style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                                         maxLines = 1
                                     )
@@ -1393,6 +1355,19 @@ fun AddMeetingListingDialog(
                             label = { Text("ID Listing") },
                             placeholder = { Text("Contoh: 12193") },
                             leadingIcon = { Icon(Icons.Default.Tag, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = { showScanIdDialog = true },
+                                    enabled = !isLoading
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.QrCodeScanner,
+                                        contentDescription = "Scan ID Kamera",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            },
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.weight(1f),

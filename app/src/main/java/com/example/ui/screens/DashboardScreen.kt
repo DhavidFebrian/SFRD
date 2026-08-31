@@ -15,6 +15,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -300,7 +301,7 @@ fun DashboardScreen(
                             )
 
                             // Quick month selection options
-                            val months = listOf("Juni 2026", "Juli 2026", "Agustus 2026")
+                            val months = listOf("Juni 2026", "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026")
                             months.forEach { m ->
                                 val isSelected = activeMonth == m
                                 DropdownMenuItem(
@@ -555,9 +556,10 @@ fun DashboardScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = 8.dp)
+                        .horizontalScroll(rememberScrollState()),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
                         text = "Data Bulan:",
@@ -567,7 +569,7 @@ fun DashboardScreen(
                         modifier = Modifier.padding(end = 4.dp)
                     )
                     
-                    listOf("Juni 2026", "Juli 2026", "Agustus 2026").forEach { month ->
+                    listOf("Juni 2026", "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026").forEach { month ->
                         val isSelected = activeMonth == month
                         val containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                         val contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
@@ -580,11 +582,12 @@ fun DashboardScreen(
                             contentColor = contentColor,
                             border = borderStroke,
                             modifier = Modifier
-                                .weight(1f)
                                 .height(42.dp)
                         ) {
                             Box(
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .padding(horizontal = 14.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Row(

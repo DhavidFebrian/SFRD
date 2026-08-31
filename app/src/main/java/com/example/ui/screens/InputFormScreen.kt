@@ -430,7 +430,7 @@ fun InputFormScreen(
                 var dropdownExpanded by remember { mutableStateOf(false) }
                 val currentStaffLower = staff.lowercase()
                 val isDavidSelected = currentStaffLower.contains("david")
-                val isRaffaSelected = currentStaffLower.contains("raffa")
+                val isAlanSelected = currentStaffLower.contains("alan")
 
                 Box(modifier = Modifier.fillMaxWidth()) {
                     OutlinedTextField(
@@ -438,7 +438,7 @@ fun InputFormScreen(
                         onValueChange = {},
                         readOnly = true,
                         label = { Text("Photographer / Videographer *") },
-                        placeholder = { Text("Pilih (David / Raffa)") },
+                        placeholder = { Text("Pilih (David / Alan)") },
                         leadingIcon = { Icon(Icons.Default.CameraAlt, contentDescription = null) },
                         trailingIcon = {
                             Icon(
@@ -484,7 +484,7 @@ fun InputFormScreen(
                                 val isChecked = !isDavidSelected
                                 val newList = mutableListOf<String>()
                                 if (isChecked) newList.add("David")
-                                if (isRaffaSelected) newList.add("Raffa")
+                                if (isAlanSelected) newList.add("Alan")
                                 viewModel.formStaff.value = newList.joinToString(", ")
                             }
                         )
@@ -496,18 +496,18 @@ fun InputFormScreen(
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Checkbox(
-                                        checked = isRaffaSelected,
+                                        checked = isAlanSelected,
                                         onCheckedChange = null
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Raffa")
+                                    Text("Alan")
                                 }
                             },
                             onClick = {
-                                val isChecked = !isRaffaSelected
+                                val isChecked = !isAlanSelected
                                 val newList = mutableListOf<String>()
                                 if (isDavidSelected) newList.add("David")
-                                if (isChecked) newList.add("Raffa")
+                                if (isChecked) newList.add("Alan")
                                 viewModel.formStaff.value = newList.joinToString(", ")
                             }
                         )

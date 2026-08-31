@@ -890,7 +890,7 @@ private fun buildJadwalFotoReportText(
     }
     
     return buildString {
-        append("Update Foto Raffa - David Bulan ").append(cleanMonthFilter).append("\n\n")
+        append("Update Foto Alan - David Bulan ").append(cleanMonthFilter).append("\n\n")
         
         val listingsByDate = listings.groupBy { it.date }.toSortedMap()
         

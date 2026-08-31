@@ -75,7 +75,7 @@ class ScheduleRepository(
 
     // Sync from Google Sheets API with robust filtering and backward compatibility across all months
     suspend fun syncFromGoogleSheets(): Result<Unit> = syncMutex.withLock {
-        val monthsToSync = listOf("Juni 2026", "Juli 2026", "Agustus 2026")
+        val monthsToSync = listOf("Juni 2026", "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026")
         val schedulesList = mutableListOf<Schedule>()
         val editFotoTaskList = mutableListOf<EditFotoTask>()
         

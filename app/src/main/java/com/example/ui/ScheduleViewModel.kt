@@ -914,7 +914,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 val combinedListings = mutableListOf<com.example.network.MeetingListing>()
                 
                 if (isSemua) {
-                    val monthsToFetch = listOf("Juni 2026", "Juli 2026", "Agustus 2026")
+                    val monthsToFetch = listOf("Juni 2026", "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026")
                     val deferreds = monthsToFetch.map { m ->
                         async(kotlinx.coroutines.Dispatchers.IO) {
                             try {
@@ -1032,11 +1032,18 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         
         for (day in 1..maxDays) {
             cal.set(java.util.Calendar.DAY_OF_MONTH, day)
+            if (currentYear == 2026 && monthIndex == 7 && day == 25) {
+                // Meeting minggu ke-4 Agustus 2026 digeser ke Rabu, 26 Agustus 2026
+                continue
+            }
             if (cal.get(java.util.Calendar.DAY_OF_WEEK) == java.util.Calendar.TUESDAY) {
                 val dayName = dayFormat.format(cal.time)
                 list.add(day.toString() to "$dayName, $day $mName")
             } else if (currentYear == 2026 && monthIndex == 5 && day == 15) {
                 val dayName = "Senin"
+                list.add(day.toString() to "$dayName, $day $mName")
+            } else if (currentYear == 2026 && monthIndex == 7 && day == 26) {
+                val dayName = "Rabu"
                 list.add(day.toString() to "$dayName, $day $mName")
             }
         }
@@ -3541,7 +3548,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         val override = prefs.getString("sender_role_override", null)
         if (override != null) return override
         
-        return "Raffa"
+        return "Alan"
     }
 
     fun setSenderRoleOverride(role: String?) {

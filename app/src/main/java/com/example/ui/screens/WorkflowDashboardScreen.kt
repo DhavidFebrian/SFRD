@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -258,12 +260,12 @@ fun WorkflowDashboardScreen(
             // Count listings from allMonthlyMeetingListings or current meetingListings
             val matchingListings = allMonthlyMeetingListings.filter {
                 val nDate = normalizeDate(it.date)
-                nDate == dateStr || it.date.contains(day)
+                nDate == dateStr
             }
             val count = if (matchingListings.isNotEmpty()) {
                 matchingListings.size
             } else if (selectedMeetingDate == dateStr && meetingListings.isNotEmpty()) {
-                meetingListings.size
+                meetingListings.count { normalizeDate(it.date) == dateStr }
             } else {
                 0
             }
@@ -444,11 +446,13 @@ fun WorkflowDashboardScreen(
             // Month Picker Selector for Dashboard
             item(key = "month_picker") {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("Juni 2026", "Juli 2026", "Agustus 2026").forEach { month ->
+                    listOf("Juni 2026", "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026").forEach { month ->
                         val isSelected = selectedMonth == month
                         Surface(
                             onClick = { viewModel.selectMonth(month) },
@@ -460,11 +464,12 @@ fun WorkflowDashboardScreen(
                                 if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                             ),
                             modifier = Modifier
-                                .weight(1f)
                                 .height(32.dp)
                         ) {
                             Box(
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .padding(horizontal = 12.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(

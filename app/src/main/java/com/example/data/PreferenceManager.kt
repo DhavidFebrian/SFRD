@@ -78,7 +78,7 @@ class PreferenceManager(context: Context) {
                 val capitalized = mName.replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.getDefault()) else it.toString() }
                 "$capitalized 2026"
             } catch (e: Exception) {
-                "Juli 2026"
+                "September 2026"
             }
         }
 

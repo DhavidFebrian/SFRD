@@ -192,7 +192,7 @@ class MainActivity : ComponentActivity() {
                         ModalDrawerSheet {
                             Spacer(Modifier.height(12.dp))
                             Text(
-                                "RW Cipete Scheduling",
+                                "RWC Media Production",
                                 style = MaterialTheme.typography.titleLarge,
                                 modifier = Modifier.padding(horizontal = 28.dp, vertical = 20.dp)
                             )
@@ -358,7 +358,7 @@ class MainActivity : ComponentActivity() {
                                             .padding(start = 16.dp, top = 4.dp, bottom = 4.dp)
                                             .fillMaxWidth()
                                     ) {
-                                        val months = listOf("Juni 2026", "Juli 2026", "Agustus 2026")
+                                        val months = listOf("Juni 2026", "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026")
                                         months.forEach { month ->
                                             val isSelected = activeMonth == month
                                             Surface(
@@ -573,7 +573,7 @@ class MainActivity : ComponentActivity() {
                                             verticalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             Text(
-                                                text = "Versi baru SFRD V${u.version} telah tersedia di GitHub.",
+                                                text = "Versi baru RWC - Media Production V${u.version} telah tersedia di GitHub.",
                                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )

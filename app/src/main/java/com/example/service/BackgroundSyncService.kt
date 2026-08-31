@@ -85,7 +85,7 @@ class BackgroundSyncService : Service() {
                         
                         // 1. Sync schedules for all months
                         try {
-                            val months = listOf("Juni 2026", "Juli 2026", "Agustus 2026")
+                            val months = listOf("Juni 2026", "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026")
                             val parsedSchedules = mutableListOf<com.example.data.Schedule>()
                             val parsedEditFotoTasks = mutableListOf<com.example.data.EditFotoTask>()
                             val moshiObj = Moshi.Builder()
@@ -187,7 +187,7 @@ class BackgroundSyncService : Service() {
 
                             if (!isFallback && chatList.isNotEmpty()) {
                                 val senderPrefs = getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
-                                val currentSender = senderPrefs.getString("sender_role_override", null) ?: "Raffa"
+                                val currentSender = senderPrefs.getString("sender_role_override", null) ?: "Alan"
                                 
                                 val existingMessages = db.chatMessageDao().getAllMessages().first()
                                 val existingKeys = existingMessages.map { "${it.senderName.trim()}_${it.message.trim()}_${it.timestamp}" }.toSet()

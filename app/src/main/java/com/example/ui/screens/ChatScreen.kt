@@ -961,7 +961,7 @@ fun ChatScreen(
                             showPinDialog = false
                             pinText = ""
                             pinError = false
-                            android.widget.Toast.makeText(context, "Kembali ke mode default (Raffa)", android.widget.Toast.LENGTH_SHORT).show()
+                            android.widget.Toast.makeText(context, "Kembali ke mode default (Alan)", android.widget.Toast.LENGTH_SHORT).show()
                         }
                     ) {
                         Text("Reset")
