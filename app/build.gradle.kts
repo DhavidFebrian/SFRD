@@ -14,8 +14,8 @@ android {
     applicationId = "com.aistudio.jadwalfoto.qywrkx"
     minSdk = 24
     targetSdk = 36
-    versionCode = 889
-    versionName = "8.8.9"
+    versionCode = 890
+    versionName = "8.9.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -62,8 +62,8 @@ android {
     compose = true
     buildConfig = true
   }
-  aaptOptions {
-    noCompress("tflite")
+  androidResources {
+    noCompress += "tflite"
   }
   testOptions { unitTests { isIncludeAndroidResources = true } }
 }
