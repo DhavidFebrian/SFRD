@@ -212,6 +212,7 @@ data class UpdateMeetingScheduleRequest(
 @JsonClass(generateAdapter = true)
 data class MeetingListing(
     @Json(name = "no") val no: Int = 0,
+    @Json(name = "row") val row: Int = 0,
     @Json(name = "date") val date: String = "",
     @Json(name = "colIndex") val colIndex: Int = 0,
     @Json(name = "idListing") val idListing: String = "",

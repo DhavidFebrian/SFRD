@@ -275,6 +275,9 @@ function doPost(e) {
     if (action === "update_weekly_meeting_details") {
       return updateWeeklyMeetingDetails(params);
     }
+    if (action === "delete_weekly_meeting_listing") {
+      return deleteWeeklyMeetingListing(params);
+    }
     if (action === "update_weekly_meeting_schedule") {
       return updateWeeklyMeetingSchedule(params);
     }
@@ -720,7 +723,10 @@ function getWeeklyMeetingListings(e) {
     var idListing = row[0] ? row[0].toString().trim() : "";
     if (idListing !== "") {
       listings.push({
-        "no": r + 1,
+        "no": (startRow + r),
+        "row": (startRow + r),
+        "date": dateStr,
+        "colIndex": colIndex,
         "idListing": idListing,
         "keterangan": row[1] ? row[1].toString().trim() : "",
         "postingIg": row[2] ? row[2].toString().trim() : "",
@@ -840,16 +846,27 @@ function addWeeklyMeetingListing(data) {
           }
         }
 
-        // 3. Format Source: contoh 9Juni_R24
+        // 3. Format Source: contoh 30Juni_R68
         var dayNum = "";
         var monthNameIndo = "";
         if (dateStr) {
-          var dateParts = dateStr.split("-");
-          if (dateParts.length === 3) {
-            dayNum = parseInt(dateParts[2], 10);
-            var mNum = parseInt(dateParts[1], 10);
-            var mNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-            monthNameIndo = (mNum >= 1 && mNum <= 12) ? mNames[mNum - 1] : "";
+          var dayMatch = dateStr.match(/\b(\d{1,2})\b/);
+          if (dayMatch) {
+            dayNum = parseInt(dayMatch[1], 10);
+          }
+          var mNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+          for (var mi = 0; mi < mNames.length; mi++) {
+            if (dateStr.toLowerCase().indexOf(mNames[mi].toLowerCase()) !== -1) {
+              monthNameIndo = mNames[mi];
+              break;
+            }
+          }
+          if (!monthNameIndo) {
+            var parts = dateStr.split(/[-\/]/);
+            if (parts.length >= 2) {
+              var mVal = parseInt(parts[0].length === 4 ? parts[1] : parts[1], 10);
+              if (mVal >= 1 && mVal <= 12) monthNameIndo = mNames[mVal - 1];
+            }
           }
         }
         if (!monthNameIndo && sheetName) {
@@ -861,18 +878,11 @@ function addWeeklyMeetingListing(data) {
             }
           }
         }
-        var sourceFormatted = (dayNum && monthNameIndo) ? (dayNum + monthNameIndo + "_R" + targetRow) : ("R" + targetRow);
+        if (!dayNum) dayNum = "30";
+        if (!monthNameIndo) monthNameIndo = "Juni";
+        var sourceFormatted = dayNum + monthNameIndo + "_R" + targetRow;
 
         // 4. Batch write ke kolom B s/d J (kolom 2 s/d 10):
-        // Col 2: ID Listing
-        // Col 3: Nama ME
-        // Col 4: Staff ("")
-        // Col 5: Fix Date ("" -> KOSONG sesuai permintaan user!)
-        // Col 6: Lokasi
-        // Col 7: Jam ("")
-        // Col 8: Type ("Foto Ulang")
-        // Col 9: Status ("Pending")
-        // Col 10: Source (sourceFormatted, misal "9Juni_R24")
         fotoUlangSheet.getRange(fuTargetRow, 2, 1, 9).setValues([[
           idListing,
           namaMe,
@@ -890,7 +900,8 @@ function addWeeklyMeetingListing(data) {
 
   return ContentService.createTextOutput(JSON.stringify({
     "status": "success",
-    "message": "Berhasil menambahkan listing " + idListing + " ke tanggal " + dateStr
+    "message": "Berhasil menambahkan listing " + idListing + " ke tanggal " + dateStr,
+    "row": targetRow
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -1238,7 +1249,7 @@ function updateWeeklyMeetingDetails(data) {
   var dateStr = data.date;
   var row = parseInt(data.row);
   var col = parseInt(data.colIndex);
-  var idListing = data.idListing.toString().trim();
+  var idListing = data.idListing ? data.idListing.toString().trim() : "";
   var keterangan = data.keterangan ? data.keterangan.toString().trim() : "";
   var namaMe = data.namaMe ? data.namaMe.toString().trim() : "";
   var catatan = data.catatan ? data.catatan.toString().trim() : "";
@@ -1253,6 +1264,31 @@ function updateWeeklyMeetingDetails(data) {
       "message": "Sheet not found"
     })).setMimeType(ContentService.MimeType.JSON);
   }
+
+  // Resolusi dinamis jika row atau colIndex tidak valid
+  var colInfo = dateStr ? getMeetingColumnAndMaxRow(dateStr, sheet) : null;
+  if ((isNaN(col) || col < 2) && colInfo) {
+    col = colInfo.col;
+  }
+  if ((isNaN(row) || row < 5) && col >= 2 && idListing !== "") {
+    var maxR = colInfo ? colInfo.maxRow : 120;
+    var colValues = sheet.getRange(5, col, maxR - 4, 1).getValues();
+    var cleanTarget = idListing.toLowerCase().replace(/[^a-z0-9]/g, "");
+    for (var r = 0; r < colValues.length; r++) {
+      var cellVal = colValues[r][0] ? colValues[r][0].toString().trim().toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+      if (cellVal !== "" && cellVal === cleanTarget) {
+        row = 5 + r;
+        break;
+      }
+    }
+  }
+
+  if (isNaN(row) || isNaN(col) || row < 5 || col < 2) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Gagal menemukan posisi listing di sheet (row=" + row + ", col=" + col + ")"
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
   
   sheet.getRange(row, col).setValue(idListing);      // Kolom 1: ID Listing
   sheet.getRange(row, col + 1).setValue(keterangan); // Kolom 2: Keterangan
@@ -1264,6 +1300,66 @@ function updateWeeklyMeetingDetails(data) {
   return ContentService.createTextOutput(JSON.stringify({
     "status": "success",
     "message": "Berhasil memperbarui data listing " + idListing
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function deleteWeeklyMeetingListing(data) {
+  var sheetName = data.sheetName;
+  var dateStr = data.date;
+  var row = parseInt(data.row);
+  var col = parseInt(data.colIndex);
+  var idListing = data.idListing ? data.idListing.toString().trim() : "";
+  
+  var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+  var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+  var sheet = findSheetByFlexibleName(ss, sheetName);
+  
+  if (!sheet) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Sheet not found"
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // Resolusi dinamis jika row atau colIndex tidak valid
+  var colInfo = dateStr ? getMeetingColumnAndMaxRow(dateStr, sheet) : null;
+  if ((isNaN(col) || col < 2) && colInfo) {
+    col = colInfo.col;
+  }
+  if ((isNaN(row) || row < 5) && col >= 2 && idListing !== "") {
+    var maxR = colInfo ? colInfo.maxRow : 120;
+    var colValues = sheet.getRange(5, col, maxR - 4, 1).getValues();
+    var cleanTarget = idListing.toLowerCase().replace(/[^a-z0-9]/g, "");
+    for (var r = 0; r < colValues.length; r++) {
+      var cellVal = colValues[r][0] ? colValues[r][0].toString().trim().toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+      if (cellVal !== "" && cellVal === cleanTarget) {
+        row = 5 + r;
+        break;
+      }
+    }
+  }
+
+  if (isNaN(row) || isNaN(col) || row < 5 || col < 2) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Gagal menemukan baris listing yang ingin dihapus (row=" + row + ", col=" + col + ")"
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // Kosongkan 6 kolom listing di Weekly Meeting
+  sheet.getRange(row, col, 1, 6).setValues([["", "", false, "", "", ""]]);
+  try {
+    var checkCell = sheet.getRange(row, col + 2);
+    checkCell.setValue(false);
+    sheet.getRange(row, col).setBackground(null);
+    sheet.getRange(row, col + 3).setBackground(null);
+  } catch(eReset) {}
+
+  SpreadsheetApp.flush();
+
+  return ContentService.createTextOutput(JSON.stringify({
+    "status": "success",
+    "message": "Berhasil menghapus data listing " + idListing
   })).setMimeType(ContentService.MimeType.JSON);
 }
 

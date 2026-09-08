@@ -971,7 +971,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     private val igListingsCache = java.util.concurrent.ConcurrentHashMap<String, List<com.example.network.MeetingListing>>()
 
     fun fetchWeeklyMeetingIgListings(photoMonth: String, forceRefresh: Boolean = false) {
-        val baseUrl = appsScriptUrl.value
+        val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
         if (baseUrl.isBlank()) {
             _weeklyMeetingIgSyncStatus.value = SyncState.Error("URL Google Apps Script belum diatur di menu Setting.")
             return
@@ -1063,7 +1063,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         postingIg: Boolean,
         onResult: (Boolean, String) -> Unit
     ) {
-        val baseUrl = appsScriptUrl.value
+        val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
         if (baseUrl.isBlank()) {
             onResult(false, "URL Google Apps Script belum diatur.")
             return
@@ -1197,15 +1197,18 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun fetchMeetingListings(month: String, dateStr: String) {
-        val baseUrl = appsScriptUrl.value
+        val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
         if (baseUrl.isBlank()) {
             _meetingSyncStatus.value = SyncState.Error("URL Google Apps Script belum diatur di menu Setting.")
             return
         }
         
         selectedMeetingMonth.value = month
+        val dateChanged = selectedMeetingDate.value != dateStr
         selectedMeetingDate.value = dateStr
-        meetingListings.value = emptyList() // Clear current listings while loading
+        if (dateChanged || meetingListings.value.isEmpty()) {
+            meetingListings.value = emptyList() // Only clear when switching to a different date
+        }
         
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             _meetingSyncStatus.value = SyncState.Loading
@@ -1233,7 +1236,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun fetchMeetingListingsSilently(month: String, dateStr: String) {
-        val baseUrl = appsScriptUrl.value
+        val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
         if (baseUrl.isBlank()) return
         
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -1251,9 +1254,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                         fetchListingImageIfNeeded(listing.idListing, listing.namaMe)
                     }
                 }
-            } catch (e: Exception) {
-                // Ignore silent refresh exceptions
-            }
+            } catch (_: Exception) {}
         }
     }
 
@@ -1279,6 +1280,28 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         return ""
     }
 
+    fun computeMeetingSourcePrefix(dateStr: String, monthName: String): String {
+        val dayMatch = Regex("""\b(\d{1,2})\b""").find(dateStr)
+        val dayNum = dayMatch?.groupValues?.get(1)?.toIntOrNull() ?: 1
+        val mNames = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
+        var mName = ""
+        for (m in mNames) {
+            if (dateStr.contains(m, ignoreCase = true) || monthName.contains(m, ignoreCase = true)) {
+                mName = m
+                break
+            }
+        }
+        if (mName.isBlank()) {
+            val parts = dateStr.split("-", "/")
+            if (parts.size >= 2) {
+                val mVal = if (parts[0].length == 4) parts[1].toIntOrNull() else parts.getOrNull(1)?.toIntOrNull()
+                if (mVal != null && mVal in 1..12) mName = mNames[mVal - 1]
+            }
+        }
+        if (mName.isBlank()) mName = "Juni"
+        return "${dayNum}${mName}"
+    }
+
     fun addWeeklyMeetingListing(
         month: String,
         dateStr: String,
@@ -1302,19 +1325,15 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
 
         // 1. Hitung perkiraan baris untuk tampilan langsung
         val nextNo = (meetingListings.value.maxOfOrNull { it.no } ?: 0) + 1
-        val nextApproxRow = nextNo + 4
+        val nextApproxRow = if (nextNo >= 5) nextNo + 1 else (nextNo + 4)
 
-        // 2. Format Source awal (contoh "9Juni_R24")
-        val parts = dateStr.split("-")
-        val dayNum = parts.getOrNull(2)?.toIntOrNull()?.toString() ?: ""
-        val mNum = parts.getOrNull(1)?.toIntOrNull() ?: 0
-        val mNames = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
-        val monthNameIndo = if (mNum in 1..12) mNames[mNum - 1] else ""
-        val initialSource = if (dayNum.isNotBlank() && monthNameIndo.isNotBlank()) "${dayNum}${monthNameIndo}_R${nextApproxRow}" else "R${nextApproxRow}"
+        // 2. Format Source prefix (contoh "30Juni")
+        val sourcePrefix = computeMeetingSourcePrefix(dateStr, month)
+        val initialSource = "${sourcePrefix}_R${nextApproxRow}"
 
         // 3. Optimistic local update agar tabel meeting di UI langsung terisi tanpa delay
         val optimisticListing = com.example.network.MeetingListing(
-            no = nextNo,
+            no = nextApproxRow,
             date = dateStr,
             colIndex = 0,
             idListing = cleanId,
@@ -1328,6 +1347,11 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         if (!currentList.any { it.idListing.trim().equals(cleanId, ignoreCase = true) }) {
             currentList.add(optimisticListing)
             meetingListings.value = currentList
+        }
+        allMonthlyMeetingListings.update { list ->
+            if (list.none { it.idListing.trim().equals(cleanId, ignoreCase = true) && it.date == dateStr }) {
+                list + optimisticListing
+            } else list
         }
 
         // 4. Tutup dialog dan beri respon SUKSES INSTAN ke UI (0 milidetik!)
@@ -1360,7 +1384,22 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                     else -> ""
                 }
 
-                // 5. Update lokal untuk Foto Ulang jika berlaku
+                val request = com.example.network.AddMeetingListingRequest(
+                    sheetName = month,
+                    date = dateStr,
+                    idListing = cleanId,
+                    namaMe = namaMe,
+                    keterangan = keterangan,
+                    catatan = catatan,
+                    lokasi = resolvedLokasi
+                )
+                
+                // 5. Kirim ke spreadsheet Weekly Meeting
+                val response = apiService.addMeetingListing(baseUrl, request)
+                val actualRow = response.row ?: nextApproxRow
+                val finalSource = "${sourcePrefix}_R${actualRow}"
+
+                // 6. Jika Foto Ulang, kirim LANGSUNG ke spreadsheet RWC - Media Production (sheet "Foto Ulang")
                 if (isFotoUlang) {
                     try {
                         val localSchedule = Schedule(
@@ -1376,29 +1415,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                             synced = true
                         )
                         repository.insertScheduleLocally(localSchedule)
-                    } catch (e: Exception) {
-                        // Non-blocking
-                    }
-                }
 
-                val request = com.example.network.AddMeetingListingRequest(
-                    sheetName = month,
-                    date = dateStr,
-                    idListing = cleanId,
-                    namaMe = namaMe,
-                    keterangan = keterangan,
-                    catatan = catatan,
-                    lokasi = resolvedLokasi
-                )
-                
-                // 6. Kirim ke spreadsheet Weekly Meeting
-                val response = apiService.addMeetingListing(baseUrl, request)
-                val actualRow = response.row ?: nextApproxRow
-                val finalSource = if (dayNum.isNotBlank() && monthNameIndo.isNotBlank()) "${dayNum}${monthNameIndo}_R${actualRow}" else "R${actualRow}"
-
-                // 7. Jika Foto Ulang, kirim LANGSUNG ke spreadsheet RWC - Media Production (sheet "Foto Ulang")
-                if (isFotoUlang) {
-                    try {
                         val mediaProdUrl = appsScriptUrl.value.ifBlank { baseUrl }
                         if (mediaProdUrl.isNotBlank()) {
                             val separator = if (mediaProdUrl.contains("?")) "&" else "?"
@@ -1414,7 +1431,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                                 type = "Foto Ulang",
                                 status = "Pending",
                                 sheetName = "Foto Ulang",
-                                source = finalSource
+                                source = finalSource // Contoh "30Juni_R68"
                             )
                             apiService.addSchedule(targetFotoUlangUrl, fotoUlangPayload)
                         }
@@ -1423,18 +1440,16 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                     }
                 }
 
-                // 8. Refresh data meeting & schedule dari spreadsheet
-                fetchMeetingListings(month, dateStr)
+                // 7. Refresh data meeting secara senyap (tanpa kedip/blanking)
+                fetchMeetingListingsSilently(month, dateStr)
                 if (isFotoUlang) {
                     try {
                         repository.syncFromGoogleSheets()
-                    } catch (e: Exception) {
-                        // Non-blocking
-                    }
+                    } catch (_: Exception) {}
                 }
             } catch (e: Exception) {
-                // Refresh data untuk memastikan konsistensi jika terjadi masalah jaringan
-                fetchMeetingListings(month, dateStr)
+                // Refresh data senyap untuk memastikan konsistensi jika terjadi masalah jaringan
+                fetchMeetingListingsSilently(month, dateStr)
             }
         }
     }
@@ -1634,7 +1649,6 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     fun clearPendingScrapedListings() {
         _pendingScrapedListings.value = emptyList()
     }
-
     fun updateWeeklyMeetingDetails(
         month: String,
         dateStr: String,
@@ -1646,11 +1660,41 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         catatan: String,
         onResult: (Boolean, String) -> Unit
     ) {
-        val baseUrl = appsScriptUrl.value
+        val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
         if (baseUrl.isBlank()) {
             onResult(false, "URL Google Apps Script belum diatur di menu Setting.")
             return
         }
+
+        // 1. Optimistic update: Langsung ubah item di UI (0 milidetik!)
+        val cleanId = idListing.trim()
+        meetingListings.update { list ->
+            list.map { item ->
+                if (item.idListing.trim().equals(cleanId, ignoreCase = true) || (colIndex > 0 && item.colIndex == colIndex && item.no == row)) {
+                    item.copy(
+                        idListing = cleanId,
+                        namaMe = namaMe.trim(),
+                        keterangan = keterangan.trim(),
+                        catatan = catatan.trim()
+                    )
+                } else item
+            }
+        }
+        allMonthlyMeetingListings.update { list ->
+            list.map { item ->
+                if (item.idListing.trim().equals(cleanId, ignoreCase = true) && item.date == dateStr) {
+                    item.copy(
+                        idListing = cleanId,
+                        namaMe = namaMe.trim(),
+                        keterangan = keterangan.trim(),
+                        catatan = catatan.trim()
+                    )
+                } else item
+            }
+        }
+
+        // Respon instan agar popup edit langsung tertutup
+        onResult(true, "Data listing $cleanId berhasil diperbarui!")
 
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
@@ -1659,27 +1703,18 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                     date = dateStr,
                     row = row,
                     colIndex = colIndex,
-                    idListing = idListing,
-                    namaMe = namaMe,
-                    keterangan = keterangan,
-                    catatan = catatan
+                    idListing = cleanId,
+                    namaMe = namaMe.trim(),
+                    keterangan = keterangan.trim(),
+                    catatan = catatan.trim()
                 )
                 
                 val response = apiService.updateMeetingDetails(baseUrl, request)
-                if (response.status.lowercase() == "success") {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        onResult(true, response.message)
-                    }
-                    fetchMeetingListings(month, dateStr)
-                } else {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        onResult(false, response.message)
-                    }
-                }
+                // Refresh data senyap tanpa mem-blank layar
+                fetchMeetingListingsSilently(month, dateStr)
             } catch (e: Exception) {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    onResult(false, "Gagal mengubah data: ${e.localizedMessage ?: "Masalah koneksi"}")
-                }
+                // Tetap refresh senyap jika ada error
+                fetchMeetingListingsSilently(month, dateStr)
             }
         }
     }
@@ -1692,11 +1727,24 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         idListing: String,
         onResult: (Boolean, String) -> Unit
     ) {
-        val baseUrl = appsScriptUrl.value
+        val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
         if (baseUrl.isBlank()) {
             onResult(false, "URL Google Apps Script belum diatur di menu Setting.")
             return
         }
+
+        // 1. Optimistic delete: Langsung hilangkan card dari UI (0 milidetik!)
+        val cleanId = idListing.trim()
+        val previousMeetingListings = meetingListings.value
+        meetingListings.update { list ->
+            list.filter { it.idListing.trim() != cleanId }
+        }
+        allMonthlyMeetingListings.update { list ->
+            list.filter { !(it.idListing.trim() == cleanId && it.date == dateStr) }
+        }
+
+        // Respon instan ke UI
+        onResult(true, "Data listing $cleanId berhasil dihapus!")
 
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
@@ -1705,11 +1753,12 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                     date = dateStr,
                     row = row,
                     colIndex = colIndex,
-                    idListing = idListing
+                    idListing = cleanId
                 )
                 
-                var response = apiService.deleteMeetingListing(baseUrl, deleteReq)
+                val response = apiService.deleteMeetingListing(baseUrl, deleteReq)
                 if (response.status.lowercase() != "success") {
+                    // Fallback kirim string kosong jika endpoint lama
                     val updateReq = com.example.network.UpdateMeetingDetailsRequest(
                         sheetName = month,
                         date = dateStr,
@@ -1720,19 +1769,9 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                         keterangan = "",
                         catatan = ""
                     )
-                    response = apiService.updateMeetingDetails(baseUrl, updateReq)
+                    apiService.updateMeetingDetails(baseUrl, updateReq)
                 }
-                
-                if (response.status.lowercase() == "success") {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        onResult(true, "Data listing berhasil dihapus!")
-                    }
-                    fetchMeetingListings(month, dateStr)
-                } else {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        onResult(false, response.message)
-                    }
-                }
+                fetchMeetingListingsSilently(month, dateStr)
             } catch (e: Exception) {
                 try {
                     val updateReq = com.example.network.UpdateMeetingDetailsRequest(
@@ -1745,20 +1784,9 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                         keterangan = "",
                         catatan = ""
                     )
-                    val response = apiService.updateMeetingDetails(baseUrl, updateReq)
-                    if (response.status.lowercase() == "success") {
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                            onResult(true, "Data listing berhasil dihapus!")
-                        }
-                        fetchMeetingListings(month, dateStr)
-                        return@launch
-                    }
-                } catch (ex: Exception) {
-                    // Ignore fallback error
-                }
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    onResult(false, "Gagal menghapus data: ${e.localizedMessage ?: "Masalah koneksi"}")
-                }
+                    apiService.updateMeetingDetails(baseUrl, updateReq)
+                } catch (_: Exception) {}
+                fetchMeetingListingsSilently(month, dateStr)
             }
         }
     }

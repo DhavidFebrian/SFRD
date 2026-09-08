@@ -2129,7 +2129,7 @@ fun EditMeetingListingDialog(
                                     viewModel.updateWeeklyMeetingDetails(
                                         month = month,
                                         dateStr = dateStr,
-                                        row = listing.no,
+                                        row = if (listing.row >= 5) listing.row else if (listing.no >= 5) listing.no else 0,
                                         colIndex = listing.colIndex,
                                         idListing = idListing,
                                         namaMe = namaMe,
@@ -2760,7 +2760,7 @@ fun EditMeetingListingDialog(
                             viewModel.deleteWeeklyMeetingListing(
                                 month = month,
                                 dateStr = dateStr,
-                                row = listing.no,
+                                row = if (listing.row >= 5) listing.row else if (listing.no >= 5) listing.no else 0,
                                 colIndex = listing.colIndex,
                                 idListing = listing.idListing,
                                 onResult = { success, message ->
