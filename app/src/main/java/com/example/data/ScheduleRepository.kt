@@ -65,6 +65,14 @@ class ScheduleRepository(
         return "$monthName $yearPart"
     }
 
+    private fun getAppsScriptUrlForSchedule(schedule: Schedule): String {
+        return if (schedule.sheetName.equals("Foto Ulang", ignoreCase = true)) {
+            getAppsScriptUrlForMonth("Foto Ulang")
+        } else {
+            getAppsScriptUrlForDate(schedule.tanggal)
+        }
+    }
+
     // Seeds beautiful mock data if database is totally empty, so they see a gorgeous dashboard on first launch
     suspend fun seedMockDataIfEmpty() {
         // Hapus data mock bawaan jika ada dari peluncuran aplikasi sebelumnya
@@ -75,7 +83,7 @@ class ScheduleRepository(
 
     // Sync from Google Sheets API with robust filtering and backward compatibility across all months
     suspend fun syncFromGoogleSheets(): Result<Unit> = syncMutex.withLock {
-        val monthsToSync = listOf("Juni 2026", "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026")
+        val monthsToSync = listOf("Juni 2026", "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026", "Foto Ulang")
         val schedulesList = mutableListOf<Schedule>()
         val editFotoTaskList = mutableListOf<EditFotoTask>()
         
@@ -210,6 +218,11 @@ class ScheduleRepository(
         return raw.trim()
     }
 
+    // Simpan schedule ke database lokal dengan status synced = true
+    suspend fun insertScheduleLocally(schedule: Schedule) {
+        scheduleDao.insertSchedule(schedule.copy(synced = true))
+    }
+
     // Insert schedule (saves locally, then attempts remote sync if configured)
     suspend fun addSchedule(schedule: Schedule): Result<Unit> = syncMutex.withLock {
         val finalSchedule = if (schedule.sheetName.isBlank()) {
@@ -221,7 +234,7 @@ class ScheduleRepository(
         val insertedId = scheduleDao.insertSchedule(finalSchedule)
         val insertedSchedule = finalSchedule.copy(id = insertedId.toInt())
 
-        val url = getAppsScriptUrlForDate(finalSchedule.tanggal)
+        val url = getAppsScriptUrlForSchedule(finalSchedule)
         if (url.isBlank()) {
             // No sync but saved locally, return warning-as-success
             return Result.success(Unit)
@@ -238,7 +251,7 @@ class ScheduleRepository(
                 staff = finalSchedule.staff,
                 type = finalSchedule.type,
                 status = finalSchedule.status,
-                sheetName = getSheetNameForDate(finalSchedule.tanggal)
+                sheetName = finalSchedule.sheetName
             )
             val result = apiService.addSchedule(url, sheetModel)
             if (result.status.lowercase() == "success" || result.status.lowercase() == "ok" || result.message.lowercase() == "success") {
@@ -265,7 +278,7 @@ class ScheduleRepository(
         // 1. Update locally
         scheduleDao.updateSchedule(finalSchedule)
 
-        val url = getAppsScriptUrlForDate(finalSchedule.tanggal)
+        val url = getAppsScriptUrlForSchedule(finalSchedule)
         if (url.isBlank()) {
             return Result.success(Unit)
         }
@@ -287,7 +300,7 @@ class ScheduleRepository(
                 originalNamaMe = originalSchedule.namaMe,
                 originalTanggal = originalSchedule.tanggal,
                 originalJam = originalSchedule.jam,
-                sheetName = getSheetNameForDate(finalSchedule.tanggal)
+                sheetName = finalSchedule.sheetName
             )
             val result = apiService.addSchedule(url, sheetModel)
             if (result.status.lowercase() == "success" || result.status.lowercase() == "ok" || result.message.lowercase() == "success") {
@@ -354,7 +367,14 @@ class ScheduleRepository(
 
         for (item in pending) {
             try {
-                val itemUrl = getAppsScriptUrlForDate(item.tanggal)
+                if (item.no == 0 && item.idListing.isNotBlank()) {
+                    val alreadySynced = all.find { it.synced && it.id != item.id && it.sheetName.equals(item.sheetName, ignoreCase = true) && it.idListing.trim().equals(item.idListing.trim(), ignoreCase = true) }
+                    if (alreadySynced != null) {
+                        scheduleDao.deleteSchedule(item)
+                        continue
+                    }
+                }
+                val itemUrl = getAppsScriptUrlForSchedule(item)
                 val sheetModel = SheetSchedule(
                     no = item.no,
                     idListing = item.idListing,
@@ -370,7 +390,7 @@ class ScheduleRepository(
                     originalNamaMe = item.namaMe,
                     originalTanggal = item.tanggal,
                     originalJam = item.jam,
-                    sheetName = getSheetNameForDate(item.tanggal)
+                    sheetName = if (item.sheetName.isNotBlank()) item.sheetName else getSheetNameForDate(item.tanggal)
                 )
                 val result = apiService.addSchedule(itemUrl, sheetModel)
                 val statusLow = result.status.lowercase()
@@ -430,7 +450,7 @@ class ScheduleRepository(
         // 1. Delete locally first
         scheduleDao.deleteSchedule(schedule)
 
-        val url = getAppsScriptUrlForDate(schedule.tanggal)
+        val url = getAppsScriptUrlForSchedule(schedule)
         if (url.isBlank()) {
             return Result.success(Unit)
         }
@@ -447,7 +467,7 @@ class ScheduleRepository(
                 type = schedule.type,
                 status = schedule.status,
                 action = "delete",
-                sheetName = getSheetNameForDate(schedule.tanggal)
+                sheetName = if (schedule.sheetName.isNotBlank()) schedule.sheetName else getSheetNameForDate(schedule.tanggal)
             )
             val result = apiService.addSchedule(url, sheetModel)
             val statusLow = result.status.lowercase()
@@ -467,7 +487,7 @@ class ScheduleRepository(
         // 1. Delete locally first
         scheduleDao.deleteSchedule(schedule)
 
-        val url = getAppsScriptUrlForDate(schedule.tanggal)
+        val url = getAppsScriptUrlForSchedule(schedule)
         if (url.isBlank()) {
             return Result.success(Unit)
         }
@@ -485,7 +505,7 @@ class ScheduleRepository(
                 type = schedule.type,
                 status = schedule.status,
                 action = "delete",
-                sheetName = getSheetNameForDate(schedule.tanggal)
+                sheetName = if (schedule.sheetName.isNotBlank()) schedule.sheetName else getSheetNameForDate(schedule.tanggal)
             )
             val result = apiService.addSchedule(url, sheetModel)
             val statusLow = result.status.lowercase()

@@ -80,7 +80,8 @@ val AGENT_CONTACT_LIST = listOf(
     AgentContact("briand", "08176676276", "briandrwc@gmail.com", "briandproperty", "https://s3-ap-southeast-1.amazonaws.com/hhproperty/MarketingAgent/e7be7e7020494be9b88a1cb4d48d3a9e.jpg"),
     AgentContact("rika", "081218280096", "rikaraywhite@yahoo.com", "rikaraywhite1", "https://s3-ap-southeast-1.amazonaws.com/hhproperty/MarketingAgent/635af76844b94cd2acd17594aa5e6395.jpg"),
     AgentContact("meisi", "0817855005", "meisiraywhite@gmail.com", "meisi.raywhite", "https://s3-ap-southeast-1.amazonaws.com/hhproperty/MarketingAgent/d40e1d5178fd46278e6415a2b7f6ecd9.jpg"),
-    AgentContact("yuma", "08118585137", "yumaray.raywhite@gmail.com", "yuma_ray_cht_ci", "https://s3-ap-southeast-1.amazonaws.com/hhproperty/MarketingAgent/a706d7d815874f94bffb8e21156b2d62.jpeg")
+    AgentContact("yuma", "08118585137", "yumaray.raywhite@gmail.com", "yuma_ray_cht_ci", "https://s3-ap-southeast-1.amazonaws.com/hhproperty/MarketingAgent/a706d7d815874f94bffb8e21156b2d62.jpeg"),
+    AgentContact("utomo", "08134209008", "", "", "")
 )
 
 @Volatile
@@ -95,13 +96,13 @@ fun findContact(meName: String): AgentContact? {
     if (localList.isNotEmpty()) {
         val dbMatch = localList.find { it.nameKey == cleanName }
         if (dbMatch != null) {
-            return AgentContact(dbMatch.nameKey, dbMatch.phone, dbMatch.email, dbMatch.instagram)
+            return AgentContact(dbMatch.nameKey, dbMatch.phone, dbMatch.email, dbMatch.instagram, dbMatch.avatarUrl)
         }
         
         val words = cleanName.split("\\s+".toRegex())
         val wordMatch = localList.find { words.contains(it.nameKey) }
         if (wordMatch != null) {
-            return AgentContact(wordMatch.nameKey, wordMatch.phone, wordMatch.email, wordMatch.instagram)
+            return AgentContact(wordMatch.nameKey, wordMatch.phone, wordMatch.email, wordMatch.instagram, wordMatch.avatarUrl)
         }
         
         val fallbackMatch = localList.find { contact ->
@@ -115,7 +116,7 @@ fun findContact(meName: String): AgentContact? {
             }
         }
         if (fallbackMatch != null) {
-            return AgentContact(fallbackMatch.nameKey, fallbackMatch.phone, fallbackMatch.email, fallbackMatch.instagram)
+            return AgentContact(fallbackMatch.nameKey, fallbackMatch.phone, fallbackMatch.email, fallbackMatch.instagram, fallbackMatch.avatarUrl)
         }
     }
     
@@ -738,21 +739,22 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     private val _absensiSyncStatus = MutableStateFlow<SyncState>(SyncState.Idle)
     val absensiSyncStatus: StateFlow<SyncState> = _absensiSyncStatus.asStateFlow()
     val selectedAbsenMonthIndex = MutableStateFlow<Int?>(null)
+    private val absensiUpdateJobs = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Job>()
 
     fun fetchAbsensiMeeting(monthIndex: Int) {
         selectedAbsenMonthIndex.value = monthIndex
-        val baseUrl = appsScriptUrl.value
+        val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
         if (baseUrl.isBlank()) {
             _absensiSyncStatus.value = SyncState.Error("URL Google Apps Script belum diatur di menu Setting.")
             return
         }
-        
+
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             _absensiSyncStatus.value = SyncState.Loading
             try {
                 val separator = if (baseUrl.contains("?")) "&" else "?"
                 val url = "${baseUrl}${separator}action=get_absensi_meeting&monthIndex=$monthIndex"
-                
+                android.util.Log.d("ScheduleViewModel", "Fetching absensi: $url")
                 val response = apiService.getAbsensiMeeting(url)
                 if (response.status.lowercase() == "success") {
                     absensiData.value = response
@@ -767,23 +769,20 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun fetchAbsensiMeetingSilently(monthIndex: Int) {
-        val baseUrl = appsScriptUrl.value
+        val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
         if (baseUrl.isBlank()) return
-        
+
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val separator = if (baseUrl.contains("?")) "&" else "?"
                 val url = "${baseUrl}${separator}action=get_absensi_meeting&monthIndex=$monthIndex"
-                
                 val response = apiService.getAbsensiMeeting(url)
                 if (response.status.lowercase() == "success") {
                     if (absensiData.value != response) {
                         absensiData.value = response
                     }
                 }
-            } catch (e: Exception) {
-                // Ignore silent refresh exceptions
-            }
+            } catch (_: Exception) {}
         }
     }
 
@@ -801,13 +800,61 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         present: Boolean,
         onResult: (Boolean, String, Int, Int) -> Unit
     ) {
-        val baseUrl = appsScriptUrl.value
+        val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
         if (baseUrl.isBlank()) {
             onResult(false, "URL Google Apps Script belum diatur di menu Setting.", 0, 0)
             return
         }
-        
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+
+        // 1. OPTIMISTIC UPDATE: Update StateFlow immediately on caller thread (0ms latency visual feedback!)
+        var didOptimisticallyUpdate = false
+        absensiData.update { current ->
+            if (current == null) return@update null
+            val dateIndex = current.dates.indexOfFirst { it.colIndex == col }
+            if (dateIndex == -1) return@update current
+
+            val oldMarketing = current.marketingList.find { it.row == row }
+            val wasPresent = oldMarketing?.attendance?.getOrNull(dateIndex) ?: false
+            if (wasPresent == present) return@update current // No change needed
+
+            didOptimisticallyUpdate = true
+            val diff = if (present) 1 else -1
+
+            val updatedList = current.marketingList.map { m ->
+                if (m.row == row) {
+                    val newAttendance = m.attendance.toMutableList()
+                    while (newAttendance.size <= dateIndex) {
+                        newAttendance.add(false)
+                    }
+                    newAttendance[dateIndex] = present
+                    val newRowTotal = (m.totalHadirBulan + diff).coerceAtLeast(0)
+                    m.copy(
+                        attendance = newAttendance,
+                        totalHadirBulan = newRowTotal
+                    )
+                } else {
+                    m
+                }
+            }
+
+            val updatedTotals = current.dateTotals.toMutableList()
+            while (updatedTotals.size <= dateIndex) {
+                updatedTotals.add(0)
+            }
+            updatedTotals[dateIndex] = (updatedTotals[dateIndex] + diff).coerceAtLeast(0)
+
+            current.copy(
+                marketingList = updatedList,
+                dateTotals = updatedTotals
+            )
+        }
+
+        // 2. CANCEL PREVIOUS IN-FLIGHT JOB FOR THIS CELL (Prevents race conditions if clicked rapidly)
+        val cellKey = "$row-$col"
+        absensiUpdateJobs[cellKey]?.cancel()
+
+        // 3. ASYNC BACKGROUND NETWORK DISPATCH
+        val job = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val request = com.example.network.UpdateAbsensiRequest(
                     action = "update_absensi_meeting",
@@ -819,24 +866,13 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 if (response.status.lowercase() == "success") {
                     val resolvedRowTotal = safeConvertToInt(response.newRowTotal)
                     val resolvedColTotal = safeConvertToInt(response.newColTotal)
-                    val current = absensiData.value
-                    if (current != null) {
+
+                    // Reconcile server's authoritative totals into state
+                    absensiData.update { current ->
+                        if (current == null) return@update null
                         val updatedList = current.marketingList.map { m ->
                             if (m.row == row) {
-                                val dateIndex = current.dates.indexOfFirst { it.colIndex == col }
-                                if (dateIndex != -1) {
-                                    val newAttendance = m.attendance.toMutableList()
-                                    while (newAttendance.size <= dateIndex) {
-                                        newAttendance.add(false)
-                                    }
-                                    newAttendance[dateIndex] = present
-                                    m.copy(
-                                        attendance = newAttendance,
-                                        totalHadirBulan = resolvedRowTotal
-                                    )
-                                } else {
-                                    m
-                                }
+                                m.copy(totalHadirBulan = resolvedRowTotal)
                             } else {
                                 m
                             }
@@ -849,7 +885,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                             }
                             updatedTotals[colIndex] = resolvedColTotal
                         }
-                        absensiData.value = current.copy(
+                        current.copy(
                             marketingList = updatedList,
                             dateTotals = updatedTotals
                         )
@@ -858,15 +894,61 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                         onResult(true, "Absensi berhasil disimpan!", resolvedRowTotal, resolvedColTotal)
                     }
                 } else {
+                    // Server returned error status -> Rollback optimistic update
+                    if (didOptimisticallyUpdate) {
+                        rollbackAbsensi(row, col, present)
+                    }
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         onResult(false, response.message, 0, 0)
                     }
                 }
+            } catch (_: kotlinx.coroutines.CancellationException) {
+                // Job was cancelled because of rapid re-toggle; do not rollback or toast
             } catch (e: Exception) {
+                // Network error / timeout -> Rollback optimistic update
+                if (didOptimisticallyUpdate) {
+                    rollbackAbsensi(row, col, present)
+                }
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                     onResult(false, "Gagal menyimpan absensi: ${e.localizedMessage ?: "Koneksi terganggu"}", 0, 0)
                 }
+            } finally {
+                absensiUpdateJobs.remove(cellKey)
             }
+        }
+        absensiUpdateJobs[cellKey] = job
+    }
+
+    private fun rollbackAbsensi(row: Int, col: Int, presentAttempted: Boolean) {
+        absensiData.update { current ->
+            if (current == null) return@update null
+            val dateIndex = current.dates.indexOfFirst { it.colIndex == col }
+            if (dateIndex == -1) return@update current
+
+            val rollbackDiff = if (presentAttempted) -1 else 1
+            val revertedList = current.marketingList.map { m ->
+                if (m.row == row) {
+                    val newAttendance = m.attendance.toMutableList()
+                    if (dateIndex < newAttendance.size) {
+                        newAttendance[dateIndex] = !presentAttempted
+                    }
+                    val newRowTotal = (m.totalHadirBulan + rollbackDiff).coerceAtLeast(0)
+                    m.copy(
+                        attendance = newAttendance,
+                        totalHadirBulan = newRowTotal
+                    )
+                } else {
+                    m
+                }
+            }
+            val revertedTotals = current.dateTotals.toMutableList()
+            if (dateIndex < revertedTotals.size) {
+                revertedTotals[dateIndex] = (revertedTotals[dateIndex] + rollbackDiff).coerceAtLeast(0)
+            }
+            current.copy(
+                marketingList = revertedList,
+                dateTotals = revertedTotals
+            )
         }
     }
 
@@ -1204,40 +1286,155 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         namaMe: String,
         keterangan: String,
         catatan: String,
+        lokasi: String = "",
         onResult: (Boolean, String) -> Unit
     ) {
-        val baseUrl = appsScriptUrl.value
+        val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
         if (baseUrl.isBlank()) {
             onResult(false, "URL Google Apps Script belum diatur di menu Setting.")
             return
         }
 
+        val cleanId = idListing.trim()
+        val isFotoUlang = keterangan.trim().contains("foto ulang", ignoreCase = true) ||
+                          keterangan.trim().equals("foto ulang", ignoreCase = true) ||
+                          keterangan.trim().equals("ulang", ignoreCase = true)
+
+        // 1. Hitung perkiraan baris untuk tampilan langsung
+        val nextNo = (meetingListings.value.maxOfOrNull { it.no } ?: 0) + 1
+        val nextApproxRow = nextNo + 4
+
+        // 2. Format Source awal (contoh "9Juni_R24")
+        val parts = dateStr.split("-")
+        val dayNum = parts.getOrNull(2)?.toIntOrNull()?.toString() ?: ""
+        val mNum = parts.getOrNull(1)?.toIntOrNull() ?: 0
+        val mNames = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
+        val monthNameIndo = if (mNum in 1..12) mNames[mNum - 1] else ""
+        val initialSource = if (dayNum.isNotBlank() && monthNameIndo.isNotBlank()) "${dayNum}${monthNameIndo}_R${nextApproxRow}" else "R${nextApproxRow}"
+
+        // 3. Optimistic local update agar tabel meeting di UI langsung terisi tanpa delay
+        val optimisticListing = com.example.network.MeetingListing(
+            no = nextNo,
+            date = dateStr,
+            colIndex = 0,
+            idListing = cleanId,
+            keterangan = keterangan,
+            postingIg = "FALSE",
+            jadwalPosting = "",
+            namaMe = namaMe,
+            catatan = catatan
+        )
+        val currentList = meetingListings.value.toMutableList()
+        if (!currentList.any { it.idListing.trim().equals(cleanId, ignoreCase = true) }) {
+            currentList.add(optimisticListing)
+            meetingListings.value = currentList
+        }
+
+        // 4. Tutup dialog dan beri respon SUKSES INSTAN ke UI (0 milidetik!)
+        onResult(true, "Berhasil menambahkan data meeting $cleanId")
+
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
+                val foundSchedule = allSchedules.value.find { 
+                    normalizeIdListing(it.idListing).equals(normalizeIdListing(cleanId), ignoreCase = true) && 
+                    it.lokasi.isNotBlank() 
+                }
+                val foundTask = allEditFotoTasks.value.find { 
+                    normalizeIdListing(it.idListing).equals(normalizeIdListing(cleanId), ignoreCase = true) && 
+                    it.judul.isNotBlank() 
+                }
+                val scrapedT = listingTitleMap.value[cleanId] ?: ""
+                val scrapedD = listingDescMap.value[cleanId] ?: ""
+                val notesLoc = com.example.ui.screens.extractPropertyLocation(
+                    descLower = scrapedD.lowercase(),
+                    titleLower = catatan.lowercase(),
+                    scrapedTitleLower = scrapedT.lowercase(),
+                    idListing = cleanId
+                )
+                val resolvedLokasi: String = when {
+                    lokasi.trim().isNotBlank() -> lokasi.trim()
+                    !foundSchedule?.lokasi.isNullOrBlank() -> foundSchedule!!.lokasi.trim()
+                    !foundTask?.judul.isNullOrBlank() -> foundTask!!.judul.trim()
+                    notesLoc != "INDONESIA" && notesLoc.isNotBlank() -> notesLoc.trim()
+                    scrapedT.isNotBlank() -> scrapedT.trim()
+                    else -> ""
+                }
+
+                // 5. Update lokal untuk Foto Ulang jika berlaku
+                if (isFotoUlang) {
+                    try {
+                        val localSchedule = Schedule(
+                            idListing = cleanId,
+                            namaMe = namaMe.trim(),
+                            lokasi = resolvedLokasi,
+                            tanggal = "", // Fix Date kosong!
+                            jam = "",
+                            staff = "",
+                            type = "Foto Ulang",
+                            status = "Pending",
+                            sheetName = "Foto Ulang",
+                            synced = true
+                        )
+                        repository.insertScheduleLocally(localSchedule)
+                    } catch (e: Exception) {
+                        // Non-blocking
+                    }
+                }
+
                 val request = com.example.network.AddMeetingListingRequest(
                     sheetName = month,
                     date = dateStr,
-                    idListing = idListing,
+                    idListing = cleanId,
                     namaMe = namaMe,
                     keterangan = keterangan,
-                    catatan = catatan
+                    catatan = catatan,
+                    lokasi = resolvedLokasi
                 )
                 
+                // 6. Kirim ke spreadsheet Weekly Meeting
                 val response = apiService.addMeetingListing(baseUrl, request)
-                if (response.status.lowercase() == "success") {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        onResult(true, response.message)
+                val actualRow = response.row ?: nextApproxRow
+                val finalSource = if (dayNum.isNotBlank() && monthNameIndo.isNotBlank()) "${dayNum}${monthNameIndo}_R${actualRow}" else "R${actualRow}"
+
+                // 7. Jika Foto Ulang, kirim LANGSUNG ke spreadsheet RWC - Media Production (sheet "Foto Ulang")
+                if (isFotoUlang) {
+                    try {
+                        val mediaProdUrl = appsScriptUrl.value.ifBlank { baseUrl }
+                        if (mediaProdUrl.isNotBlank()) {
+                            val separator = if (mediaProdUrl.contains("?")) "&" else "?"
+                            val targetFotoUlangUrl = "$mediaProdUrl${separator}sheetName=Foto%20Ulang"
+                            
+                            val fotoUlangPayload = com.example.network.SheetSchedule(
+                                idListing = cleanId,
+                                namaMe = namaMe.trim(),
+                                lokasi = resolvedLokasi,
+                                tanggal = "", // Fix Date KOSONG!
+                                jam = "",
+                                staff = "",
+                                type = "Foto Ulang",
+                                status = "Pending",
+                                sheetName = "Foto Ulang",
+                                source = finalSource
+                            )
+                            apiService.addSchedule(targetFotoUlangUrl, fotoUlangPayload)
+                        }
+                    } catch (eFu: Exception) {
+                        android.util.Log.e("FotoUlang", "Gagal mengirim ke sheet Foto Ulang di RWC - Media Production", eFu)
                     }
-                    fetchMeetingListings(month, dateStr)
-                } else {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        onResult(false, response.message)
+                }
+
+                // 8. Refresh data meeting & schedule dari spreadsheet
+                fetchMeetingListings(month, dateStr)
+                if (isFotoUlang) {
+                    try {
+                        repository.syncFromGoogleSheets()
+                    } catch (e: Exception) {
+                        // Non-blocking
                     }
                 }
             } catch (e: Exception) {
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    onResult(false, "Gagal menambahkan data: ${e.localizedMessage ?: "Masalah koneksi"}")
-                }
+                // Refresh data untuk memastikan konsistensi jika terjadi masalah jaringan
+                fetchMeetingListings(month, dateStr)
             }
         }
     }
@@ -1568,23 +1765,55 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
 
     fun getAgentAvatarByName(name: String): String? {
         if (name.isBlank()) return null
+        val cleanLook = name.trim().lowercase()
         
         // 0. Search local database cache first
-        val cleanLook = name.trim().lowercase()
-        val localContact = cachedAgentContactsList.find {
-            it.nameKey == cleanLook || 
-            it.nameKey.contains(cleanLook) || 
-            cleanLook.contains(it.nameKey)
-        }
-        if (localContact != null && localContact.avatarUrl.isNotBlank()) {
-            return localContact.avatarUrl
+        val localList = cachedAgentContactsList
+        if (localList.isNotEmpty()) {
+            // 0a. Exact match
+            val exact = localList.find { it.nameKey == cleanLook }
+            if (exact != null && exact.avatarUrl.isNotBlank()) {
+                return exact.avatarUrl
+            }
+
+            // 0b. Word-based match (strictly prevent "bayu" matching "ayu")
+            val words = cleanLook.split("\\s+".toRegex())
+            val wordMatch = localList.find { contact ->
+                val isOverlap = (contact.nameKey == "ayu" && cleanLook.contains("bayu")) ||
+                                (contact.nameKey == "bayu" && cleanLook.contains("ayu") && !cleanLook.contains("bayu")) ||
+                                (contact.nameKey == "bayu" && cleanLook.contains("kebayoran"))
+                !isOverlap && words.contains(contact.nameKey)
+            }
+            if (wordMatch != null && wordMatch.avatarUrl.isNotBlank()) {
+                return wordMatch.avatarUrl
+            }
+
+            // 0c. Fallback contains match only if NOT an overlap
+            val fallbackMatch = localList.find { contact ->
+                val isOverlap = (contact.nameKey == "ayu" && cleanLook.contains("bayu")) ||
+                                (contact.nameKey == "bayu" && cleanLook.contains("ayu") && !cleanLook.contains("bayu")) ||
+                                (contact.nameKey == "bayu" && cleanLook.contains("kebayoran"))
+                if (isOverlap) {
+                    false
+                } else {
+                    contact.nameKey == cleanLook || contact.nameKey.contains(cleanLook) || cleanLook.contains(contact.nameKey)
+                }
+            }
+            if (fallbackMatch != null && fallbackMatch.avatarUrl.isNotBlank()) {
+                return fallbackMatch.avatarUrl
+            }
         }
 
         // 1. Search in-memory map
+        val exactMemory = _agentInfoMap.value.values.find { it.name.trim().equals(cleanLook, ignoreCase = true) }
+        if (exactMemory != null && exactMemory.avatarUrl.isNotBlank()) {
+            return exactMemory.avatarUrl
+        }
         _agentInfoMap.value.values.find {
-            it.name.equals(name, ignoreCase = true) ||
-            it.name.contains(name, ignoreCase = true) ||
-            name.contains(it.name, ignoreCase = true)
+            val isOverlap = (it.name.trim().lowercase() == "ayu" && cleanLook.contains("bayu")) ||
+                            (it.name.trim().lowercase() == "bayu" && cleanLook.contains("ayu") && !cleanLook.contains("bayu")) ||
+                            (it.name.trim().lowercase() == "bayu" && cleanLook.contains("kebayoran"))
+            !isOverlap && (it.name.contains(name, ignoreCase = true) || name.contains(it.name, ignoreCase = true))
         }?.avatarUrl?.let { url ->
             if (url.isNotBlank()) return url
         }
@@ -1596,11 +1825,14 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 if (key.startsWith("agent_") && value is String) {
                     val parts = value.split("|||")
                     if (parts.size >= 3) {
-                        val cachedName = parts[0]
+                        val cachedName = parts[0].trim().lowercase()
                         val cachedAvatarUrl = parts[2]
-                        if (cachedName.equals(name, ignoreCase = true) ||
-                            cachedName.contains(name, ignoreCase = true) ||
-                            name.contains(cachedName, ignoreCase = true)) {
+                        val isOverlap = (cachedName == "ayu" && cleanLook.contains("bayu")) ||
+                                        (cachedName == "bayu" && cleanLook.contains("ayu") && !cleanLook.contains("bayu")) ||
+                                        (cachedName == "bayu" && cleanLook.contains("kebayoran"))
+                        if (!isOverlap && (cachedName.equals(cleanLook, ignoreCase = true) ||
+                            cachedName.contains(cleanLook) ||
+                            cleanLook.contains(cachedName))) {
                             if (cachedAvatarUrl.isNotBlank()) {
                                 return cachedAvatarUrl
                             }
@@ -2499,7 +2731,22 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                     }
                     dao.insertAllAgentContacts(initialList)
                 } else {
-                    // Update blank avatarUrls for existing contacts if they have a preset avatar
+                    // 1. Insert missing preset contacts (e.g. newly added agents like utomo)
+                    val missingPresets = AGENT_CONTACT_LIST.filter { preset -> existing.none { it.nameKey == preset.nameKey } }.map { ac ->
+                        AgentContactEntity(
+                            nameKey = ac.nameKey,
+                            displayName = capitalizeName(ac.nameKey),
+                            phone = ac.phone,
+                            email = ac.email,
+                            instagram = ac.instagram,
+                            avatarUrl = ac.avatarUrl
+                        )
+                    }
+                    if (missingPresets.isNotEmpty()) {
+                        dao.insertAllAgentContacts(missingPresets)
+                    }
+
+                    // 2. Update blank avatarUrls for existing contacts if they have a preset avatar
                     val toUpdate = existing.filter { it.avatarUrl.isBlank() }.mapNotNull { ent ->
                         val preset = AGENT_CONTACT_LIST.find { it.nameKey == ent.nameKey }
                         if (preset != null && preset.avatarUrl.isNotBlank()) {

@@ -240,6 +240,73 @@ fun TaskDashboardScreen(
         taskEditFotoList.size
     }
 
+    // Filter Counts for the 5 interactive filter chips
+    val filterCounts = remember(schedules, editFotoTasks, searchQuery) {
+        val baseFotoUlang = schedules.filter {
+            val typeLower = it.type.lowercase().trim()
+            val statusLower = it.status.lowercase().trim()
+            val isTask = typeLower.startsWith("done") && statusLower != "done"
+            val matchesQuery = searchQuery.isBlank() ||
+                    it.namaMe.contains(searchQuery, ignoreCase = true) ||
+                    it.idListing.contains(searchQuery, ignoreCase = true) ||
+                    it.lokasi.contains(searchQuery, ignoreCase = true)
+            isTask && matchesQuery
+        }
+        val baseEditFoto = editFotoTasks.filter {
+            val isNotDone = !it.done
+            val matchesQuery = searchQuery.isBlank() ||
+                    it.namaMe.contains(searchQuery, ignoreCase = true) ||
+                    it.idListing.contains(searchQuery, ignoreCase = true) ||
+                    it.editNotes.contains(searchQuery, ignoreCase = true) ||
+                    it.judul.contains(searchQuery, ignoreCase = true)
+            isNotDone && matchesQuery
+        }
+
+        val filtersList = listOf("Semua", "Up Foto", "Edit Video", "Garis Tanah", "Edit Foto")
+        filtersList.associateWith { filterName ->
+            when (filterName) {
+                "Semua" -> baseFotoUlang.size + baseEditFoto.size
+                "Up Foto" -> {
+                    val fu = baseFotoUlang.count {
+                        val t = it.type.lowercase().trim()
+                        val s = it.status.lowercase().trim()
+                        t.contains("up foto", ignoreCase = true) || s.contains("up foto", ignoreCase = true)
+                    }
+                    val ef = baseEditFoto.count {
+                        it.editNotes.contains("up foto", ignoreCase = true) || it.judul.contains("up foto", ignoreCase = true)
+                    }
+                    fu + ef
+                }
+                "Edit Video" -> {
+                    val fu = baseFotoUlang.count {
+                        val t = it.type.lowercase().trim()
+                        val s = it.status.lowercase().trim()
+                        t.contains("video", ignoreCase = true) || s.contains("video", ignoreCase = true)
+                    }
+                    val ef = baseEditFoto.count {
+                        it.editNotes.contains("video", ignoreCase = true) || it.judul.contains("video", ignoreCase = true)
+                    }
+                    fu + ef
+                }
+                "Garis Tanah" -> {
+                    val fu = baseFotoUlang.count {
+                        val t = it.type.lowercase().trim()
+                        val s = it.status.lowercase().trim()
+                        t.contains("garis", ignoreCase = true) || t.contains("tanah", ignoreCase = true) ||
+                        s.contains("garis", ignoreCase = true) || s.contains("tanah", ignoreCase = true)
+                    }
+                    val ef = baseEditFoto.count {
+                        it.editNotes.contains("garis", ignoreCase = true) || it.editNotes.contains("tanah", ignoreCase = true) ||
+                        it.judul.contains("garis", ignoreCase = true) || it.judul.contains("tanah", ignoreCase = true)
+                    }
+                    fu + ef
+                }
+                "Edit Foto" -> baseEditFoto.size
+                else -> 0
+            }
+        }
+    }
+
     Scaffold(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -399,6 +466,7 @@ fun TaskDashboardScreen(
                         val filters = listOf("Semua", "Up Foto", "Edit Video", "Garis Tanah", "Edit Foto")
                         filters.forEach { filter ->
                             val isSelected = selectedTypeFilter == filter
+                            val count = filterCounts[filter] ?: 0
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
@@ -412,11 +480,11 @@ fun TaskDashboardScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = filter,
+                                    text = "$filter ($count)",
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
-                                        fontSize = 10.5.sp,
-                                        letterSpacing = (-0.2).sp
+                                        fontSize = 9.5.sp,
+                                        letterSpacing = (-0.3).sp
                                     ),
                                     color = if (isSelected) MaterialTheme.colorScheme.onPrimary
                                             else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -458,7 +526,7 @@ fun TaskDashboardScreen(
                                             listingSoldMap = listingSoldMap,
                                             onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, item.namaMe) },
                                             onDelete = { scheduleToDelete = item },
-                                            onClick = { selectedScheduleForDetail = item }
+                                            onClick = { selectedTaskForIgMockup = mapScheduleToEditFotoTask(item) }
                                         )
                                     }
                                 }
@@ -474,7 +542,7 @@ fun TaskDashboardScreen(
                                             onDownloadPhotos = { activeTaskForDownload = item },
                                             onDelete = { taskEditToDelete = item },
                                             onClick = {
-                                                selectedScheduleForDetail = mapEditFotoToSchedule(item)
+                                                selectedTaskForIgMockup = item
                                             }
                                         )
                                     }
@@ -1898,6 +1966,25 @@ private fun mapEditFotoToSchedule(task: EditFotoTask): Schedule {
         type = "Edit Foto",
         status = if (task.done) "Done" else "Pending",
         synced = task.synced
+    )
+}
+
+// Maps Schedule to EditFotoTask for InstagramPostMockupScreen integration
+private fun mapScheduleToEditFotoTask(schedule: Schedule): EditFotoTask {
+    val cleanId = schedule.idListing.trim()
+    val isPosted = schedule.status.trim().lowercase() in listOf("done", "ya", "yes", "true", "✔", "1")
+    val taskJudul = if (schedule.lokasi.isNotBlank()) schedule.lokasi else "Properti #$cleanId"
+    return EditFotoTask(
+        id = schedule.id,
+        no = schedule.no,
+        idListing = cleanId,
+        namaMe = schedule.namaMe,
+        postingIg = isPosted,
+        jadwalPosting = schedule.tanggal,
+        editNotes = schedule.type,
+        done = schedule.status.equals("done", ignoreCase = true),
+        judul = taskJudul,
+        source = schedule.sheetName
     )
 }
 

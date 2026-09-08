@@ -123,11 +123,12 @@ fun DashboardScreen(
         val filtered = baseList.filter { item ->
             val typeLower = item.type.lowercase().trim()
             val isSelesai = typeLower.startsWith("done")
-            val isNonAktif = item.idListing.isNotBlank() &&
+            val isNonAktif = item.sheetName.equals("Foto Ulang", ignoreCase = true) ||
+                             (item.idListing.isNotBlank() &&
                              item.namaMe.isNotBlank() &&
                              item.lokasi.isNotBlank() &&
                              item.tanggal.isBlank() &&
-                             item.jam.isBlank()
+                             item.jam.isBlank())
             val isAktif = !typeLower.startsWith("done") && typeLower.isNotBlank() && item.tanggal.trim().isNotBlank() && !isNonAktif
 
             when (selectedCategory) {
@@ -694,11 +695,12 @@ fun DashboardScreen(
                 if (!showCalendarView) {
                     val totalCount = schedules.size
                     val nonAktifCount = allSchedules.count {
-                        it.idListing.isNotBlank() &&
+                        it.sheetName.equals("Foto Ulang", ignoreCase = true) ||
+                        (it.idListing.isNotBlank() &&
                         it.namaMe.isNotBlank() &&
                         it.lokasi.isNotBlank() &&
                         it.tanggal.isBlank() &&
-                        it.jam.isBlank()
+                        it.jam.isBlank())
                     }
                     val selesaiCount = schedules.count {
                         it.type.lowercase().trim().startsWith("done")
@@ -706,11 +708,12 @@ fun DashboardScreen(
                     val activeCount = schedules.count {
                         val typeLower = it.type.lowercase().trim()
                         val isSelesai = typeLower.startsWith("done")
-                        val isNonAktif = it.idListing.isNotBlank() &&
-                                         it.namaMe.isNotBlank() &&
-                                         it.lokasi.isNotBlank() &&
-                                         it.tanggal.isBlank() &&
-                                         it.jam.isBlank()
+                        val isNonAktif = it.sheetName.equals("Foto Ulang", ignoreCase = true) ||
+                                         (it.idListing.isNotBlank() &&
+                                          it.namaMe.isNotBlank() &&
+                                          it.lokasi.isNotBlank() &&
+                                          it.tanggal.isBlank() &&
+                                          it.jam.isBlank())
                         !isSelesai && typeLower.isNotBlank() && it.tanggal.trim().isNotBlank() && !isNonAktif
                     }
 

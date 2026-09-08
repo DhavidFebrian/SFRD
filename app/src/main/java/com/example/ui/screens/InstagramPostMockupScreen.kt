@@ -814,27 +814,13 @@ fun InstagramPostMockupScreen(
                                     val historyListings = remember(allMeetingListings, cleanId) {
                                         allMeetingListings.filter { it.idListing.trim() == cleanId }
                                     }
-                                    val postedCount = remember(igHistory, historyListings, task.done) {
+                                    val postedCount = remember(igHistory, historyListings, task.done, task.postingIg) {
                                         if (igHistory != null && igHistory.count > 0) {
                                             igHistory.count
                                         } else {
                                             val count = historyListings.count { it.postingIg.trim().lowercase() in listOf("done", "ya", "yes", "true", "✔", "1") }
-                                            if (count == 0 && task.done) 1 else count
+                                            if (count == 0 && (task.done || task.postingIg)) 1 else count
                                         }
-                                    }
-                                    val datesListened = remember(igHistory, historyListings, task.jadwalPosting) {
-                                        val list = if (igHistory != null && igHistory.dates.isNotEmpty()) {
-                                            igHistory.dates.toMutableList()
-                                        } else {
-                                            historyListings.mapNotNull { item ->
-                                                val dateStr = item.jadwalPosting.trim().takeIf { it.isNotBlank() && it != "-" } ?: item.date.trim()
-                                                if (dateStr.isNotBlank() && dateStr != "-") dateStr else null
-                                            }.toMutableList()
-                                        }
-                                        if (task.jadwalPosting.isNotBlank() && task.jadwalPosting != "-" && !list.contains(task.jadwalPosting.trim())) {
-                                            list.add(0, task.jadwalPosting.trim())
-                                        }
-                                        list.distinct()
                                     }
 
                                     Row(
@@ -945,83 +931,177 @@ fun InstagramPostMockupScreen(
                                         }
                                     }
 
-                                    // Riwayat Tanggal Posting ke IG
-                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    // Status & Riwayat Posting IG (Persis seperti IgPostingInfoCard di Tambah Data Meeting)
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = if (igHistory?.isPosted == true) Color(0xFF0D2137) else Color(0xFF161B22),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (igHistory?.isPosted == true) Color(0xFF1F6FEB).copy(alpha = 0.6f) else Color(0xFF30363D)
+                                        )
+                                    ) {
                                         Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                                            verticalAlignment = Alignment.Top,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                                         ) {
-                                            Icon(Icons.Default.Event, contentDescription = null, tint = Color(0xFF58A6FF), modifier = Modifier.size(14.dp))
-                                            Text(
-                                                text = "Riwayat Tanggal Posting IG (${datesListened.size}):",
-                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                                color = Color.White.copy(alpha = 0.9f)
+                                            Icon(
+                                                imageVector = if (igHistory?.isPosted == true) Icons.Default.CheckCircle else Icons.Default.Info,
+                                                contentDescription = null,
+                                                tint = if (igHistory?.isPosted == true) Color(0xFF58A6FF) else Color.White.copy(alpha = 0.5f),
+                                                modifier = Modifier.size(24.dp)
                                             )
-                                        }
-
-                                        if (datesListened.isNotEmpty()) {
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(top = 2.dp),
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                datesListened.take(4).forEach { d ->
-                                                    Surface(
-                                                        color = Color(0xFF1F6FEB).copy(alpha = 0.2f),
-                                                        border = BorderStroke(1.dp, Color(0xFF1F6FEB).copy(alpha = 0.4f)),
-                                                        shape = RoundedCornerShape(6.dp)
-                                                    ) {
+                                            
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = if (igHistory?.isPosted == true) "Terdeteksi Post IG 2026" else "Belum Pernah Post IG 2026",
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                    color = if (igHistory?.isPosted == true) Color(0xFF79C0FF) else Color.White.copy(alpha = 0.85f)
+                                                )
+                                                
+                                                if (igHistory?.isPosted == true) {
+                                                    Text(
+                                                        text = "Diposting sebanyak ${igHistory.count} kali.",
+                                                        style = MaterialTheme.typography.labelMedium,
+                                                        color = Color.White.copy(alpha = 0.75f)
+                                                    )
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Text(
+                                                        text = "Tanggal Post:",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                        color = Color(0xFF58A6FF)
+                                                    )
+                                                    igHistory.dates.forEach { date ->
                                                         Text(
-                                                            text = d,
-                                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                                                            color = Color(0xFF58A6FF),
-                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                            text = "• $date",
+                                                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
+                                                            color = Color.White.copy(alpha = 0.9f),
+                                                            modifier = Modifier.padding(start = 6.dp, top = 2.dp)
                                                         )
                                                     }
+                                                } else {
+                                                    Text(
+                                                        text = "Belum ada riwayat postingan di Instagram untuk tahun ini.",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = Color.White.copy(alpha = 0.5f)
+                                                    )
                                                 }
                                             }
-                                        } else {
-                                            Text(
-                                                text = "Belum ada riwayat tanggal posting lain tercatat di sheet.",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Color.White.copy(alpha = 0.4f),
-                                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                                            )
                                         }
                                     }
 
-                                    // Catatan Spreadsheet (Notes)
-                                    if (task.editNotes.isNotBlank()) {
-                                        Surface(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            color = Color(0xFF21262D),
-                                            shape = RoundedCornerShape(10.dp),
-                                            border = BorderStroke(1.dp, Color(0xFFDB6D28).copy(alpha = 0.4f))
+                                    // Informasi Task & Konten
+                                    Surface(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        color = Color(0xFF161B22),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.dp, Color(0xFF30363D))
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             Row(
-                                                modifier = Modifier.padding(10.dp),
-                                                verticalAlignment = Alignment.Top,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                                             ) {
                                                 Icon(
-                                                    imageVector = Icons.Default.StickyNote2,
+                                                    imageVector = Icons.Default.Assignment,
                                                     contentDescription = null,
-                                                    tint = Color(0xFFF0883E),
+                                                    tint = Color(0xFFFFA657),
                                                     modifier = Modifier.size(16.dp)
                                                 )
-                                                Column {
-                                                    Text(
-                                                        text = "CATATAN SPREADSHEET (NOTES):",
-                                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
-                                                        color = Color(0xFFF0883E)
-                                                    )
-                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                Text(
+                                                    text = "INFORMASI TASK & KONTEN",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
+                                                    color = Color(0xFFFFA657)
+                                                )
+                                            }
+
+                                            HorizontalDivider(color = Color(0xFF21262D))
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text("ID Listing", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                                                Text("#${cleanId.ifBlank { "N/A" }}", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = Color(0xFF58A6FF))
+                                            }
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text("Judul / Lokasi Task", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                                                Text(
+                                                    text = task.judul.ifBlank { details["lokasi"] ?: "N/A" },
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = Color.White,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text("Marketing (ME)", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                                                Text(task.namaMe.ifBlank { "N/A" }, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = Color.White)
+                                            }
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text("Status Edit", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                                                Text(
+                                                    text = if (task.done) "Selesai (Done)" else "Dalam Proses (Pending)",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = if (task.done) Color(0xFF7EE787) else Color(0xFFFFA657)
+                                                )
+                                            }
+
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text("Status Posting IG", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                                                Text(
+                                                    text = if (task.postingIg) "Sudah Diposting" else "Belum Diposting",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = if (task.postingIg) Color(0xFF7EE787) else Color(0xFFFF7B72)
+                                                )
+                                            }
+
+                                            if (task.jadwalPosting.isNotBlank() && task.jadwalPosting != "-") {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text("Jadwal Posting", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                                                    Text(task.jadwalPosting, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = Color(0xFF7EE787))
+                                                }
+                                            }
+
+                                            if (task.source.isNotBlank()) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text("Sumber / Sheet", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
+                                                    Text(task.source, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = Color.White.copy(alpha = 0.8f))
+                                                }
+                                            }
+
+                                            if (task.editNotes.isNotBlank()) {
+                                                Column(modifier = Modifier.padding(top = 2.dp)) {
+                                                    Text("Catatan (Notes):", style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = Color(0xFFF0883E))
                                                     Text(
                                                         text = task.editNotes,
                                                         style = MaterialTheme.typography.bodySmall,
-                                                        color = Color.White.copy(alpha = 0.95f),
-                                                        lineHeight = 16.sp
+                                                        color = Color.White.copy(alpha = 0.9f)
                                                     )
                                                 }
                                             }
@@ -1036,13 +1116,6 @@ fun InstagramPostMockupScreen(
                                             .padding(8.dp),
                                         verticalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Text("Sumber Sheet / Posisi", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.5f))
-                                            Text(task.source.ifBlank { "Google Sheet Meeting" }, style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = Color.White)
-                                        }
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween

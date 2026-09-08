@@ -597,19 +597,33 @@ fun MarketingAttendanceCard(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    val toggleAction = {
+        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+        onCheckedChange(!isChecked)
+    }
+
+    val cardBgColor by animateColorAsState(
+        targetValue = if (isChecked) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        label = "cardBgColor"
+    )
+
     Card(
+        onClick = toggleAction,
         modifier = modifier
             .fillMaxWidth()
             .testTag("marketing_row_$row"),
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isChecked) {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)
-            } else {
-                MaterialTheme.colorScheme.surface
-            }
-        )
+        border = BorderStroke(
+            1.dp,
+            if (isChecked) MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+        ),
+        colors = CardDefaults.cardColors(containerColor = cardBgColor)
     ) {
         Column(
             modifier = Modifier
@@ -635,7 +649,7 @@ fun MarketingAttendanceCard(
 
                 Checkbox(
                     checked = isChecked,
-                    onCheckedChange = onCheckedChange,
+                    onCheckedChange = { toggleAction() },
                     modifier = Modifier
                         .size(36.dp)
                         .testTag("checkbox_marketing_$row")
@@ -656,7 +670,7 @@ fun MarketingAttendanceCard(
                 Text(
                     text = "Total hadir: $totalHadirBulan",
                     style = MaterialTheme.typography.bodySmall,
-                    color = androidx.compose.ui.graphics.Color.White
+                    color = if (isChecked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

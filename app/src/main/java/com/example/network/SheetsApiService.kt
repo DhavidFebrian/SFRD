@@ -24,7 +24,8 @@ data class SheetSchedule(
     @Json(name = "originalNamaMe") val originalNamaMe: String = "",
     @Json(name = "originalTanggal") val originalTanggal: String = "",
     @Json(name = "originalJam") val originalJam: String = "",
-    @Json(name = "sheetName") val sheetName: String = ""
+    @Json(name = "sheetName") val sheetName: String = "",
+    @Json(name = "source") val source: String = ""
 )
 
 @JsonClass(generateAdapter = true)
@@ -184,7 +185,8 @@ data class AddMeetingListingRequest(
     @Json(name = "idListing") val idListing: String,
     @Json(name = "namaMe") val namaMe: String,
     @Json(name = "keterangan") val keterangan: String,
-    @Json(name = "catatan") val catatan: String
+    @Json(name = "catatan") val catatan: String,
+    @Json(name = "lokasi") val lokasi: String = ""
 )
 
 @JsonClass(generateAdapter = true)

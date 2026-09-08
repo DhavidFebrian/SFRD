@@ -570,33 +570,58 @@ function doPost(e) {
     var source = params.source || "App";
     
     var targetRow = -1;
-    for (var i = 4; i < maxRows; i++) {
-      var row = lookupRows[i];
-      if (!row) continue;
-      var checkListing = row[1] != null ? row[1].toString().trim() : "";
-      var checkNamaMe = row[2] != null ? row[2].toString().trim() : "";
-      var checkLokasi = row[5] != null ? row[5].toString().trim() : "";
-      
-      if (checkListing === "" && checkNamaMe === "" && checkLokasi === "") {
-        targetRow = i + 1;
-        break;
+    // Cek apakah idListing sudah ada sebelumnya di sheet ini untuk mencegah duplikasi baris
+    if (idListing !== "") {
+      var cleanTargetId = idListing.toLowerCase().replace(/[^a-z0-9]/g, "");
+      for (var i = 4; i < maxRows; i++) {
+        var row = lookupRows[i];
+        if (!row) continue;
+        var checkListing = row[1] != null ? row[1].toString().trim().toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+        if (checkListing !== "" && checkListing === cleanTargetId) {
+          targetRow = i + 1;
+          break;
+        }
+      }
+    }
+    
+    if (targetRow === -1) {
+      for (var i = 4; i < maxRows; i++) {
+        var row = lookupRows[i];
+        if (!row) continue;
+        var checkListing = row[1] != null ? row[1].toString().trim() : "";
+        var checkNamaMe = row[2] != null ? row[2].toString().trim() : "";
+        var checkLokasi = row[5] != null ? row[5].toString().trim() : "";
+        
+        if (checkListing === "" && checkNamaMe === "" && checkLokasi === "") {
+          targetRow = i + 1;
+          break;
+        }
       }
     }
     
     if (targetRow === -1) {
       targetRow = sheet.getLastRow() + 1;
     }
+
+    var isFuSheet = sheetName.toLowerCase().indexOf("foto ulang") !== -1;
+    if (isFuSheet && (!params.tanggal || params.tanggal === "")) {
+      tanggal = ""; // Kolom Fix Date tetap kosong
+    }
     
-    sheet.getRange(targetRow, 2).setValue(idListing);
-    sheet.getRange(targetRow, 3).setValue(namaMe);
-    sheet.getRange(targetRow, 4).setValue(staff);
-    sheet.getRange(targetRow, 5).setValue(tanggal);
-    sheet.getRange(targetRow, 6).setValue(lokasi);
-    sheet.getRange(targetRow, 7).setValue(jam);
-    sheet.getRange(targetRow, 8).setValue(type);
+    // Batch write kolom 2 s/d 10 (B s/d J)
+    sheet.getRange(targetRow, 2, 1, 9).setValues([[
+      idListing,
+      namaMe,
+      staff,
+      tanggal,
+      lokasi,
+      jam,
+      type,
+      status,
+      source
+    ]]);
     
     var statusCell = sheet.getRange(targetRow, 9);
-    statusCell.setValue(status);
     if (status.toString().toUpperCase() === "DONE") {
       statusCell.setBackground("#00FF00");
       statusCell.setFontColor("#000000");
@@ -607,10 +632,8 @@ function doPost(e) {
       statusCell.setHorizontalAlignment("left");
     }
     
-    sheet.getRange(targetRow, 10).setValue(source);
-    
     try {
-      if (idListing && idListing.toString().trim() !== "") {
+      if (!isFuSheet && idListing && idListing.toString().trim() !== "") {
         var eMock = { range: sheet.getRange(targetRow, 2), value: idListing };
         onEditAutoFillSheet3(eMock);
       }
@@ -723,6 +746,7 @@ function addWeeklyMeetingListing(data) {
   var namaMe = data.namaMe ? data.namaMe.toString().trim() : "";
   var keterangan = data.keterangan ? data.keterangan.toString().trim() : "";
   var catatan = data.catatan ? data.catatan.toString().trim() : "";
+  var lokasi = data.lokasi ? data.lokasi.toString().trim() : "";
   
   var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
   var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
@@ -731,27 +755,20 @@ function addWeeklyMeetingListing(data) {
   if (!sheet) {
     return ContentService.createTextOutput(JSON.stringify({
       "status": "error",
-      "message": "Sheet dengan nama '" + sheetName + "' tidak ditemukan."
+      "message": "Sheet untuk bulan '" + sheetName + "' tidak ditemukan di spreadsheet Weekly Meeting."
     })).setMimeType(ContentService.MimeType.JSON);
   }
   
   var colInfo = getMeetingColumnAndMaxRow(dateStr, sheet);
-  if (!colInfo) {
-    return ContentService.createTextOutput(JSON.stringify({
-      "status": "error",
-      "message": "Pemetaan kolom tidak ditemukan untuk tanggal: " + dateStr
-    })).setMimeType(ContentService.MimeType.JSON);
-  }
-  
-  var startRow = 5;
   var colIndex = colInfo.col;
   var maxRow = colInfo.maxRow;
   
   var targetRow = -1;
-  for (var r = startRow; r <= maxRow; r++) {
-    var cellValue = sheet.getRange(r, colIndex).getValue().toString().trim();
-    if (cellValue === "") {
-      targetRow = r;
+  var colData = sheet.getRange(5, colIndex, maxRow - 4, 1).getValues();
+  for (var i = 0; i < colData.length; i++) {
+    var cellVal = colData[i][0] ? colData[i][0].toString().trim() : "";
+    if (cellVal === "") {
+      targetRow = 5 + i;
       break;
     }
   }
@@ -763,15 +780,114 @@ function addWeeklyMeetingListing(data) {
     })).setMimeType(ContentService.MimeType.JSON);
   }
   
-  sheet.getRange(targetRow, colIndex).setValue(idListing);      // Kolom 1: ID Listing
-  sheet.getRange(targetRow, colIndex + 1).setValue(keterangan); // Kolom 2: Keterangan
-  var igCell = sheet.getRange(targetRow, colIndex + 2);         // Kolom 3: Posting IG
-  igCell.setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
-  igCell.setValue(false);
-  sheet.getRange(targetRow, colIndex + 3).setValue("");         // Kolom 4: Jadwal Posting
-  sheet.getRange(targetRow, colIndex + 4).setValue(namaMe);     // Kolom 5: Nama ME
-  sheet.getRange(targetRow, colIndex + 5).setValue(catatan);    // Kolom 6: Catatan
+  // Batch write kolom 1 s/d 6 ke sheet Weekly Meeting:
+  // 1: ID Listing, 2: Keterangan, 3: Posting IG (checkbox false), 4: Jadwal Posting (""), 5: Nama ME, 6: Catatan
+  sheet.getRange(targetRow, colIndex, 1, 6).setValues([[
+    idListing,
+    keterangan,
+    false,
+    "",
+    namaMe,
+    catatan
+  ]]);
+  try {
+    sheet.getRange(targetRow, colIndex + 2).setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
+  } catch(eChk) {}
   
+  // Jika Keterangan adalah "Foto Ulang", masukkan juga ke sheet "Foto Ulang" di spreadsheet RWC - Media Production
+  var ketLow = keterangan.toLowerCase();
+  if (ketLow.indexOf("foto ulang") !== -1 || ketLow.indexOf("ulang") !== -1) {
+    try {
+      var activeSs = SpreadsheetApp.getActiveSpreadsheet();
+      var fotoUlangSheet = activeSs.getSheetByName("Foto Ulang");
+      if (fotoUlangSheet) {
+        var fuMaxRows = 304;
+        var fuLookup = fotoUlangSheet.getRange(1, 1, fuMaxRows, 10).getValues();
+        var fuTargetRow = -1;
+        var alreadyExists = false;
+
+        // 1. Cek apakah idListing sudah ada di sheet Foto Ulang agar TIDAK DOUBLE
+        if (idListing !== "") {
+          var cleanTargetId = idListing.toLowerCase().replace(/[^a-z0-9]/g, "");
+          for (var i = 4; i < fuMaxRows; i++) {
+            var rData = fuLookup[i];
+            if (!rData) continue;
+            var chkId = rData[1] != null ? rData[1].toString().trim() : "";
+            var cleanChkId = chkId.toLowerCase().replace(/[^a-z0-9]/g, "");
+            if (cleanChkId !== "" && cleanChkId === cleanTargetId) {
+              alreadyExists = true;
+              fuTargetRow = i + 1; // Update baris yang sudah ada
+              break;
+            }
+          }
+        }
+
+        // 2. Jika belum ada, cari baris kosong pertama
+        if (!alreadyExists) {
+          for (var i = 4; i < fuMaxRows; i++) {
+            var rData = fuLookup[i];
+            if (!rData) continue;
+            var chkId = rData[1] != null ? rData[1].toString().trim() : "";
+            var chkMe = rData[2] != null ? rData[2].toString().trim() : "";
+            var chkLoc = rData[5] != null ? rData[5].toString().trim() : "";
+            if (chkId === "" && chkMe === "" && chkLoc === "") {
+              fuTargetRow = i + 1;
+              break;
+            }
+          }
+          if (fuTargetRow === -1) {
+            fuTargetRow = fotoUlangSheet.getLastRow() + 1;
+          }
+        }
+
+        // 3. Format Source: contoh 9Juni_R24
+        var dayNum = "";
+        var monthNameIndo = "";
+        if (dateStr) {
+          var dateParts = dateStr.split("-");
+          if (dateParts.length === 3) {
+            dayNum = parseInt(dateParts[2], 10);
+            var mNum = parseInt(dateParts[1], 10);
+            var mNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+            monthNameIndo = (mNum >= 1 && mNum <= 12) ? mNames[mNum - 1] : "";
+          }
+        }
+        if (!monthNameIndo && sheetName) {
+          var mNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+          for (var mi = 0; mi < mNames.length; mi++) {
+            if (sheetName.toLowerCase().indexOf(mNames[mi].toLowerCase()) !== -1) {
+              monthNameIndo = mNames[mi];
+              break;
+            }
+          }
+        }
+        var sourceFormatted = (dayNum && monthNameIndo) ? (dayNum + monthNameIndo + "_R" + targetRow) : ("R" + targetRow);
+
+        // 4. Batch write ke kolom B s/d J (kolom 2 s/d 10):
+        // Col 2: ID Listing
+        // Col 3: Nama ME
+        // Col 4: Staff ("")
+        // Col 5: Fix Date ("" -> KOSONG sesuai permintaan user!)
+        // Col 6: Lokasi
+        // Col 7: Jam ("")
+        // Col 8: Type ("Foto Ulang")
+        // Col 9: Status ("Pending")
+        // Col 10: Source (sourceFormatted, misal "9Juni_R24")
+        fotoUlangSheet.getRange(fuTargetRow, 2, 1, 9).setValues([[
+          idListing,
+          namaMe,
+          "",
+          "",
+          lokasi,
+          "",
+          "Foto Ulang",
+          "Pending",
+          sourceFormatted
+        ]]);
+      }
+    } catch(eFu) {}
+  }
+
   return ContentService.createTextOutput(JSON.stringify({
     "status": "success",
     "message": "Berhasil menambahkan listing " + idListing + " ke tanggal " + dateStr
@@ -1238,8 +1354,24 @@ function getAbsensiMeeting(e) {
   var totalCol = config.total;
   var numCols = endCol - startCol + 1;
   
-  var namesRange = sheet.getRange("B6:B41");
-  var namesValues = namesRange.getValues();
+  var lastRow = sheet.getLastRow();
+  var scanMax = Math.max(1, lastRow - 5);
+  var rawColB = sheet.getRange(6, 2, scanMax, 1).getValues();
+  var numAgents = 0;
+  var totalRowIdx = -1;
+  for (var k = 0; k < rawColB.length; k++) {
+    var strB = rawColB[k][0] ? rawColB[k][0].toString().trim() : "";
+    if (strB.toLowerCase().indexOf("total") !== -1 || strB.toLowerCase().indexOf("jumlah") !== -1) {
+      totalRowIdx = 6 + k;
+      break;
+    }
+    if (strB !== "") {
+      numAgents = k + 1;
+    }
+  }
+  if (numAgents === 0) numAgents = Math.min(36, scanMax);
+  
+  var namesValues = sheet.getRange(6, 2, numAgents, 1).getValues();
   
   var headerRange = sheet.getRange(4, startCol, 2, numCols);
   var headerValues = headerRange.getValues();
@@ -1267,10 +1399,11 @@ function getAbsensiMeeting(e) {
     });
   }
   
-  var dataRange = sheet.getRange(6, startCol, 36, numCols + 1);
+  var dataRange = sheet.getRange(6, startCol, numAgents, numCols + 1);
   var dataValues = dataRange.getValues();
   
-  var totalDateRange = sheet.getRange(47, startCol, 1, numCols);
+  var actualTotalRow = (totalRowIdx !== -1) ? totalRowIdx : 47;
+  var totalDateRange = sheet.getRange(actualTotalRow, startCol, 1, numCols);
   var totalDateValues = totalDateRange.getValues();
   
   var marketingList = [];
@@ -1326,7 +1459,7 @@ function updateAbsensiMeeting(data) {
   var col = parseInt(data.col, 10);
   var present = (data.present === "true" || data.present === true);
   
-  if (isNaN(row) || isNaN(col) || row < 6 || row > 41 || col < 4) {
+  if (isNaN(row) || isNaN(col) || row < 6 || row > 100 || col < 4) {
     return ContentService.createTextOutput(JSON.stringify({
       status: "error",
       message: "Parameter row (" + row + ") atau col (" + col + ") tidak valid."
@@ -1362,8 +1495,18 @@ function updateAbsensiMeeting(data) {
     }
   }
   
+  var actualTotalRow = 47;
+  var colBCheck = sheet.getRange(6, 2, Math.max(1, sheet.getLastRow() - 5), 1).getValues();
+  for (var k = 0; k < colBCheck.length; k++) {
+    var v = colBCheck[k][0] ? colBCheck[k][0].toString().trim().toLowerCase() : "";
+    if (v.indexOf("total") !== -1 || v.indexOf("jumlah") !== -1) {
+      actualTotalRow = 6 + k;
+      break;
+    }
+  }
+
   var newRowTotal = sheet.getRange(row, totalCol).getValue();
-  var newColTotal = sheet.getRange(47, col).getValue();
+  var newColTotal = sheet.getRange(actualTotalRow, col).getValue();
   
   return ContentService.createTextOutput(JSON.stringify({
     status: "success",
