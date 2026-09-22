@@ -1319,8 +1319,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         }
 
         val cleanId = idListing.trim()
-        val isFotoUlang = keterangan.trim().contains("foto ulang", ignoreCase = true) ||
-                          keterangan.trim().equals("foto ulang", ignoreCase = true) ||
+        val isFotoUlang = keterangan.trim().equals("foto ulang", ignoreCase = true) ||
                           keterangan.trim().equals("ulang", ignoreCase = true)
 
         // 1. Hitung perkiraan baris untuk tampilan langsung
@@ -1484,8 +1483,10 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         val client = okhttp3.OkHttpClient.Builder()
             .sslSocketFactory(sslSocketFactory, trustAllCerts[0] as javax.net.ssl.X509TrustManager)
             .hostnameVerifier { _, _ -> true }
-            .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             .followRedirects(true)
             .followSslRedirects(true)
             .build()
@@ -2187,10 +2188,40 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                                 } else {
                                     src
                                 }
-                                if (!allImages.contains(fullUrl)) {
-                                    allImages.add(fullUrl)
+                                val unwrappedUrl = if (fullUrl.contains("Proxy?url=")) {
+                                    try {
+                                        val queryParam = fullUrl.substringAfter("Proxy?url=")
+                                        val decoded = java.net.URLDecoder.decode(queryParam, "UTF-8")
+                                        if (decoded.startsWith("http")) decoded else fullUrl
+                                    } catch (_: Exception) { fullUrl }
+                                } else {
+                                    fullUrl
+                                }
+                                if (!allImages.contains(unwrappedUrl)) {
+                                    allImages.add(unwrappedUrl)
                                 }
                             }
+                        }
+                        
+                        // Fallback API if no property images parsed from HTML
+                        if (allImages.isEmpty()) {
+                            try {
+                                val fallbackReq = okhttp3.Request.Builder()
+                                    .url("https://raywhitecipete.net/SocialMedia/Home/GetListingImageByIdListing?id=$cleanId")
+                                    .header("User-Agent", "Mozilla/5.0")
+                                    .build()
+                                client.newCall(fallbackReq).execute().use { resp ->
+                                    if (resp.isSuccessful) {
+                                        val jsonStr = resp.body?.string() ?: ""
+                                        val regex = """"(?:url|Url|path|Path|src|Src|imageUrl)":\s*"([^"]+)"""".toRegex()
+                                        for (match in regex.findAll(jsonStr)) {
+                                            val raw = match.groupValues[1].replace("\\/", "/")
+                                            if (raw.startsWith("http") && !allImages.contains(raw)) allImages.add(raw)
+                                            else if (raw.startsWith("/") && !allImages.contains("https://raywhitecipete.net" + raw)) allImages.add("https://raywhitecipete.net" + raw)
+                                        }
+                                    }
+                                }
+                            } catch (_: Exception) {}
                         }
                         
                         // Extract Agent Personal Photo from HTML (using precise CSS selectors matching user's xpath, or falling back)

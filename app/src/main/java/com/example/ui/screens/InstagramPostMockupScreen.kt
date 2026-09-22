@@ -42,7 +42,7 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.data.EditFotoTask
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InstagramPostMockupScreen(
     task: EditFotoTask,
@@ -54,13 +54,78 @@ fun InstagramPostMockupScreen(
     allMeetingListings: List<com.example.network.MeetingListing> = emptyList(),
     viewModel: com.example.ui.ScheduleViewModel? = null,
     onDismiss: () -> Unit,
-    onViewDetails: () -> Unit
+    onViewDetails: () -> Unit = {}
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = Color(0xFF000000) // Pure Black Instagram style
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Header of screen
+                CenterAlignedTopAppBar(
+                    title = {
+                        Text(
+                            "Posts",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 18.sp
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Kembali",
+                                tint = Color.White
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = Color(0xFF000000)
+                    ),
+                    modifier = Modifier.height(48.dp)
+                )
+
+                InstagramPostFeedContent(
+                    task = task,
+                    listingImagesMap = listingImagesMap,
+                    listingImagesGalleryMap = listingImagesGalleryMap,
+                    listingDescMap = listingDescMap,
+                    listingPriceMap = listingPriceMap,
+                    listingTitleMap = listingTitleMap,
+                    allMeetingListings = allMeetingListings,
+                    viewModel = viewModel,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun InstagramPostFeedContent(
+    task: EditFotoTask,
+    listingImagesMap: Map<String, String>,
+    listingImagesGalleryMap: Map<String, List<String>>,
+    listingDescMap: Map<String, String>,
+    listingPriceMap: Map<String, String>,
+    listingTitleMap: Map<String, String> = emptyMap(),
+    allMeetingListings: List<com.example.network.MeetingListing> = emptyList(),
+    viewModel: com.example.ui.ScheduleViewModel? = null,
+    isSold: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
     val cleanId = task.idListing.trim()
 
-    LaunchedEffect(viewModel) {
+    LaunchedEffect(viewModel, cleanId) {
+        viewModel?.fetchListingImageIfNeeded(cleanId, task.namaMe)
         viewModel?.fetchYearlyIgPostingHistory()
     }
     val galleryList = if (cleanId.isNotBlank()) listingImagesGalleryMap[cleanId] ?: emptyList() else emptyList()
@@ -130,47 +195,42 @@ fun InstagramPostMockupScreen(
         }
     }
 
-    // Full screen-ish dialog matching IG black style
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+    // Scrollable feed content
+    Column(
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
     ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = Color(0xFF000000) // Pure Black Instagram style
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Header of screen
-                CenterAlignedTopAppBar(
-                    title = {
-                        Text(
-                            "Posts",
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            fontSize = 18.sp
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onDismiss) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Kembali",
-                                tint = Color.White
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = Color(0xFF000000)
-                    ),
-                    modifier = Modifier.height(48.dp)
-                )
-
-                // Scrollable feed content
-                Column(
+        if (isSold) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFE53935)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
                     modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
+                        .padding(14.dp)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = "SOLD",
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "LISTING INI SUDAH SOLD (TERJUAL)",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        }
                     // IG User Header Row
                     Row(
                         modifier = Modifier
@@ -1281,9 +1341,6 @@ fun InstagramPostMockupScreen(
 
                     Spacer(modifier = Modifier.height(40.dp))
                 }
-            }
-        }
-    }
 
     if (showRwcDownloadDialog) {
         val initialHeadline = remember(task.judul, task.editNotes, scrapedTitle, rawDesc, cleanId) {

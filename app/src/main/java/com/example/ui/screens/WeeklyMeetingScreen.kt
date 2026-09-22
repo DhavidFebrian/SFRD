@@ -768,6 +768,7 @@ fun WeeklyMeetingScreen(
                                                 price = listingPriceMap[listing.idListing.trim()],
                                                 agentInfo = agentInfoMap[listing.idListing.trim()],
                                                 isSold = listingSoldMap[listing.idListing.trim()] == true,
+                                                onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, listing.namaMe) },
                                                 onClick = {
                                                     selectedListingForDetail = listing
                                                 }
@@ -783,6 +784,7 @@ fun WeeklyMeetingScreen(
                                                     price = listingPriceMap[listing.idListing.trim()],
                                                     agentInfo = agentInfoMap[listing.idListing.trim()],
                                                     isSold = listingSoldMap[listing.idListing.trim()] == true,
+                                                    onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, listing.namaMe) },
                                                     onClick = {
                                                         selectedListingForDetail = listing
                                                     }
@@ -825,6 +827,15 @@ fun WeeklyMeetingScreen(
             onDismiss = { selectedListingForDetail = null },
             onEditMeetingListing = {
                 selectedListingForEdit = listing
+            },
+            onDeleteMeetingListing = {
+                viewModel.deleteWeeklyMeetingListing(
+                    month = selectedMonth ?: "",
+                    dateStr = selectedDate ?: "",
+                    row = listing.no,
+                    colIndex = listing.colIndex,
+                    idListing = listing.idListing
+                ) { _, _ -> }
             }
         )
     }
@@ -895,8 +906,15 @@ fun MeetingListingCard(
     price: String?,
     agentInfo: AgentInfo?,
     isSold: Boolean,
+    onFetchImage: ((String) -> Unit)? = null,
     onClick: () -> Unit
 ) {
+    LaunchedEffect(listing.idListing, imageUrl) {
+        if (imageUrl == null && listing.idListing.isNotBlank()) {
+            onFetchImage?.invoke(listing.idListing.trim())
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()

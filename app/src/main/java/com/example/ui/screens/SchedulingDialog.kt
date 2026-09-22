@@ -38,6 +38,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.example.ui.ScheduleViewModel
 import com.example.ui.SyncState
+import com.example.data.EditFotoTask
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -482,237 +483,32 @@ fun SchedulingDialog(
     if (detailListing != null) {
         val listing = detailListing!!
         val cleanId = listing.idListing.trim()
-        val title = listingTitleMap[cleanId] ?: "Memuat judul..."
-        val price = listingPriceMap[cleanId]
-        val desc = listingDescMap[cleanId]
-        val imageUrl = listingImagesMap[cleanId]
-
-        Dialog(
-            onDismissRequest = { detailListing = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = true)
-        ) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.85f)
-                    .padding(16.dp),
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp
-            ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    // Header
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Box(
-                                modifier = Modifier
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 10.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    "ID: $cleanId",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Detail Listing",
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                            )
-                        }
-                        IconButton(onClick = { detailListing = null }) {
-                            Icon(Icons.Default.Close, contentDescription = "Tutup")
-                        }
-                    }
-
-                    HorizontalDivider()
-
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState())
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        // Thumbnail + basic info
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(90.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (imageUrl != null) {
-                                    AsyncImage(
-                                        model = imageUrl,
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                } else {
-                                    Icon(Icons.Default.HomeWork, contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(36.dp))
-                                }
-                            }
-
-                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(
-                                    text = title,
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                    maxLines = 3, overflow = TextOverflow.Ellipsis
-                                )
-                                if (!price.isNullOrBlank()) {
-                                    Text(
-                                        text = price,
-                                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Black),
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(Icons.Default.Person, contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(12.dp))
-                                    Text(
-                                        text = "ME: ${listing.namaMe.uppercase()}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-
-                        // Status badges row
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // Pernah diposting badge
-                            val wasPosted = listing.postingIg.trim().lowercase() in listOf("done", "ya", "yes", "true", "✔", "1")
-                            val hadSchedule = listing.jadwalPosting.trim().let { j ->
-                                j.isNotEmpty() && j != "-" && !j.lowercase().contains("belum")
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (wasPosted) Color(0xFF4CAF50).copy(alpha = 0.15f)
-                                        else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (wasPosted) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                                        contentDescription = null,
-                                        tint = if (wasPosted) Color(0xFF4CAF50) else MaterialTheme.colorScheme.outline,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text(
-                                        text = if (wasPosted) "Sudah Pernah Diposting" else "Belum Pernah Diposting",
-                                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                        color = if (wasPosted) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-
-                            if (hadSchedule && !wasPosted) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.4f)
-                                ) {
-                                    Text(
-                                        text = "Pernah dijadwalkan",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.tertiary,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        // Catatan
-                        if (listing.catatan.trim().isNotEmpty()) {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(10.dp),
-                                    verticalAlignment = Alignment.Top,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(Icons.Default.StickyNote2, contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(16.dp))
-                                    Text(
-                                        text = "Catatan: ${listing.catatan}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-
-                        // Deskripsi lengkap dari web
-                        if (!desc.isNullOrBlank()) {
-                            Column {
-                                Text(
-                                    text = "Deskripsi Listing (Web)",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    color = MaterialTheme.colorScheme.background,
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                ) {
-                                    Text(
-                                        text = desc,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
-                                        modifier = Modifier.padding(12.dp),
-                                        lineHeight = 18.sp
-                                    )
-                                }
-                            }
-                        } else {
-                            Text(
-                                text = "Deskripsi belum dimuat. Buka app dan biarkan data listing ter-fetch.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline,
-                                fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                            )
-                        }
-                    }
-
-                    // Bottom: Atur Tanggal button
-                    HorizontalDivider()
-                    Button(
-                        onClick = {
-                            detailListing = null
-                            showDatePickerForListing = listing
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.EditCalendar, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Atur Tanggal Posting")
-                    }
-                }
-            }
+        val mockTask = remember(listing) {
+            EditFotoTask(
+                no = listing.no,
+                idListing = cleanId,
+                namaMe = listing.namaMe,
+                postingIg = listing.postingIg.lowercase().contains("done") || listing.postingIg.lowercase().contains("ya") || listing.postingIg.lowercase().contains("true"),
+                jadwalPosting = listing.jadwalPosting,
+                editNotes = listing.catatan,
+                done = listing.postingIg.lowercase().contains("done"),
+                judul = listingTitleMap[cleanId] ?: listing.keterangan.ifBlank { "Properti #$cleanId" },
+                source = "Scheduling"
+            )
         }
+        val galleryMap by viewModel.listingImagesGalleryMap.collectAsStateWithLifecycle()
+        InstagramPostMockupScreen(
+            task = mockTask,
+            listingImagesMap = listingImagesMap,
+            listingImagesGalleryMap = galleryMap,
+            listingDescMap = listingDescMap,
+            listingPriceMap = listingPriceMap,
+            listingTitleMap = listingTitleMap,
+            allMeetingListings = igListings,
+            viewModel = viewModel,
+            onDismiss = { detailListing = null },
+            onViewDetails = { detailListing = null }
+        )
     }
 
     // Modern Native Material 3 Date Picker Dialog
@@ -1897,121 +1693,32 @@ fun SchedulingScreenContent(
     if (detailListing != null) {
         val listing = detailListing!!
         val cleanId = listing.idListing.trim()
-        val title = listingTitleMap[cleanId] ?: "Memuat judul..."
-        val price = listingPriceMap[cleanId]
-        val desc = listingDescMap[cleanId]
-        val imageUrl = listingImagesMap[cleanId]
-
-        Dialog(
-            onDismissRequest = { detailListing = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = true)
-        ) {
-            Surface(
-                modifier = Modifier.fillMaxWidth().fillMaxHeight(0.85f).padding(16.dp),
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp
-            ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Box(
-                                modifier = Modifier
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), RoundedCornerShape(8.dp))
-                                    .padding(horizontal = 10.dp, vertical = 4.dp)
-                            ) {
-                                Text("ID: $cleanId",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary)
-                            }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("Detail Listing", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                        }
-                        IconButton(onClick = { detailListing = null }) {
-                            Icon(Icons.Default.Close, contentDescription = "Tutup")
-                        }
-                    }
-                    HorizontalDivider()
-                    Column(
-                        modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Box(
-                                modifier = Modifier.size(90.dp).clip(RoundedCornerShape(12.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                if (imageUrl != null) {
-                                    coil.compose.AsyncImage(model = imageUrl, contentDescription = null,
-                                        modifier = Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
-                                } else {
-                                    Icon(Icons.Default.HomeWork, contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(36.dp))
-                                }
-                            }
-                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                    maxLines = 3, overflow = TextOverflow.Ellipsis)
-                                if (!price.isNullOrBlank()) {
-                                    Text(price, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Black),
-                                        color = MaterialTheme.colorScheme.primary)
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Icon(Icons.Default.Person, contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(12.dp))
-                                    Text("ME: ${listing.namaMe.uppercase()}", style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-                        if (listing.catatan.trim().isNotEmpty()) {
-                            Surface(modifier = Modifier.fillMaxWidth(),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
-                                shape = RoundedCornerShape(10.dp)) {
-                                Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.Top,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Icon(Icons.Default.StickyNote2, contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(16.dp))
-                                    Text("Catatan: ${listing.catatan}", style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-                        }
-                        if (!desc.isNullOrBlank()) {
-                            Column {
-                                Text("Deskripsi Listing (Web)",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.primary)
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Surface(modifier = Modifier.fillMaxWidth(),
-                                    color = MaterialTheme.colorScheme.background,
-                                    shape = RoundedCornerShape(10.dp),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))) {
-                                    Text(desc, style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
-                                        modifier = Modifier.padding(12.dp), lineHeight = 18.sp)
-                                }
-                            }
-                        }
-                    }
-                    HorizontalDivider()
-                    Button(
-                        onClick = { detailListing = null; showDatePickerForListing = listing },
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(Icons.Default.EditCalendar, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Atur Tanggal Posting")
-                    }
-                }
-            }
+        val mockTask = remember(listing) {
+            EditFotoTask(
+                no = listing.no,
+                idListing = cleanId,
+                namaMe = listing.namaMe,
+                postingIg = listing.postingIg.lowercase().contains("done") || listing.postingIg.lowercase().contains("ya") || listing.postingIg.lowercase().contains("true"),
+                jadwalPosting = listing.jadwalPosting,
+                editNotes = listing.catatan,
+                done = listing.postingIg.lowercase().contains("done"),
+                judul = listingTitleMap[cleanId] ?: listing.keterangan.ifBlank { "Properti #$cleanId" },
+                source = "Scheduling"
+            )
         }
+        val galleryMap by viewModel.listingImagesGalleryMap.collectAsStateWithLifecycle()
+        InstagramPostMockupScreen(
+            task = mockTask,
+            listingImagesMap = listingImagesMap,
+            listingImagesGalleryMap = galleryMap,
+            listingDescMap = listingDescMap,
+            listingPriceMap = listingPriceMap,
+            listingTitleMap = listingTitleMap,
+            allMeetingListings = igListings,
+            viewModel = viewModel,
+            onDismiss = { detailListing = null },
+            onViewDetails = { detailListing = null }
+        )
     }
 
     // Date picker

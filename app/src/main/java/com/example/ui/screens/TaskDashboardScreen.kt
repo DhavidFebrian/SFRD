@@ -526,7 +526,7 @@ fun TaskDashboardScreen(
                                             listingSoldMap = listingSoldMap,
                                             onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, item.namaMe) },
                                             onDelete = { scheduleToDelete = item },
-                                            onClick = { selectedTaskForIgMockup = mapScheduleToEditFotoTask(item) }
+                                            onClick = { selectedScheduleForDetail = item }
                                         )
                                     }
                                 }
@@ -542,7 +542,7 @@ fun TaskDashboardScreen(
                                             onDownloadPhotos = { activeTaskForDownload = item },
                                             onDelete = { taskEditToDelete = item },
                                             onClick = {
-                                                selectedTaskForIgMockup = item
+                                                selectedScheduleForDetail = mapEditFotoToSchedule(item)
                                             }
                                         )
                                     }

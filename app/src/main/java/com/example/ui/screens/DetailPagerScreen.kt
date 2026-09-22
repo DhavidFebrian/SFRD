@@ -57,7 +57,8 @@ fun DetailPagerScreen(
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
     onNavigateToChat: (() -> Unit)? = null,
-    onEditMeetingListing: (() -> Unit)? = null
+    onEditMeetingListing: (() -> Unit)? = null,
+    onDeleteMeetingListing: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -113,7 +114,7 @@ fun DetailPagerScreen(
                         Text(
                             text = when (pagerState.currentPage) {
                                 0 -> "Halaman Edit Jadwal"
-                                1 -> "Halaman Detail"
+                                1 -> "Halaman Posts"
                                 else -> "Halaman Follow Up WhatsApp"
                             },
                             style = MaterialTheme.typography.labelSmall,
@@ -151,6 +152,15 @@ fun DetailPagerScreen(
                                 )
                             }
                         }
+                        if (onDeleteMeetingListing != null) {
+                            IconButton(onClick = { showDeleteConfirmDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Hapus Data Meeting",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
                     } else {
                         IconButton(onClick = { showDeleteConfirmDialog = true }) {
                             Icon(
@@ -180,9 +190,7 @@ fun DetailPagerScreen(
             }
         },
         bottomBar = {
-            val isMeetingResult = schedule.type == "Meeting Result"
-            if (!isMeetingResult) {
-                Surface(
+            Surface(
                     color = Color.Transparent,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -195,7 +203,7 @@ fun DetailPagerScreen(
                     ) {
                         val items = listOf(
                             Triple(0, Icons.Default.Edit, "Edit Jadwal"),
-                            Triple(1, Icons.Default.Info, "Detail Listing"),
+                            Triple(1, Icons.Default.GridOn, "Posts"),
                             Triple(2, Icons.Default.Chat, "Follow Up")
                         )
                         
@@ -264,12 +272,10 @@ fun DetailPagerScreen(
                     }
                 }
             }
-        }
     ) { innerPadding ->
-        val isMeetingResult = schedule.type == "Meeting Result"
         HorizontalPager(
             state = pagerState,
-            userScrollEnabled = !isMeetingResult,
+            userScrollEnabled = true,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
@@ -330,7 +336,10 @@ fun DetailPagerScreen(
                 Button(
                     onClick = {
                         showDeleteConfirmDialog = false
-                        if (isEditFoto) {
+                        val isMeetingResult = schedule.type == "Meeting Result"
+                        if (isMeetingResult) {
+                            onDeleteMeetingListing?.invoke()
+                        } else if (isEditFoto) {
                             val editFotoTask = com.example.data.EditFotoTask(
                                 id = schedule.id,
                                 no = schedule.no,
@@ -1268,539 +1277,43 @@ fun PageDetailHome(
     onBack: () -> Unit = {}
 ) {
     val cleanId = schedule.idListing.trim()
-    val galleryList = if (cleanId.isNotBlank()) listingImagesGalleryMap[cleanId] ?: emptyList() else emptyList()
-    val fallbackImg = if (cleanId.isNotBlank()) listingImagesMap[cleanId] else null
-    val imagesToDisplay = remember(galleryList, fallbackImg) {
-        val rawList = if (galleryList.isNotEmpty()) galleryList else listOfNotNull(fallbackImg)
-        rawList.filter { img ->
-            val lower = img.lowercase()
-            !lower.contains("agent") &&
-            !lower.contains("profile") &&
-            !lower.contains("team") &&
-            !lower.contains("member") &&
-            !lower.contains("staff") &&
-            !lower.contains("/me/") &&
-            !lower.contains("avatar")
-        }
-    }
-    
-    val agentInfo = if (cleanId.isNotBlank()) agentInfoMap[cleanId] else null
-    
-    val finalAgentName = agentInfo?.name?.ifBlank { schedule.namaMe } ?: schedule.namaMe
-    val agentNamesList = remember(finalAgentName) {
-        com.example.ui.parseMultipleAgentNames(finalAgentName)
+    val listingTitleMap by viewModel.listingTitleMap.collectAsState()
+    val allMeetingListings by viewModel.meetingListings.collectAsState()
+
+    val isPosted = schedule.status.trim().lowercase() in listOf("done", "ya", "yes", "true", "✔", "1")
+    val taskJudul = if (schedule.lokasi.isNotBlank()) schedule.lokasi else "Properti #$cleanId"
+    val postTask = remember(schedule) {
+        com.example.data.EditFotoTask(
+            id = schedule.id,
+            no = schedule.no,
+            idListing = cleanId,
+            namaMe = schedule.namaMe,
+            postingIg = isPosted,
+            jadwalPosting = schedule.tanggal,
+            editNotes = if (schedule.type == "Meeting Result") schedule.lokasi else schedule.type,
+            done = schedule.status.equals("done", ignoreCase = true),
+            judul = taskJudul,
+            source = schedule.sheetName
+        )
     }
 
-    // Retrieve scraped price & description
-    val rawPrice = listingPriceMap[cleanId]
-    val price = if (rawPrice.isNullOrBlank() && isScraping) {
-        "Memuat Harga..."
-    } else {
-        rawPrice ?: "Rp. Hubungi Agent"
-    }
-
-    val rawDesc = listingDescMap[cleanId] ?: ""
-    val description = if (rawDesc.isBlank() && isScraping) {
-        "Sedang mengambil deskripsi properti lengkap dari website..."
-    } else if (rawDesc.isBlank()) {
-        "Deskripsi tidak tersedia di websiteListing. Silakan hubungi agent terkait."
-    } else {
-        cleanListingDescription(rawDesc)
-            .replace("\r", "")
-            .replace("(?m)^[ \t]*\r?\n".toRegex(), "\n")
-            .replace(" {2,}".toRegex(), " ")
-            .trim()
-    }
-
-    val isRent = price.lowercase().contains("sewa") || 
-                 price.lowercase().contains("/th") || 
-                 price.lowercase().contains("/bln") || 
-                 description.lowercase().contains("disewakan") || 
-                 description.lowercase().contains("sewa ") || 
-                 description.lowercase().contains("rental") ||
-                 schedule.type.lowercase().contains("sewa") ||
-                 schedule.type.lowercase().contains("rent")
-    
-    val priceHeaderLabel = if (cleanId == "12503") "For Sale" else (if (isRent) "For Rent" else "For Sale")
-
-    val igListingsState by viewModel.weeklyMeetingIgListings.collectAsState()
-    val meetingListingsState by viewModel.meetingListings.collectAsState()
-    val editFotoTasksState by viewModel.allEditFotoTasks.collectAsState()
-    val localYearlyIgHistory by viewModel.yearlyIgPostingHistory.collectAsState()
-    val igHistory = remember(cleanId, igListingsState, editFotoTasksState, localYearlyIgHistory) {
-        viewModel.getIgPostingHistory(cleanId)
-    }
-
-    Column(
+       Box(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .background(Color(0xFF000000))
     ) {
-        IgPostingInfoCard(history = igHistory)
-
-        if (isSold) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = Color.Red),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = "SOLD",
-                        tint = Color.White,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "LISTING INI SUDAH SOLD (TERJUAL)",
-                        color = Color.White,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                        textAlign = TextAlign.Center
-                    )
-                }
-            }
-        }
-        
-        // 1. Sliding property photo gallery
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = "Galeri Foto Properti",
-                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.primary
-            )
-            
-            if (imagesToDisplay.isEmpty()) {
-                if (isScraping) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), shape = RoundedCornerShape(16.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                            Text(
-                                text = "Mengambil foto properti dari website...",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(100.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), shape = RoundedCornerShape(16.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Tidak ada foto properti tersedia.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            } else {
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val carouselImages = imagesToDisplay
-
-                    itemsIndexed(carouselImages) { index, img ->
-                        Card(
-                            modifier = Modifier
-                                .width(180.dp)
-                                .height(240.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                        ) {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                AsyncImage(
-                                    model = img,
-                                    contentDescription = "Foto Listing $cleanId - Slide ${index+1}",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
-                                if (isSold) {
-                                    SoldWatermark()
-                                }
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .align(Alignment.BottomCenter)
-                                        .background(Color.Black.copy(alpha = 0.4f))
-                                        .padding(vertical = 4.dp)
-                                ) {
-                                    Text(
-                                        text = "Slide ${index + 1} dari ${carouselImages.size}",
-                                        color = Color.White,
-                                        fontSize = 11.sp,
-                                        modifier = Modifier.fillMaxWidth(),
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // 2. Marketing Executive (ME) Full Width Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text(
-                    text = if (agentNamesList.size > 1) "Marketing Executives (Co-listing)" else "Marketing Executive (ME)",
-                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.primary
-                )
-                
-                agentNamesList.forEachIndexed { index, namePart ->
-                    if (index > 0) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                    }
-                    
-                    val contact = com.example.ui.findContact(namePart)
-                    val meDisplayName = contact?.let { capitalizeName(it.nameKey) } ?: capitalizeName(namePart)
-                    
-                    var mePhone = contact?.phone ?: com.example.ui.getAgentPhoneByName(namePart)
-                    if (mePhone.isBlank()) {
-                        mePhone = "085169671344" // default
-                    }
-                    val meEmail = contact?.email ?: com.example.ui.getAgentEmailByName(namePart)
-                    val meIg = contact?.instagram ?: com.example.ui.getAgentInstagramByName(namePart)
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Agent Avatar / Initials
-                        Card(
-                            modifier = Modifier.size(64.dp),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Box(modifier = Modifier.fillMaxSize()) {
-                                val avatars = remember(agentInfo) {
-                                    agentInfo?.avatarUrl?.split(",")?.map { it.trim() }?.filter { it.isNotBlank() } ?: emptyList()
-                                }
-                                val meAvatarUrl = if (index < avatars.size) {
-                                    avatars[index]
-                                } else {
-                                    ""
-                                }
-                                if (meAvatarUrl.isNotBlank()) {
-                                    AsyncImage(
-                                        model = meAvatarUrl,
-                                        contentDescription = "Foto Agent",
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(MaterialTheme.colorScheme.primaryContainer),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        val initials = meDisplayName.split(" ")
-                                            .filter { it.isNotBlank() }
-                                            .take(2)
-                                            .map { it.first().uppercaseChar() }
-                                            .joinToString("")
-                                        Text(
-                                            text = initials.ifEmpty { "ME" },
-                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Agent Info Column
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
-                        ) {
-                            Text(
-                                text = meDisplayName,
-                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-
-                            // WhatsApp Row
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Call,
-                                    contentDescription = "WhatsApp",
-                                    tint = Color(0xFF25D366),
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Text(
-                                    text = mePhone,
-                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-
-                            // Email Row
-                            if (meEmail.isNotBlank()) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Email,
-                                        contentDescription = "Email",
-                                        tint = Color(0xFFEA4335),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text(
-                                        text = meEmail,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            // Instagram Row
-                            val igDisplay = if (meIg.isNotBlank() && !meIg.startsWith("@")) "@$meIg" else meIg
-                            if (igDisplay.isNotBlank()) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.AlternateEmail,
-                                        contentDescription = "Instagram",
-                                        tint = Color(0xFFE1306C),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text(
-                                        text = igDisplay,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3. Pricing Card (Full Width)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = priceHeaderLabel,
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = price,
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Black),
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-        }
-
-        // 4. Deskripsi Card (Full Width - Text displays perfectly with wrap)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = "Deskripsi Properti",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodyMedium.copy(lineHeight = 20.sp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        
-        // Removed guidance slide card indicator as requested by user - bottom navigation is already fixed below.
-
-        // 4. Details parameters info card
-        if (schedule.type == "Meeting Result") {
-            val meetingListing = remember(cleanId, igListingsState, meetingListingsState) {
-                meetingListingsState.find { it.idListing.trim().equals(cleanId, ignoreCase = true) }
-                    ?: igListingsState.find { it.idListing.trim().equals(cleanId, ignoreCase = true) }
-            }
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Detail Hasil Meeting",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        
-                        val isPosted = meetingListing?.postingIg?.lowercase()?.contains("done") == true || 
-                                       meetingListing?.postingIg?.lowercase()?.contains("ya") == true || 
-                                       meetingListing?.postingIg?.lowercase()?.contains("true") == true ||
-                                       meetingListing?.postingIg == "1"
-                        
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    color = if (isPosted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
-                                    shape = RoundedCornerShape(100.dp)
-                                )
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = if (isPosted) "Posting IG: Done" else "Posting IG: Pending",
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = if (isPosted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                        }
-                    }
-                    
-                    HorizontalDivider()
-                    
-                    val dispKeterangan = meetingListing?.keterangan?.ifBlank { schedule.lokasi } ?: schedule.lokasi
-                    val dispCatatan = meetingListing?.catatan?.ifBlank { "-" } ?: "-"
-                    val dispJadwal = meetingListing?.jadwalPosting?.ifBlank { "-" } ?: "-"
-                    
-                    InfoRow(label = "ID Listing", value = cleanId.ifBlank { "Unassigned" })
-                    InfoRow(label = "Nama ME", value = meetingListing?.namaMe?.ifBlank { schedule.namaMe } ?: schedule.namaMe)
-                    InfoRow(label = "Keterangan", value = dispKeterangan)
-                    InfoRow(label = "Jadwal Posting IG", value = dispJadwal)
-                    InfoRow(label = "Catatan Hasil Meeting", value = dispCatatan)
-                }
-            }
-        } else {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Informasi Kegiatan",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        
-                        val isDone = schedule.status.lowercase().contains("done") || schedule.type.lowercase().contains("done")
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    color = if (isDone) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer,
-                                    shape = RoundedCornerShape(100.dp)
-                                )
-                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                        ) {
-                            Text(
-                                text = schedule.status,
-                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                                color = if (isDone) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                        }
-                    }
-                    
-                    HorizontalDivider()
-                    
-                    // Fields
-                    if (schedule.type == "Edit Foto") {
-                        val isDone = schedule.status == "Done"
-                        val notesPart = schedule.lokasi.replace("[Posting IG: Ya] ", "").replace("[Posting IG: Tidak] ", "")
-                        val isPostingIg = schedule.lokasi.contains("[Posting IG: Ya]")
-
-                        InfoRow(label = "ID Listing", value = cleanId.ifBlank { "Unassigned" })
-                        InfoRow(label = "Kategori / Tipe", value = "Edit Jadwal Posting IG RWC")
-                        InfoRow(label = "Nama ME", value = schedule.namaMe)
-                        InfoRow(label = "Keterangan Edit", value = notesPart.ifBlank { "-" })
-                        InfoRow(label = "Jadwal Posting IG", value = schedule.tanggal)
-                        InfoRow(label = "Judul Postingan IG", value = schedule.jam.ifBlank { "-" })
-                        InfoRow(label = "Source", value = schedule.staff.ifBlank { "-" })
-                        InfoRow(label = "Posting IG", value = if (isPostingIg) "Ceklis Done (Ya)" else "Belum Posting")
-                        InfoRow(label = "Status Edit", value = if (isDone) "Ceklis Done (Selesai)" else "Pending")
-                    } else {
-                        InfoRow(label = "ID Listing", value = cleanId.ifBlank { "Unassigned" })
-                        InfoRow(label = "Kategori / Tipe", value = schedule.type)
-                        InfoRow(label = "Lokasi", value = schedule.lokasi)
-                        InfoRow(label = "Tanggal Sesi", value = formatIndonesianDate(schedule.tanggal))
-                        InfoRow(label = "Waktu Sesi", value = formatTwelveHourTime(schedule.jam))
-                        InfoRow(label = "Runner (Staff)", value = schedule.staff)
-                    }
-                    InfoRow(label = "Sinkronisasi Sheets", value = if (schedule.synced) "Sudah Sinkron" else "Tertunda (Sinyal/Offline)")
-                }
-            }
-        }
-        
-        Spacer(modifier = Modifier.height(40.dp))
+        InstagramPostFeedContent(
+            task = postTask,
+            listingImagesMap = listingImagesMap,
+            listingImagesGalleryMap = listingImagesGalleryMap,
+            listingDescMap = listingDescMap,
+            listingPriceMap = listingPriceMap,
+            listingTitleMap = listingTitleMap,
+            allMeetingListings = allMeetingListings,
+            viewModel = viewModel,
+            isSold = isSold,
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 
