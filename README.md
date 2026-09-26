@@ -79,14 +79,72 @@ Aplikasi SFRD terdiri dari modul-modul utama berikut yang saling terintegrasi:
 
 ## 🛠️ Tech Stack & Arsitektur Sistem
 
+Lihat dokumentasi lengkap diagram interaksi dan alur kerja di: 👉 [**`docs/DIAGRAM_ALUR.md`**](docs/DIAGRAM_ALUR.md)
+
+### Diagram Alur Global:
 ```mermaid
-graph TD
-    A[Aplikasi Android SFRD] <-->|Google Apps Script API| B(Google Sheets Database)
-    A -->|GitHub Releases API| C(GitHub Repo SFRD-5.0)
-    C -->|Download APK| A
-    A -->|Fetch PDF & Aset Gambar| D(Ray White Cipete Web Portal)
-    A -->|Lokal PDF Engine 3:4 & Cover HD| E(File PDF Terenkapsulasi)
-    E -->|Share File| F(WhatsApp Business / Client)
+flowchart TB
+    subgraph Client["📱 Android Client (SFRD App)"]
+        UI["Jetpack Compose UI (Material 3)"]
+        VM["ScheduleViewModel (StateFlow & Coroutines)"]
+        Repo["ScheduleRepository & Local DB (Room / Coil Cache)"]
+        PDF["Local PDF 3:4 Engine & Image Processor"]
+        Face["ML Kit Face Recognition & PIN Helper"]
+    end
+
+    subgraph Backend["☁️ Google Workspace Backend"]
+        GAS["Google Apps Script Web App (/exec)"]
+        Sheets[("Google Sheets Database")]
+    end
+
+    subgraph External["🌍 Layanan Eksternal"]
+        Portal["Ray White Cipete Web Portal"]
+        GitHub["GitHub Releases API (Auto Update)"]
+        WhatsApp["WhatsApp Business / Messenger"]
+    end
+
+    UI <-->|UI Event / State Binding| VM
+    VM <-->|Data Request & Cache| Repo
+    VM -->|Render & Export| PDF
+    VM -->|Verify Attendance| Face
+
+    Repo <-->|Bi-directional Sync (JSON REST)| GAS
+    GAS <-->|Read / Write Cells| Sheets
+    Repo -->|Scrape Listing & Images| Portal
+    Repo -->|Check Version & Download APK| GitHub
+    PDF -->|Share Encapsulated PDF / Text Report| WhatsApp
+```
+
+### Diagram Alur Kerja Pengguna (User Flowchart):
+```mermaid
+flowchart TD
+    Start([Buka SFRD]) --> Init[Inisialisasi Cache & DB]
+    Init --> CheckUpdate{Cek Versi Baru?}
+    CheckUpdate -- Ada Update --> DownloadAPK[Download APK & Update via FileProvider]
+    CheckUpdate -- Terkini --> CheckGAS{Apps Script URL Siap?}
+    CheckGAS -- Belum --> SetupURL[Input URL di Settings Screen]
+    SetupURL --> CheckGAS
+    CheckGAS -- Sudah --> MainTabs{Pilih Menu}
+
+    MainTabs --> TabMeeting[Weekly Meeting]
+    TabMeeting --> InputProp[Input Listing & Tag HOT/IG/Foto Ulang]
+    InputProp --> SyncSheet[Sinkron ke Google Sheets]
+
+    MainTabs --> TabSchedule[Scheduling Desk]
+    TabSchedule --> PickDate[Pilih Tanggal Posting IG via DatePicker]
+    PickDate --> SyncSheet
+
+    MainTabs --> TabAbsen[Absensi Rapat]
+    TabAbsen --> AbsenOpt[Face Recognition / PIN / Manual]
+    AbsenOpt --> SyncSheet
+
+    MainTabs --> TabNewsletter[Newsletter 3:4]
+    TabNewsletter --> ConvertPDF[Crop 3:4 HD + Link Transparan]
+    ConvertPDF --> ShareWA[Bagikan PDF ke WhatsApp]
+
+    MainTabs --> TabAnalytic[Ringkasan Analisis]
+    TabAnalytic --> GenReport[Hitung Target & Sesi Foto/Video/Drone]
+    GenReport --> ShareWA
 ```
 
 ### Spesifikasi Teknis:
