@@ -104,15 +104,15 @@ flowchart TB
     end
 
     UI <-->|UI Event / State Binding| VM
-    VM <-->|Data Request & Cache| Repo
+    VM <-->|Data Request and Cache| Repo
     VM -->|Render & Export| PDF
     VM -->|Verify Attendance| Face
 
-    Repo <-->|Bi-directional Sync (JSON REST)| GAS
+    Repo <-->|Bi-directional Sync via JSON REST| GAS
     GAS <-->|Read / Write Cells| Sheets
-    Repo -->|Scrape Listing & Images| Portal
-    Repo -->|Check Version & Download APK| GitHub
-    PDF -->|Share Encapsulated PDF / Text Report| WhatsApp
+    Repo -->|Scrape Listing and Images| Portal
+    Repo -->|Check Version and Download APK| GitHub
+    PDF -->|Share PDF and Text Report| WhatsApp
 ```
 
 ### Diagram Alur Kerja Pengguna (User Flowchart):
