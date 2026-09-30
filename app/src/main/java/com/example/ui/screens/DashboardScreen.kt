@@ -108,6 +108,7 @@ fun DashboardScreen(
     val listingSoldMap by viewModel.listingSoldMap.collectAsStateWithLifecycle()
     val listingImagesGalleryMap by viewModel.listingImagesGalleryMap.collectAsStateWithLifecycle()
     val agentInfoMap by viewModel.agentInfoMap.collectAsStateWithLifecycle()
+    val highlightedMeListingIds by viewModel.highlightedMeListingIds.collectAsStateWithLifecycle()
 
     val selectedCategory by viewModel.selectedCategory.collectAsStateWithLifecycle()
     val unreadCount by viewModel.unreadChatCount.collectAsStateWithLifecycle()
@@ -1068,24 +1069,44 @@ fun DashboardScreen(
                                 }
                             }
                         } else {
-                            items(categorizedSchedules, key = { it.id }) { schedule ->
-                                ScheduleRowItem(
-                                    schedule = schedule,
-                                    listingImagesMap = listingImagesMap,
-                                    listingSoldMap = listingSoldMap,
-                                    onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, schedule.namaMe) },
-                                    onEditClick = {
-                                        viewModel.startEditing(schedule)
-                                        onNavigateToForm()
-                                    },
-                                    onFollowUpClick = {
-                                        selectedScheduleForFollowUp = schedule
-                                    },
-                                    onDeleteClick = {
-                                        scheduleToDeleteInDashboard = schedule
-                                    },
-                                    onClick = { selectedScheduleForDetail = schedule }
-                                )
+                            val chunkedSchedules = categorizedSchedules.chunked(2)
+                            items(
+                                items = chunkedSchedules,
+                                key = { pair -> pair.map { it.id }.joinToString("-") }
+                            ) { pair ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 4.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        val schedule = pair[0]
+                                        MediaScheduleCard(
+                                            schedule = schedule,
+                                            imageUrl = listingImagesMap[schedule.idListing.trim()],
+                                            isSold = listingSoldMap[schedule.idListing.trim()] == true,
+                                            isMeHighlighted = highlightedMeListingIds.contains(schedule.idListing.trim()),
+                                            onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, schedule.namaMe) },
+                                            onClick = { selectedScheduleForDetail = schedule }
+                                        )
+                                    }
+                                    if (pair.size > 1) {
+                                        Box(modifier = Modifier.weight(1f)) {
+                                            val schedule = pair[1]
+                                            MediaScheduleCard(
+                                                schedule = schedule,
+                                                imageUrl = listingImagesMap[schedule.idListing.trim()],
+                                                isSold = listingSoldMap[schedule.idListing.trim()] == true,
+                                                isMeHighlighted = highlightedMeListingIds.contains(schedule.idListing.trim()),
+                                                onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, schedule.namaMe) },
+                                                onClick = { selectedScheduleForDetail = schedule }
+                                            )
+                                        }
+                                    } else {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
+                                }
                             }
                         }
                     }
@@ -1196,29 +1217,40 @@ fun DashboardScreen(
                                 }
                             }
                         } else {
-                            // Enclosed preview lists for the calendar day selection, in compact, vertically scrollable layout
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                dateSchedules.forEach { schedule ->
-                                    ScheduleRowItem(
-                                        schedule = schedule,
-                                        listingImagesMap = listingImagesMap,
-                                        listingSoldMap = listingSoldMap,
-                                        onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, schedule.namaMe) },
-                                        onEditClick = {
-                                            viewModel.startEditing(schedule)
-                                            onNavigateToForm()
-                                        },
-                                        onFollowUpClick = {
-                                            selectedScheduleForFollowUp = schedule
-                                        },
-                                        onDeleteClick = {
-                                            scheduleToDeleteInDashboard = schedule
-                                        },
-                                        onClick = { selectedScheduleForDetail = schedule }
-                                    )
+                            val chunkedCalendarSchedules = dateSchedules.chunked(2)
+                            chunkedCalendarSchedules.forEach { pair ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        val schedule = pair[0]
+                                        MediaScheduleCard(
+                                            schedule = schedule,
+                                            imageUrl = listingImagesMap[schedule.idListing.trim()],
+                                            isSold = listingSoldMap[schedule.idListing.trim()] == true,
+                                            isMeHighlighted = highlightedMeListingIds.contains(schedule.idListing.trim()),
+                                            onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, schedule.namaMe) },
+                                            onClick = { selectedScheduleForDetail = schedule }
+                                        )
+                                    }
+                                    if (pair.size > 1) {
+                                        Box(modifier = Modifier.weight(1f)) {
+                                            val schedule = pair[1]
+                                            MediaScheduleCard(
+                                                schedule = schedule,
+                                                imageUrl = listingImagesMap[schedule.idListing.trim()],
+                                                isSold = listingSoldMap[schedule.idListing.trim()] == true,
+                                                isMeHighlighted = highlightedMeListingIds.contains(schedule.idListing.trim()),
+                                                onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, schedule.namaMe) },
+                                                onClick = { selectedScheduleForDetail = schedule }
+                                            )
+                                        }
+                                    } else {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
                                 }
                             }
                         }
@@ -1310,6 +1342,218 @@ private fun SoldWatermark(modifier: Modifier = Modifier) {
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp
             )
+        }
+    }
+}
+
+@Composable
+fun MediaScheduleCard(
+    schedule: Schedule,
+    imageUrl: String?,
+    isSold: Boolean,
+    isMeHighlighted: Boolean = false,
+    onFetchImage: (String) -> Unit,
+    onClick: () -> Unit
+) {
+    val typeLower = schedule.type.lowercase().trim()
+    val isSelesai = typeLower.startsWith("done")
+    val isAktif = !isSelesai && typeLower.isNotBlank() && schedule.tanggal.trim().isNotBlank()
+    val indicatorColor = when {
+        isSelesai -> MaterialTheme.colorScheme.primary
+        isAktif -> MaterialTheme.colorScheme.secondary
+        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
+    }
+
+    LaunchedEffect(schedule.idListing, imageUrl) {
+        val cleanId = schedule.idListing.trim()
+        if (cleanId.isNotBlank() && imageUrl == null) {
+            onFetchImage(cleanId)
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("schedule_item_${schedule.id}")
+            .clickable { onClick() },
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Image Section on Top
+            val cleanId = schedule.idListing.trim()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(125.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (cleanId.isNotBlank()) {
+                    if (imageUrl != null) {
+                        AsyncImage(
+                            model = imageUrl,
+                            contentDescription = "Foto Listing $cleanId",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                    } else {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            strokeWidth = 2.dp,
+                            color = indicatorColor.copy(alpha = 0.5f)
+                        )
+                    }
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.CameraAlt,
+                        contentDescription = "No Image",
+                        tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+
+                if (isSold) {
+                    SoldWatermark()
+                }
+            }
+
+            // Info Section at Bottom
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp)
+            ) {
+                // Badges Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // ID Badge
+                    Box(
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = if (cleanId.isNotBlank()) "ID: $cleanId" else "Non-ID",
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    // Status / Type Badge
+                    if (schedule.type.isNotBlank()) {
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    if (isSelesai) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f),
+                                    RoundedCornerShape(6.dp)
+                                )
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = schedule.type,
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, fontWeight = FontWeight.Bold),
+                                color = if (isSelesai) Color(0xFF2E7D32) else MaterialTheme.colorScheme.secondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Lokasi / Title
+                Text(
+                    text = schedule.lokasi.ifBlank { "Lokasi tidak tersedia" },
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp, fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                // Date & Time
+                val dateFormatted = if (schedule.tanggal.isNotBlank()) schedule.tanggal else "Tanggal TBD"
+                val timeFormatted = if (schedule.jam.isNotBlank()) formatTwelveHourTime(schedule.jam) else ""
+                val dateTimeText = if (timeFormatted.isNotBlank()) "$dateFormatted • $timeFormatted" else dateFormatted
+                
+                Text(
+                    text = dateTimeText,
+                    style = MaterialTheme.typography.titleSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(vertical = 1.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                // ME details with highlight support
+                if (schedule.namaMe.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Box(
+                        modifier = Modifier
+                            .then(
+                                if (isMeHighlighted) {
+                                    Modifier
+                                        .background(Color(0xFF2563EB), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                } else {
+                                    Modifier
+                                }
+                            )
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = null,
+                                tint = if (isMeHighlighted) Color.White else MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Text(
+                                text = "ME: ${schedule.namaMe}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.sp,
+                                    fontWeight = if (isMeHighlighted) FontWeight.Bold else FontWeight.Normal
+                                ),
+                                color = if (isMeHighlighted) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                // Staff
+                if (schedule.staff.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(1.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CameraAlt,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.size(10.dp)
+                        )
+                        Text(
+                            text = schedule.staff,
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
         }
     }
 }

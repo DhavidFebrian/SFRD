@@ -1,0 +1,1873 @@
+﻿// SCRIPT DETEKSI & KONEKSI GOOGLE SHEETS UNTUK APLIKASI JADWAL FOTO, EDITING & WEEKLY MEETING (VERSI V6.0)
+// Tempelkan kode ini di Google Apps Script spreadsheet JADWAL FOTO Anda (Ekstensi -> Apps Script)
+
+function doGet(e) {
+  try {
+    var action = (e && e.parameter && e.parameter.action) || "";
+    
+    // 1. Aksi untuk mengambil data Weekly Meeting dari spreadsheet eksternal
+    if (action === "get_weekly_meeting_listings") {
+      return getWeeklyMeetingListings(e);
+    }
+    if (action === "get_all_weekly_meeting_listings") {
+      return getAllWeeklyMeetingListings(e);
+    }
+    if (action === "get_yearly_weekly_meeting_listings") {
+      return getYearlyWeeklyMeetingListings(e);
+    }
+    if (action === "get_yearly_ig_posting_history") {
+      return getYearlyIgPostingHistory(e);
+    }
+    if (action === "get_absensi_meeting") {
+      return getAbsensiMeeting(e);
+    }
+    if (action === "get_captions" || action === "get_saved_captions") {
+      return getSavedCaptions(e);
+    }
+    
+    // 2. Aksi Bawaan: Ambil Jadwal Foto & Edit Foto
+    var sheetName = (e && e.parameter && e.parameter.sheetName) || "Juni 2026";
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(sheetName) || ss.getSheets()[0];
+    var maxRows = 304;
+    var rawValues = sheet.getRange(1, 1, maxRows, 20).getValues(); // Ambil kolom A s/d T
+    
+    var schedules = [];
+    var editFotoTasks = [];
+    
+    // Proses Jadwal Utama (Kolom A-J, baris 5 s/d 304)
+    for (var i = 4; i < maxRows; i++) {
+      var row = rawValues[i];
+      if (!row) continue;
+      
+      var realNo = row[0] != null && row[0] !== "" ? parseInt(row[0]) : 0;
+      var realIdListing = row[1] != null ? row[1].toString().trim() : "";
+      var realNamaMe = row[2] != null ? row[2].toString().trim() : "";
+      var realStaff = row[3] != null ? row[3].toString().trim() : "";
+      var realTanggal = formatDateHelper(row[4]);
+      var realLokasi = row[5] != null ? row[5].toString().trim() : "";
+      var realJam = formatTimeHelper(row[6]);
+      var rawType = row[7] != null ? row[7].toString().trim() : "";
+      var rawStatus = row[8] != null ? row[8].toString().trim() : "";
+      var realSource = row[9] != null ? row[9].toString().trim() : "";
+      
+      if (realIdListing === "" && realNamaMe === "" && realLokasi === "") {
+        continue;
+      }
+      
+      schedules.push({
+        no: realNo || (i - 3),
+        idListing: realIdListing,
+        namaMe: realNamaMe,
+        lokasi: realLokasi,
+        staff: realStaff,
+        tanggal: realTanggal,
+        jam: realJam,
+        type: rawType === "" ? "Foto" : rawType,
+        status: rawStatus === "" ? "Pending" : rawStatus,
+        source: realSource === "" ? "Spreadsheet" : realSource
+      });
+    }
+    
+    // Proses Edit Foto Posting IG (Kolom L-T, baris 5 s/d 304)
+    for (var i = 4; i < maxRows; i++) {
+      var row = rawValues[i];
+      if (!row) continue;
+      
+      var editNo = row[11] != null && row[11] !== "" ? parseInt(row[11]) : 0;
+      var editIdListing = row[12] != null ? row[12].toString().trim() : "";
+      var editNamaMe = row[13] != null ? row[13].toString().trim() : "";
+      var rawPostingIg = row[14] != null ? row[14].toString().trim() : "";
+      
+      var editJadwal = "";
+      if (row[15] != null && row[15] !== "") {
+        if (row[15] instanceof Date) {
+          editJadwal = formatDateDMYHelper(row[15]);
+        } else {
+          editJadwal = row[15].toString().trim();
+          if (editJadwal.indexOf("GMT") !== -1 || editJadwal.indexOf("00:00:00") !== -1) {
+            try {
+              var d = new Date(editJadwal);
+              if (!isNaN(d.getTime())) {
+                editJadwal = formatDateDMYHelper(d);
+              }
+            } catch (e) {}
+          }
+        }
+      }
+
+      var editNotesVal = row[16] != null ? row[16].toString().trim() : "";
+      var rawDone = row[17] != null ? row[17].toString().trim() : "";
+      var editJudul = row[18] != null ? row[18].toString().trim() : "";
+      var editSource = row[19] != null ? row[19].toString().trim() : "";
+      
+      if (editIdListing === "" && editNamaMe === "" && editNotesVal === "") {
+        continue;
+      }
+      
+      var isPostingIg = (rawPostingIg.toLowerCase() === "done" || rawPostingIg.toLowerCase() === "ya" || rawPostingIg.toLowerCase() === "yes" || rawPostingIg.toLowerCase() === "true" || rawPostingIg === "v" || rawPostingIg === "âœ”" || rawPostingIg === "1");
+      var isDone = (rawDone.toLowerCase() === "done" || rawDone.toLowerCase() === "ya" || rawDone.toLowerCase() === "yes" || rawDone.toLowerCase() === "true" || rawDone === "v" || rawDone === "âœ”" || rawDone === "1");
+      
+      editFotoTasks.push({
+        no: editNo || (i - 3),
+        idListing: editIdListing,
+        namaMe: editNamaMe,
+        postingIg: isPostingIg,
+        jadwalPosting: editJadwal,
+        editNotes: editNotesVal,
+        done: isDone,
+        judul: editJudul,
+        source: editSource
+      });
+    }
+    
+    var responseObj = {
+      schedules: schedules,
+      editFotoTasks: editFotoTasks
+    };
+    
+    return ContentService.createTextOutput(JSON.stringify(responseObj))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function formatDateHelper(val) {
+  if (val == null) return "";
+  if (val instanceof Date) {
+    var year = val.getFullYear();
+    var month = ("0" + (val.getMonth() + 1)).slice(-2);
+    var date = ("0" + val.getDate()).slice(-2);
+    if (year === 1899) return ""; 
+    return year + "-" + month + "-" + date;
+  }
+  var str = val.toString().trim();
+  if (str === "") return "";
+  if (str.match(/^\d{4}-\d{2}-\d{2}/)) {
+    return str.substring(0, 10);
+  }
+  
+  var match = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if (match) {
+    var d = parseInt(match[1], 10);
+    var m = parseInt(match[2], 10);
+    var y = parseInt(match[3], 10);
+    if (y < 100) {
+      y += (y < 50 ? 2000 : 1900);
+    }
+    var mm = ("0" + m).slice(-2);
+    var dd = ("0" + d).slice(-2);
+    return y + "-" + mm + "-" + dd;
+  }
+  return str;
+}
+
+function formatDateDMYHelper(val) {
+  if (val == null) return "";
+  if (val instanceof Date) {
+    var year = val.getFullYear();
+    var month = ("0" + (val.getMonth() + 1)).slice(-2);
+    var date = ("0" + val.getDate()).slice(-2);
+    if (year === 1899) return ""; 
+    return date + "/" + month + "/" + year;
+  }
+  return val.toString().trim();
+}
+
+function formatTimeHelper(val) {
+  if (val == null) return "";
+  if (val instanceof Date) {
+    var hours = ("0" + val.getHours()).slice(-2);
+    var minutes = ("0" + val.getMinutes()).slice(-2);
+    return hours + ":" + minutes;
+  }
+  var str = val.toString().trim();
+  var match = str.match(/(\d{2}):(\d{2})/);
+  if (match) {
+    return match[1] + ":" + match[2];
+  }
+  return str;
+}
+
+function doPost(e) {
+  try {
+    var params = {};
+    if (e && e.postData && e.postData.contents) {
+      params = JSON.parse(e.postData.contents);
+    } else if (e && e.parameter) {
+      params = e.parameter;
+    }
+    
+    var action = params.action || "add";
+    
+    // Aksi baru untuk menambahkan data Weekly Meeting ke spreadsheet eksternal
+    if (action === "add_weekly_meeting_listing") {
+      return addWeeklyMeetingListing(params);
+    }
+    if (action === "update_weekly_meeting_posting_ig") {
+      return updateWeeklyMeetingPostingIg(params);
+    }
+    if (action === "update_weekly_meeting_details") {
+      return updateWeeklyMeetingDetails(params);
+    }
+    if (action === "delete_weekly_meeting_listing") {
+      return deleteWeeklyMeetingListing(params);
+    }
+    if (action === "update_weekly_meeting_schedule") {
+      return updateWeeklyMeetingSchedule(params);
+    }
+    if (action === "update_weekly_meeting_me_highlight") {
+      return updateWeeklyMeetingMeHighlight(params);
+    }
+    if (action === "update_absensi_meeting") {
+      return updateAbsensiMeeting(params);
+    }
+    if (action === "save_caption") {
+      return saveCaption(params);
+    }
+    
+    var sheetName = params.sheetName || (e && e.parameter && e.parameter.sheetName) || "Juni 2026";
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName(sheetName) || ss.getSheets()[0];
+    var maxRows = 304;
+    
+    var lookupRows = sheet.getRange(1, 1, maxRows, 20).getValues();
+    
+    // ACTION EDIT FOTO TASK (KOLOM L-T)
+    if (action === "edit_foto") {
+      var editNoTarget = params.no || 0;
+      var editIdListingTarget = params.idListing || "";
+      
+      var foundRowIndex = -1;
+      for (var i = 4; i < maxRows; i++) {
+        var row = lookupRows[i];
+        if (!row) continue;
+        var rowEditNo = row[11] != null && row[11] !== "" ? parseInt(row[11]) : 0;
+        var rowIdListing = row[12] != null ? row[12].toString().trim() : "";
+        
+        if (editNoTarget > 0 && rowEditNo === editNoTarget) {
+          foundRowIndex = i;
+          break;
+        } else if (editIdListingTarget !== "" && rowIdListing === editIdListingTarget) {
+          foundRowIndex = i;
+          break;
+        }
+      }
+      
+      if (foundRowIndex !== -1) {
+        var targetRow = foundRowIndex + 1;
+        var postingIgVal = params.postingIg ? true : false;
+        var doneVal = params.done ? true : false;
+        
+        var editJadwalVal = params.jadwalPosting || "";
+        if (editJadwalVal !== "") {
+          if (editJadwalVal.indexOf("GMT") !== -1 || editJadwalVal.indexOf("00:00:00") !== -1) {
+            try {
+              var d = new Date(editJadwalVal);
+              if (!isNaN(d.getTime())) {
+                editJadwalVal = formatDateDMYHelper(d);
+              }
+            } catch(e) {}
+          } else {
+            var matchYMD = editJadwalVal.match(/^(\d{4})-(\d{2})-(\d{2})/);
+            if (matchYMD) {
+              editJadwalVal = matchYMD[3] + "/" + matchYMD[2] + "/" + matchYMD[1];
+            }
+          }
+        }
+        
+        sheet.getRange(targetRow, 13).setValue(params.idListing || ""); // Kolom M
+        sheet.getRange(targetRow, 14).setValue(params.namaMe || ""); // Kolom N
+        sheet.getRange(targetRow, 15).setValue(postingIgVal); // Kolom O
+        sheet.getRange(targetRow, 16).setValue(editJadwalVal); // Kolom P
+        sheet.getRange(targetRow, 17).setValue(params.editNotes || ""); // Kolom Q
+        sheet.getRange(targetRow, 18).setValue(doneVal); // Kolom R
+        sheet.getRange(targetRow, 19).setValue(params.judul || ""); // Kolom S
+        sheet.getRange(targetRow, 20).setValue(params.source || ""); // Kolom T
+        
+        try {
+          var idListingVal = params.idListing || "";
+          if (idListingVal.toString().trim() !== "") {
+            var eMock = { range: sheet.getRange(targetRow, 13), value: idListingVal };
+            onEditAutoFillSheet3(eMock);
+          }
+        } catch(eErr) {}
+        try {
+          sortEditFoto(sheet);
+        } catch(eErr) {}
+        
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "success",
+          message: "Edit Foto Task berhasil diperbarui di baris " + targetRow
+        })).setMimeType(ContentService.MimeType.JSON);
+      } else {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "error",
+          message: "Gagal menemukan baris Task Edit Foto yang cocok."
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+    
+    // ACTION DELETE EDIT FOTO TASK
+    if (action === "delete_foto") {
+      var editNoTarget = params.no || 0;
+      var editIdListingTarget = params.idListing || "";
+      
+      var foundRowIndex = -1;
+      for (var i = 4; i < maxRows; i++) {
+        var row = lookupRows[i];
+        if (!row) continue;
+        var rowEditNo = row[11] != null && row[11] !== "" ? parseInt(row[11]) : 0;
+        var rowIdListing = row[12] != null ? row[12].toString().trim() : "";
+        
+        if (editNoTarget > 0 && rowEditNo === editNoTarget) {
+          foundRowIndex = i;
+          break;
+        } else if (editIdListingTarget !== "" && rowIdListing === editIdListingTarget) {
+          foundRowIndex = i;
+          break;
+        }
+      }
+      
+      if (foundRowIndex !== -1) {
+        var targetRow = foundRowIndex + 1;
+        sheet.getRange(targetRow, 13).setValue(""); // Kolom M
+        sheet.getRange(targetRow, 14).setValue(""); // Kolom N
+        sheet.getRange(targetRow, 15).setValue(""); // Kolom O
+        sheet.getRange(targetRow, 16).setValue(""); // Kolom P
+        sheet.getRange(targetRow, 17).setValue(""); // Kolom Q
+        sheet.getRange(targetRow, 18).setValue(""); // Kolom R
+        sheet.getRange(targetRow, 19).setValue(""); // Kolom S
+        sheet.getRange(targetRow, 20).setValue(""); // Kolom T
+        
+        try {
+          sortEditFoto(sheet);
+        } catch(eErr) {}
+        
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "success",
+          message: "Task Edit Foto berhasil dihapus di baris " + targetRow
+        })).setMimeType(ContentService.MimeType.JSON);
+      } else {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "error",
+          message: "Gagal menemukan baris Task Edit Foto yang ingin dihapus."
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+    
+    // ACTION DELETE JADWAL UTAMA
+    if (action === "delete") {
+      var idListingTarget = params.idListing || "";
+      var namaMeTarget = params.namaMe || "";
+      var tanggalTarget = formatDateHelper(params.tanggal) || "";
+      var jamTarget = formatTimeHelper(params.jam) || "";
+      var typeTarget = params.type || "";
+      
+      var foundRowIndex = -1;
+      for (var i = 4; i < maxRows; i++) {
+        var row = lookupRows[i];
+        if (!row) continue;
+        var rowIdListing = row[1] != null ? row[1].toString().trim() : "";
+        var rowNamaMe = row[2] != null ? row[2].toString().trim() : "";
+        var rowTanggal = formatDateHelper(row[4]);
+        var rowJam = formatTimeHelper(row[6]);
+        var rowType = row[7] != null ? row[7].toString().trim() : "";
+        
+        var matches = false;
+        if (typeTarget !== "" && rowType === typeTarget) {
+          matches = true;
+        } else if (idListingTarget !== "" && rowIdListing === idListingTarget) {
+          matches = true;
+        } else if (idListingTarget === "" && rowNamaMe === namaMeTarget && rowTanggal === tanggalTarget && rowJam === jamTarget) {
+          matches = true;
+        }
+        
+        if (matches) {
+          foundRowIndex = i;
+          break;
+        }
+      }
+      
+      if (foundRowIndex !== -1) {
+        var rowToClear = foundRowIndex + 1;
+        sheet.getRange(rowToClear, 2).setValue(""); // ID Listing (B)
+        sheet.getRange(rowToClear, 3).setValue(""); // Nama ME (C)
+        sheet.getRange(rowToClear, 4).setValue(""); // Staff (D)
+        sheet.getRange(rowToClear, 5).setValue(""); // Fix Date (E)
+        sheet.getRange(rowToClear, 6).setValue(""); // Lokasi (F)
+        sheet.getRange(rowToClear, 7).setValue(""); // Jam (G)
+        sheet.getRange(rowToClear, 8).setValue(""); // Type (H)
+        sheet.getRange(rowToClear, 9).setValue(""); // Status (I)
+        sheet.getRange(rowToClear, 10).setValue(""); // Source (J)
+        
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "success",
+          message: "Data berhasil dihapus dari baris " + rowToClear
+        })).setMimeType(ContentService.MimeType.JSON);
+      } else {
+        return ContentService.createTextOutput(JSON.stringify({
+          status: "error",
+          message: "Gagal menemukan baris data yang cocok untuk dihapus."
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+    
+    // ACTION EDIT JADWAL UTAMA
+    if (action === "edit" || action === "update") {
+      var noTarget = params.no || 0;
+      var idListingTarget = params.originalIdListing || params.idListing || "";
+      var namaMeTarget = params.originalNamaMe || params.namaMe || "";
+      var tanggalTarget = formatDateHelper(params.originalTanggal || params.tanggal) || "";
+      var jamTarget = formatTimeHelper(params.originalJam || params.jam) || "";
+      
+      var foundRowIndex = -1;
+      for (var i = 4; i < maxRows; i++) {
+        var row = lookupRows[i];
+        if (!row) continue;
+        
+        var rowNo = row[0] != null && row[0] !== "" ? parseInt(row[0]) : 0;
+        var rowIdListing = row[1] != null ? row[1].toString().trim() : "";
+        var rowNamaMe = row[2] != null ? row[2].toString().trim() : "";
+        var rowTanggal = formatDateHelper(row[4]);
+        var rowJam = formatTimeHelper(row[6]);
+        
+        var matches = false;
+        if (noTarget > 0 && rowNo === noTarget) {
+          matches = true;
+        } else if (noTarget === 0) {
+          if (idListingTarget !== "" && rowIdListing === idListingTarget) {
+            matches = true;
+          } else if (idListingTarget === "" && rowNamaMe === namaMeTarget && rowTanggal === tanggalTarget && rowJam === jamTarget) {
+            matches = true;
+          }
+        }
+        
+        if (matches) {
+          foundRowIndex = i;
+          break;
+        }
+      }
+      
+      if (foundRowIndex !== -1) {
+        var targetRow = foundRowIndex + 1;
+        
+        sheet.getRange(targetRow, 2).setValue(params.idListing || "");
+        sheet.getRange(targetRow, 3).setValue(params.namaMe || "");
+        sheet.getRange(targetRow, 4).setValue(params.staff || "");
+        sheet.getRange(targetRow, 5).setValue(formatDateHelper(params.tanggal) || "");
+        sheet.getRange(targetRow, 6).setValue(params.lokasi || "");
+        sheet.getRange(targetRow, 7).setValue(formatTimeHelper(params.jam) || "");
+        sheet.getRange(targetRow, 8).setValue(params.type || "Foto");
+        
+        var statusCell = sheet.getRange(targetRow, 9);
+        var statusVal = params.status || "Pending";
+        statusCell.setValue(statusVal);
+        if (statusVal.toString().toUpperCase() === "DONE") {
+          statusCell.setBackground("#00FF00");
+          statusCell.setFontColor("#000000");
+          statusCell.setHorizontalAlignment("center");
+        } else {
+          statusCell.setBackground(null);
+          statusCell.setFontColor(null);
+          statusCell.setHorizontalAlignment("left");
+        }
+        
+        sheet.getRange(targetRow, 10).setValue(params.source || "App");
+        
+        try {
+          var idListingVal = params.idListing || "";
+          if (idListingVal.toString().trim() !== "") {
+            var eMock = { range: sheet.getRange(targetRow, 2), value: idListingVal };
+            onEditAutoFillSheet3(eMock);
+          }
+        } catch(eErr) {}
+        try {
+          sortFotoUlang(sheet);
+        } catch(eErr) {}
+        
+        return ContentService.createTextOutput(JSON.stringify({ 
+          status: "success", 
+          message: "Data berhasil diperbarui di baris " + targetRow,
+          row: targetRow
+        })).setMimeType(ContentService.MimeType.JSON);
+      } else {
+        return ContentService.createTextOutput(JSON.stringify({ 
+          status: "error", 
+          message: "Gagal menemukan baris jadwal yang ingin diedit." 
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+    }
+    
+    // ACTION ADD JADWAL UTAMA
+    var idListing = params.idListing || "";
+    var namaMe = params.namaMe || "";
+    var lokasi = params.lokasi || "";
+    var tanggal = formatDateHelper(params.tanggal) || "";
+    var jam = formatTimeHelper(params.jam) || "";
+    var staff = params.staff || "";
+    var type = params.type || "Foto";
+    var status = params.status || "Pending";
+    var source = params.source || "App";
+    
+    var targetRow = -1;
+    // Cek apakah idListing sudah ada sebelumnya di sheet ini untuk mencegah duplikasi baris
+    if (idListing !== "") {
+      var cleanTargetId = idListing.toLowerCase().replace(/[^a-z0-9]/g, "");
+      for (var i = 4; i < maxRows; i++) {
+        var row = lookupRows[i];
+        if (!row) continue;
+        var checkListing = row[1] != null ? row[1].toString().trim().toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+        if (checkListing !== "" && checkListing === cleanTargetId) {
+          targetRow = i + 1;
+          break;
+        }
+      }
+    }
+    
+    if (targetRow === -1) {
+      for (var i = 4; i < maxRows; i++) {
+        var row = lookupRows[i];
+        if (!row) continue;
+        var checkListing = row[1] != null ? row[1].toString().trim() : "";
+        var checkNamaMe = row[2] != null ? row[2].toString().trim() : "";
+        var checkLokasi = row[5] != null ? row[5].toString().trim() : "";
+        
+        if (checkListing === "" && checkNamaMe === "" && checkLokasi === "") {
+          targetRow = i + 1;
+          break;
+        }
+      }
+    }
+    
+    if (targetRow === -1) {
+      targetRow = sheet.getLastRow() + 1;
+    }
+
+    var isFuSheet = sheetName.toLowerCase().indexOf("foto ulang") !== -1;
+    if (isFuSheet && (!params.tanggal || params.tanggal === "")) {
+      tanggal = ""; // Kolom Fix Date tetap kosong
+    }
+    
+    // Batch write kolom 2 s/d 10 (B s/d J)
+    sheet.getRange(targetRow, 2, 1, 9).setValues([[
+      idListing,
+      namaMe,
+      staff,
+      tanggal,
+      lokasi,
+      jam,
+      type,
+      status,
+      source
+    ]]);
+    
+    var statusCell = sheet.getRange(targetRow, 9);
+    if (status.toString().toUpperCase() === "DONE") {
+      statusCell.setBackground("#00FF00");
+      statusCell.setFontColor("#000000");
+      statusCell.setHorizontalAlignment("center");
+    } else {
+      statusCell.setBackground(null);
+      statusCell.setFontColor(null);
+      statusCell.setHorizontalAlignment("left");
+    }
+    
+    try {
+      if (!isFuSheet && idListing && idListing.toString().trim() !== "") {
+        var eMock = { range: sheet.getRange(targetRow, 2), value: idListing };
+        onEditAutoFillSheet3(eMock);
+      }
+    } catch(eErr) {}
+    try {
+      sortFotoUlang(sheet);
+    } catch(eErr) {}
+    
+    return ContentService.createTextOutput(JSON.stringify({ 
+      status: "success", 
+      message: "Data berhasil disimpan di baris " + targetRow,
+      row: targetRow
+    })).setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// ==========================================
+// FUNGSI HELPER EKSTERNAL WEEKLY MEETING
+// ==========================================
+function findSheetByFlexibleName(ss, sheetName) {
+  var sheet = ss.getSheetByName(sheetName);
+  if (sheet) return sheet;
+  
+  // Bersihkan sheetName (hapus prefiks "Recap Meeting " dan tahun jika ada)
+  var clean = sheetName.replace("Recap Meeting ", "").replace(/\s*\d{4}/g, "").trim();
+  
+  // Ambil tahun dari input atau default ke tahun saat ini (default 2026 untuk spreadsheet)
+  var yearMatch = sheetName.match(/\b(\d{4})\b/);
+  var year = yearMatch ? yearMatch[1] : "2026";
+  
+  // Coba berbagai kombinasi nama sheet
+  var options = [
+    clean + " " + year,
+    "Recap Meeting " + clean,
+    clean
+  ];
+  
+  for (var i = 0; i < options.length; i++) {
+    sheet = ss.getSheetByName(options[i]);
+    if (sheet) return sheet;
+  }
+  return null;
+}
+
+function getWeeklyMeetingListings(e) {
+  var sheetName = e.parameter.sheetName; // e.g. "Recap Meeting Juni" atau "Recap Meeting Juli"
+  var dateStr = e.parameter.date; // Format YYYY-MM-DD
+  
+  var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+  var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+  var sheet = findSheetByFlexibleName(ss, sheetName);
+  
+  if (!sheet) {
+    var sheets = ss.getSheets();
+    var names = sheets.map(function(s) { return s.getName(); });
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Sheet dengan nama '" + sheetName + "' tidak ditemukan. Tersedia sheet: " + names.join(", ")
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  var colInfo = getMeetingColumnAndMaxRow(dateStr, sheet);
+  if (!colInfo) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Pemetaan kolom tidak ditemukan untuk tanggal: " + dateStr
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  var startRow = 5;
+  var colIndex = colInfo.col;
+  var maxRow = colInfo.maxRow;
+  var numRows = maxRow - startRow + 1;
+  
+  var dataRange = sheet.getRange(startRow, colIndex, numRows, 6);
+  var values = dataRange.getValues();
+  var backgrounds = dataRange.getBackgrounds();
+  
+  var listings = [];
+  for (var r = 0; r < values.length; r++) {
+    var row = values[r];
+    var idListing = row[0] ? row[0].toString().trim() : "";
+    if (idListing !== "") {
+      var meBg = backgrounds && backgrounds[r] && backgrounds[r][4] ? backgrounds[r][4].toString().toLowerCase() : "";
+      var isMeHighlighted = meBg === "#2563eb" || meBg === "#0066ff" || meBg === "#0000ff" || meBg === "#1e88e5" || (meBg !== "" && meBg !== "#ffffff" && meBg !== "#000000" && meBg !== "rgba(0, 0, 0, 0)");
+      listings.push({
+        "no": (startRow + r),
+        "row": (startRow + r),
+        "date": dateStr,
+        "colIndex": colIndex,
+        "idListing": idListing,
+        "keterangan": row[1] ? row[1].toString().trim() : "",
+        "postingIg": row[2] ? row[2].toString().trim() : "",
+        "jadwalPosting": row[3] ? row[3].toString().trim() : "",
+        "namaMe": row[4] ? row[4].toString().trim() : "",
+        "catatan": row[5] ? row[5].toString().trim() : "",
+        "meHighlighted": isMeHighlighted
+      });
+    }
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({
+    "status": "success",
+    "sheetName": sheet.getName(),
+    "date": dateStr,
+    "listings": listings
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function addWeeklyMeetingListing(data) {
+  var sheetName = data.sheetName; // e.g. "Recap Meeting Juni" atau "Recap Meeting Juli"
+  var dateStr = data.date; // e.g. "2026-06-02"
+  var idListing = data.idListing.toString().trim();
+  var namaMe = data.namaMe ? data.namaMe.toString().trim() : "";
+  var keterangan = data.keterangan ? data.keterangan.toString().trim() : "";
+  var catatan = data.catatan ? data.catatan.toString().trim() : "";
+  var lokasi = data.lokasi ? data.lokasi.toString().trim() : "";
+  
+  var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+  var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+  var sheet = findSheetByFlexibleName(ss, sheetName);
+  
+  if (!sheet) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Sheet untuk bulan '" + sheetName + "' tidak ditemukan di spreadsheet Weekly Meeting."
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  var colInfo = getMeetingColumnAndMaxRow(dateStr, sheet);
+  var colIndex = colInfo.col;
+  var maxRow = colInfo.maxRow;
+  
+  var targetRow = -1;
+  var colData = sheet.getRange(5, colIndex, maxRow - 4, 1).getValues();
+  for (var i = 0; i < colData.length; i++) {
+    var cellVal = colData[i][0] ? colData[i][0].toString().trim() : "";
+    if (cellVal === "") {
+      targetRow = 5 + i;
+      break;
+    }
+  }
+  
+  if (targetRow === -1) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Kolom untuk tanggal " + dateStr + " sudah penuh (maksimal baris " + maxRow + ")."
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  // Batch write kolom 1 s/d 6 ke sheet Weekly Meeting:
+  // 1: ID Listing, 2: Keterangan, 3: Posting IG (checkbox false), 4: Jadwal Posting (""), 5: Nama ME, 6: Catatan
+  sheet.getRange(targetRow, colIndex, 1, 6).setValues([[
+    idListing,
+    keterangan,
+    false,
+    "",
+    namaMe,
+    catatan
+  ]]);
+  try {
+    sheet.getRange(targetRow, colIndex + 2).setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
+  } catch(eChk) {}
+  
+  // Jika Keterangan adalah "Foto Ulang", masukkan juga ke sheet "Foto Ulang" di spreadsheet RWC - Media Production
+  var ketLow = keterangan.toLowerCase();
+  if (ketLow.indexOf("foto ulang") !== -1 || ketLow.indexOf("ulang") !== -1) {
+    try {
+      var activeSs = SpreadsheetApp.getActiveSpreadsheet();
+      var fotoUlangSheet = activeSs.getSheetByName("Foto Ulang");
+      if (fotoUlangSheet) {
+        var fuMaxRows = 304;
+        var fuLookup = fotoUlangSheet.getRange(1, 1, fuMaxRows, 10).getValues();
+        var fuTargetRow = -1;
+        var alreadyExists = false;
+
+        // 1. Cek apakah idListing sudah ada di sheet Foto Ulang agar TIDAK DOUBLE
+        if (idListing !== "") {
+          var cleanTargetId = idListing.toLowerCase().replace(/[^a-z0-9]/g, "");
+          for (var i = 4; i < fuMaxRows; i++) {
+            var rData = fuLookup[i];
+            if (!rData) continue;
+            var chkId = rData[1] != null ? rData[1].toString().trim() : "";
+            var cleanChkId = chkId.toLowerCase().replace(/[^a-z0-9]/g, "");
+            if (cleanChkId !== "" && cleanChkId === cleanTargetId) {
+              alreadyExists = true;
+              fuTargetRow = i + 1; // Update baris yang sudah ada
+              break;
+            }
+          }
+        }
+
+        // 2. Jika belum ada, cari baris kosong pertama
+        if (!alreadyExists) {
+          for (var i = 4; i < fuMaxRows; i++) {
+            var rData = fuLookup[i];
+            if (!rData) continue;
+            var chkId = rData[1] != null ? rData[1].toString().trim() : "";
+            var chkMe = rData[2] != null ? rData[2].toString().trim() : "";
+            var chkLoc = rData[5] != null ? rData[5].toString().trim() : "";
+            if (chkId === "" && chkMe === "" && chkLoc === "") {
+              fuTargetRow = i + 1;
+              break;
+            }
+          }
+          if (fuTargetRow === -1) {
+            fuTargetRow = fotoUlangSheet.getLastRow() + 1;
+          }
+        }
+
+        // 3. Format Source: contoh 30Juni_R68
+        var dayNum = "";
+        var monthNameIndo = "";
+        if (dateStr) {
+          var dayMatch = dateStr.match(/\b(\d{1,2})\b/);
+          if (dayMatch) {
+            dayNum = parseInt(dayMatch[1], 10);
+          }
+          var mNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+          for (var mi = 0; mi < mNames.length; mi++) {
+            if (dateStr.toLowerCase().indexOf(mNames[mi].toLowerCase()) !== -1) {
+              monthNameIndo = mNames[mi];
+              break;
+            }
+          }
+          if (!monthNameIndo) {
+            var parts = dateStr.split(/[-\/]/);
+            if (parts.length >= 2) {
+              var mVal = parseInt(parts[0].length === 4 ? parts[1] : parts[1], 10);
+              if (mVal >= 1 && mVal <= 12) monthNameIndo = mNames[mVal - 1];
+            }
+          }
+        }
+        if (!monthNameIndo && sheetName) {
+          var mNames = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+          for (var mi = 0; mi < mNames.length; mi++) {
+            if (sheetName.toLowerCase().indexOf(mNames[mi].toLowerCase()) !== -1) {
+              monthNameIndo = mNames[mi];
+              break;
+            }
+          }
+        }
+        if (!dayNum) dayNum = "30";
+        if (!monthNameIndo) monthNameIndo = "Juni";
+        var sourceFormatted = dayNum + monthNameIndo + "_R" + targetRow;
+
+        // 4. Batch write ke kolom B s/d J (kolom 2 s/d 10):
+        fotoUlangSheet.getRange(fuTargetRow, 2, 1, 9).setValues([[
+          idListing,
+          namaMe,
+          "",
+          "",
+          lokasi,
+          "",
+          "Foto Ulang",
+          "Pending",
+          sourceFormatted
+        ]]);
+      }
+    } catch(eFu) {}
+  }
+
+  return ContentService.createTextOutput(JSON.stringify({
+    "status": "success",
+    "message": "Berhasil menambahkan listing " + idListing + " ke tanggal " + dateStr,
+    "row": targetRow
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function getMeetingColumnAndMaxRow(dateStr, sheet) {
+  var parts = dateStr.split("-");
+  var year = parseInt(parts[0], 10);
+  var month = parseInt(parts[1], 10);
+  var day = parseInt(parts[2], 10);
+  
+  // 1. Coba pencarian dinamis di baris header (baris 1 s/d 4)
+  if (sheet) {
+    var lastCol = sheet.getLastColumn();
+    var checkCols = [2, 10, 18, 26, 34, 42, 50, 58];
+    for (var i = 0; i < checkCols.length; i++) {
+      var col = checkCols[i];
+      if (col > lastCol) break;
+      
+      for (var r = 1; r <= 4; r++) {
+        var val = sheet.getRange(r, col).getValue();
+        if (!val) continue;
+        
+        if (val instanceof Date) {
+          if (val.getDate() === day && (val.getMonth() + 1) === month) {
+            return { col: col, maxRow: 120 };
+          }
+        }
+        
+        var valStr = val.toString().toLowerCase();
+        var numMatch = valStr.match(/\b(\d{1,2})\b/);
+        var cellDay = numMatch ? parseInt(numMatch[1], 10) : null;
+        if (cellDay === day) {
+          var indonesianMonths = ["januari", "februari", "maret", "april", "mei", "juni", "juli", "agustus", "september", "oktober", "november", "desember"];
+          var englishMonths = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+          var monthNameIndo = indonesianMonths[month - 1];
+          var monthNameEng = englishMonths[month - 1];
+          
+          if (valStr.indexOf(monthNameIndo) !== -1 || valStr.indexOf(monthNameEng) !== -1 || valStr.indexOf("/" + month + "/") !== -1 || valStr.indexOf("-" + ("0" + month).slice(-2) + "-") !== -1) {
+            return { col: col, maxRow: 120 };
+          }
+        }
+      }
+    }
+  }
+  
+  // 2. Pemetaan statis untuk tahun 2026 berdasarkan data user
+  if (year === 2026) {
+    var mappings = {
+      1: [6, 13, 20, 27],
+      2: [3, 10, 17, 24],
+      3: [3, 10, 17, 24, 31],
+      4: [7, 14, 21, 28],
+      5: [5, 12, 19, 26],
+      6: [2, 9, 16, 23, 30],
+      7: [7, 14, 21, 28],
+      8: [4, 11, 18, 25],
+      9: [1, 8, 15, 22, 29],
+      10: [6, 13, 20, 27],
+      11: [3, 10, 17, 24],
+      12: [1, 8, 15, 22, 29]
+    };
+    
+    var monthDays = mappings[month];
+    if (monthDays) {
+      for (var t = 0; t < monthDays.length; t++) {
+        if (Math.abs(monthDays[t] - day) <= 1) {
+          var colIndex = 2 + (t * 8);
+          return { col: colIndex, maxRow: 120 };
+        }
+      }
+    }
+  }
+  
+  // 3. Fallback matematika hari Selasa jika di tahun lain
+  var tuesdays = [];
+  var d = new Date(year, month - 1, 1);
+  while (d.getDay() !== 2) {
+    d.setDate(d.getDate() + 1);
+  }
+  while (d.getMonth() === month - 1) {
+    tuesdays.push(d.getDate());
+    d.setDate(d.getDate() + 7);
+  }
+  
+  for (var t = 0; t < tuesdays.length; t++) {
+    if (Math.abs(tuesdays[t] - day) <= 1) { // toleransi 1 hari (misal Senin ke Selasa)
+      var calculatedCol = 2 + (t * 8);
+      return { col: calculatedCol, maxRow: 120 };
+    }
+  }
+  
+  return null;
+}
+
+function getAllWeeklyMeetingListings(e) {
+  var sheetName = e.parameter.sheetName;
+  var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+  var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+  var sheet = findSheetByFlexibleName(ss, sheetName);
+  
+  if (!sheet) {
+    var sheets = ss.getSheets();
+    var names = sheets.map(function(s) { return s.getName(); });
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Sheet '" + sheetName + "' not found. Available: " + names.join(", ")
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  var sName = sheet.getName();
+  var cleanMonth = sName.replace("Recap Meeting ", "").replace(/\s*\d{4}/g, "").trim();
+  var indonesianMonths = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  var monthIndex = indonesianMonths.indexOf(cleanMonth);
+  if (monthIndex === -1) {
+    var lowerMonths = indonesianMonths.map(function(m) { return m.toLowerCase(); });
+    monthIndex = lowerMonths.indexOf(cleanMonth.toLowerCase());
+  }
+  if (monthIndex === -1) monthIndex = 5; // fallback ke Juni
+  
+  var yearMatch = sName.match(/\b(\d{4})\b/);
+  var sheetYear = yearMatch ? parseInt(yearMatch[1], 10) : 2026;
+  
+  var monthNum = monthIndex + 1;
+  var monthStr = ("0" + monthNum).slice(-2);
+  
+  var dateCols = [];
+  var checkCols = [2, 10, 18, 26, 34, 42, 50, 58];
+  for (var i = 0; i < checkCols.length; i++) {
+    var col = checkCols[i];
+    if (col > sheet.getLastColumn()) break;
+    
+    var foundDay = null;
+    for (var r = 1; r <= 4; r++) {
+      var val = sheet.getRange(r, col).getValue();
+      if (!val) continue;
+      if (val instanceof Date) {
+        foundDay = val.getDate();
+        break;
+      }
+      var valStr = val.toString().toLowerCase();
+      var numMatch = valStr.match(/\b(\d{1,2})\b/);
+      if (numMatch) {
+        foundDay = parseInt(numMatch[1], 10);
+        break;
+      }
+    }
+    
+    if (foundDay !== null) {
+      var dayStr = ("0" + foundDay).slice(-2);
+      dateCols.push({ col: col, date: sheetYear + "-" + monthStr + "-" + dayStr, maxRow: 120 });
+    } else {
+      var tuesdays = [];
+      var d = new Date(sheetYear, monthIndex, 1);
+      while (d.getDay() !== 2) {
+        d.setDate(d.getDate() + 1);
+      }
+      while (d.getMonth() === monthIndex) {
+        tuesdays.push(d.getDate());
+        d.setDate(d.getDate() + 7);
+      }
+      if (i < tuesdays.length) {
+        var dayStr = ("0" + tuesdays[i]).slice(-2);
+        dateCols.push({ col: col, date: sheetYear + "-" + monthStr + "-" + dayStr, maxRow: 120 });
+      }
+    }
+  }
+  
+  var listings = [];
+  for (var d = 0; d < dateCols.length; d++) {
+    var colInfo = dateCols[d];
+    var colIndex = colInfo.col;
+    var dateStr = colInfo.date;
+    var maxRow = colInfo.maxRow;
+    var startRow = 5;
+    var numRows = maxRow - startRow + 1;
+    
+    var dataRange = sheet.getRange(startRow, colIndex, numRows, 6);
+    var values = dataRange.getValues();
+    
+    for (var r = 0; r < values.length; r++) {
+      var row = values[r];
+      var idListing = row[0] ? row[0].toString().trim() : "";
+      var keterangan = row[1] ? row[1].toString().trim() : "";
+      if (idListing !== "") {
+        listings.push({
+          "no": (startRow + r),
+          "date": dateStr,
+          "colIndex": colIndex,
+          "idListing": idListing,
+          "keterangan": keterangan,
+          "postingIg": row[2] ? row[2].toString().trim() : "",
+          "jadwalPosting": row[3] ? row[3].toString().trim() : "",
+          "namaMe": row[4] ? row[4].toString().trim() : "",
+          "catatan": row[5] ? row[5].toString().trim() : ""
+        });
+      }
+    }
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({
+    "status": "success",
+    "sheetName": sheet.getName(),
+    "listings": listings
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function getYearlyWeeklyMeetingListings(e) {
+  var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+  var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+  var months = [
+    "Januari 2026", "Februari 2026", "Maret 2026", "April 2026", "Mei 2026", "Juni 2026", 
+    "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026"
+  ];
+  
+  var allListings = [];
+  
+  for (var m = 0; m < months.length; m++) {
+    var sheetName = months[m];
+    var sheet = findSheetByFlexibleName(ss, sheetName);
+    if (!sheet) continue;
+    
+    var sName = sheet.getName();
+    var cleanMonth = sheetName.replace("Recap Meeting ", "").replace(/\s*\d{4}/g, "").trim();
+    var indonesianMonths = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    var monthIndex = indonesianMonths.indexOf(cleanMonth);
+    if (monthIndex === -1) monthIndex = m;
+    
+    var yearMatch = sName.match(/\b(\d{4})\b/);
+    var sheetYear = yearMatch ? parseInt(yearMatch[1], 10) : 2026;
+    var monthNum = monthIndex + 1;
+    var monthStr = ("0" + monthNum).slice(-2);
+    
+    var dateCols = [];
+    var checkCols = [2, 10, 18, 26, 34, 42, 50, 58];
+    for (var i = 0; i < checkCols.length; i++) {
+      var col = checkCols[i];
+      if (col > sheet.getLastColumn()) break;
+      
+      var foundDay = null;
+      for (var r = 1; r <= 4; r++) {
+        var val = sheet.getRange(r, col).getValue();
+        if (!val) continue;
+        if (val instanceof Date) {
+          foundDay = val.getDate();
+          break;
+        }
+        var valStr = val.toString().toLowerCase();
+        var numMatch = valStr.match(/\b(\d{1,2})\b/);
+        if (numMatch) {
+          foundDay = parseInt(numMatch[1], 10);
+          break;
+        }
+      }
+      
+      if (foundDay !== null) {
+        var dayStr = ("0" + foundDay).slice(-2);
+        dateCols.push({ col: col, date: sheetYear + "-" + monthStr + "-" + dayStr, maxRow: 120 });
+      }
+    }
+    
+    for (var d = 0; d < dateCols.length; d++) {
+      var colInfo = dateCols[d];
+      var colIndex = colInfo.col;
+      var dateStr = colInfo.date;
+      var maxRow = colInfo.maxRow;
+      var startRow = 5;
+      var numRows = maxRow - startRow + 1;
+      
+      var dataRange = sheet.getRange(startRow, colIndex, numRows, 6);
+      var values = dataRange.getValues();
+      
+      for (var r = 0; r < values.length; r++) {
+        var row = values[r];
+        var idListing = row[0] ? row[0].toString().trim() : "";
+        var keterangan = row[1] ? row[1].toString().trim() : "";
+        if (idListing !== "") {
+          allListings.push({
+            "no": (startRow + r),
+            "date": dateStr,
+            "colIndex": colIndex,
+            "idListing": idListing,
+            "keterangan": keterangan,
+            "postingIg": row[2] ? row[2].toString().trim() : "",
+            "jadwalPosting": row[3] ? row[3].toString().trim() : "",
+            "namaMe": row[4] ? row[4].toString().trim() : "",
+            "catatan": row[5] ? row[5].toString().trim() : ""
+          });
+        }
+      }
+    }
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({
+    "status": "success",
+    "listings": allListings
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function updateWeeklyMeetingPostingIg(data) {
+  var sheetName = data.sheetName;
+  var dateStr = data.date;
+  var row = parseInt(data.row);
+  var col = parseInt(data.colIndex);
+  var postingIgVal = data.postingIg ? true : false;
+  
+  var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+  var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+  var sheet = findSheetByFlexibleName(ss, sheetName);
+  
+  if (!sheet) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Sheet not found"
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  var targetCell = sheet.getRange(row, col + 2);
+  targetCell.clearContent();
+  targetCell.setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
+  targetCell.setValue(postingIgVal === true);
+  SpreadsheetApp.flush();
+  
+  var idCell = sheet.getRange(row, col);
+  var jadwalCell = sheet.getRange(row, col + 3);
+  
+  if (data.postingIg) {
+    idCell.setBackground("#00FF00");
+    idCell.setFontColor("#000000");
+    jadwalCell.setBackground("#00FF00");
+    jadwalCell.setFontColor("#000000");
+  } else {
+    idCell.setBackground(null);
+    idCell.setFontColor(null);
+    jadwalCell.setBackground(null);
+    jadwalCell.setFontColor(null);
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({
+    "status": "success",
+    "message": "Berhasil memperbarui status Posting IG di sheet " + sheet.getName() + " baris " + row
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function updateWeeklyMeetingDetails(data) {
+  var sheetName = data.sheetName;
+  var dateStr = data.date;
+  var row = parseInt(data.row);
+  var col = parseInt(data.colIndex);
+  var idListing = data.idListing ? data.idListing.toString().trim() : "";
+  var keterangan = data.keterangan ? data.keterangan.toString().trim() : "";
+  var namaMe = data.namaMe ? data.namaMe.toString().trim() : "";
+  var catatan = data.catatan ? data.catatan.toString().trim() : "";
+  
+  var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+  var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+  var sheet = findSheetByFlexibleName(ss, sheetName);
+  
+  if (!sheet) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Sheet not found"
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // Resolusi dinamis jika row atau colIndex tidak valid
+  var colInfo = dateStr ? getMeetingColumnAndMaxRow(dateStr, sheet) : null;
+  if ((isNaN(col) || col < 2) && colInfo) {
+    col = colInfo.col;
+  }
+  if ((isNaN(row) || row < 5) && col >= 2 && idListing !== "") {
+    var maxR = colInfo ? colInfo.maxRow : 120;
+    var colValues = sheet.getRange(5, col, maxR - 4, 1).getValues();
+    var cleanTarget = idListing.toLowerCase().replace(/[^a-z0-9]/g, "");
+    for (var r = 0; r < colValues.length; r++) {
+      var cellVal = colValues[r][0] ? colValues[r][0].toString().trim().toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+      if (cellVal !== "" && cellVal === cleanTarget) {
+        row = 5 + r;
+        break;
+      }
+    }
+  }
+
+  if (isNaN(row) || isNaN(col) || row < 5 || col < 2) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Gagal menemukan posisi listing di sheet (row=" + row + ", col=" + col + ")"
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  sheet.getRange(row, col).setValue(idListing);      // Kolom 1: ID Listing
+  sheet.getRange(row, col + 1).setValue(keterangan); // Kolom 2: Keterangan
+  sheet.getRange(row, col + 4).setValue(namaMe);     // Kolom 5: Nama ME
+  sheet.getRange(row, col + 5).setValue(catatan);    // Kolom 6: Catatan
+  
+  SpreadsheetApp.flush();
+  
+  return ContentService.createTextOutput(JSON.stringify({
+    "status": "success",
+    "message": "Berhasil memperbarui data listing " + idListing
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function deleteWeeklyMeetingListing(data) {
+  var sheetName = data.sheetName;
+  var dateStr = data.date;
+  var row = parseInt(data.row);
+  var col = parseInt(data.colIndex);
+  var idListing = data.idListing ? data.idListing.toString().trim() : "";
+  
+  var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+  var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+  var sheet = findSheetByFlexibleName(ss, sheetName);
+  
+  if (!sheet) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Sheet not found"
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // Resolusi dinamis jika row atau colIndex tidak valid
+  var colInfo = dateStr ? getMeetingColumnAndMaxRow(dateStr, sheet) : null;
+  if ((isNaN(col) || col < 2) && colInfo) {
+    col = colInfo.col;
+  }
+  if ((isNaN(row) || row < 5) && col >= 2 && idListing !== "") {
+    var maxR = colInfo ? colInfo.maxRow : 120;
+    var colValues = sheet.getRange(5, col, maxR - 4, 1).getValues();
+    var cleanTarget = idListing.toLowerCase().replace(/[^a-z0-9]/g, "");
+    for (var r = 0; r < colValues.length; r++) {
+      var cellVal = colValues[r][0] ? colValues[r][0].toString().trim().toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+      if (cellVal !== "" && cellVal === cleanTarget) {
+        row = 5 + r;
+        break;
+      }
+    }
+  }
+
+  if (isNaN(row) || isNaN(col) || row < 5 || col < 2) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Gagal menemukan baris listing yang ingin dihapus (row=" + row + ", col=" + col + ")"
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // Kosongkan 6 kolom listing di Weekly Meeting
+  sheet.getRange(row, col, 1, 6).setValues([["", "", false, "", "", ""]]);
+  try {
+    var checkCell = sheet.getRange(row, col + 2);
+    checkCell.setValue(false);
+    sheet.getRange(row, col).setBackground(null);
+    sheet.getRange(row, col + 3).setBackground(null);
+  } catch(eReset) {}
+
+  SpreadsheetApp.flush();
+
+  return ContentService.createTextOutput(JSON.stringify({
+    "status": "success",
+    "message": "Berhasil menghapus data listing " + idListing
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function updateWeeklyMeetingSchedule(data) {
+  var sheetName = data.sheetName;
+  var row = parseInt(data.row);
+  var col = parseInt(data.colIndex);
+  var jadwalPosting = data.jadwalPosting ? data.jadwalPosting.toString().trim() : "";
+  
+  if (!sheetName || isNaN(row) || isNaN(col)) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Parameter tidak lengkap: sheetName=" + sheetName + ", row=" + row + ", col=" + col
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+  var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+  var sheet = findSheetByFlexibleName(ss, sheetName);
+  
+  if (!sheet) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Sheet '" + sheetName + "' tidak ditemukan."
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  // Kolom Jadwal Posting = colIndex + 3 (0-based: ID=col, Keterangan=col+1, PostingIG=col+2, JadwalPosting=col+3)
+  var jadwalCol = col + 3;
+  sheet.getRange(row, jadwalCol).setValue(jadwalPosting);
+  SpreadsheetApp.flush();
+  
+  return ContentService.createTextOutput(JSON.stringify({
+    "status": "success",
+    "message": "Berhasil mengubah jadwal posting menjadi: " + jadwalPosting
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function updateWeeklyMeetingMeHighlight(data) {
+  var sheetName = data.sheetName;
+  var dateStr = data.date;
+  var row = parseInt(data.row);
+  var col = parseInt(data.colIndex);
+  var highlighted = data.highlighted === true || data.highlighted === "true";
+  var idListing = data.idListing ? data.idListing.toString().trim() : "";
+  
+  var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+  var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+  var sheet = findSheetByFlexibleName(ss, sheetName);
+  
+  if (!sheet) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Sheet not found"
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // Resolusi dinamis jika row atau colIndex tidak valid
+  var colInfo = dateStr ? getMeetingColumnAndMaxRow(dateStr, sheet) : null;
+  if ((isNaN(col) || col < 2) && colInfo) {
+    col = colInfo.col;
+  }
+  if ((isNaN(row) || row < 5) && col >= 2 && idListing !== "") {
+    var maxR = colInfo ? colInfo.maxRow : 120;
+    var colValues = sheet.getRange(5, col, maxR - 4, 1).getValues();
+    var cleanTarget = idListing.toLowerCase().replace(/[^a-z0-9]/g, "");
+    for (var r = 0; r < colValues.length; r++) {
+      var cellVal = colValues[r][0] ? colValues[r][0].toString().trim().toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+      if (cellVal !== "" && cellVal === cleanTarget) {
+        row = 5 + r;
+        break;
+      }
+    }
+  }
+
+  if (isNaN(row) || isNaN(col) || row < 5 || col < 2) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Gagal menemukan posisi listing di sheet (row=" + row + ", col=" + col + ")"
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  // Kolom Nama ME adalah col + 4 (ID=col, Keterangan=col+1, PostingIG=col+2, Jadwal=col+3, NamaME=col+4)
+  var meCell = sheet.getRange(row, col + 4);
+  
+  if (highlighted) {
+    meCell.setBackground("#2563EB"); // Warna biru
+    meCell.setFontColor("#FFFFFF");  // Teks warna putih
+  } else {
+    meCell.setBackground(null);
+    meCell.setFontColor(null);
+  }
+  
+  SpreadsheetApp.flush();
+  
+  return ContentService.createTextOutput(JSON.stringify({
+    "status": "success",
+    "message": "Berhasil memperbarui highlight Nama ME di sheet " + sheet.getName() + " baris " + row
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function findAbsensiSheet(ss) {
+  var sheet = ss.getSheetByName("Absensi Meeting 2026");
+  if (sheet) return sheet;
+  sheet = ss.getSheetByName("Absensi Meeting " + new Date().getFullYear());
+  if (sheet) return sheet;
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].getName().indexOf("Absensi") !== -1) {
+      return sheets[i];
+    }
+  }
+  return null;
+}
+
+function getAbsensiMeeting(e) {
+  var ssId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+  var ss = SpreadsheetApp.openById(ssId);
+  var sheet = findAbsensiSheet(ss);
+  
+  if (!sheet) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "error",
+      message: "Sheet 'Absensi Meeting 2026' atau sheet absensi lainnya tidak ditemukan."
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  var monthIndex = 5;
+  if (e && e.parameter && e.parameter.monthIndex !== undefined) {
+    monthIndex = parseInt(e.parameter.monthIndex, 10);
+  }
+  
+  var configs = [
+    { start: 4, end: 7, total: 8, label: "Januari" },
+    { start: 10, end: 13, total: 14, label: "Februari" },
+    { start: 16, end: 20, total: 21, label: "Maret" },
+    { start: 23, end: 26, total: 27, label: "April" },
+    { start: 29, end: 32, total: 33, label: "Mei" },
+    { start: 35, end: 39, total: 40, label: "Juni" },
+    { start: 42, end: 45, total: 46, label: "Juli" },
+    { start: 48, end: 51, total: 52, label: "Agustus" },
+    { start: 54, end: 58, total: 59, label: "September" },
+    { start: 61, end: 64, total: 65, label: "Oktober" },
+    { start: 67, end: 70, total: 71, label: "November" },
+    { start: 73, end: 77, total: 78, label: "Desember" }
+  ];
+  
+  var config = configs[monthIndex] || configs[5];
+  var startCol = config.start;
+  var endCol = config.end;
+  var totalCol = config.total;
+  var numCols = endCol - startCol + 1;
+  
+  var lastRow = sheet.getLastRow();
+  var scanMax = Math.max(1, lastRow - 5);
+  var rawColB = sheet.getRange(6, 2, scanMax, 1).getValues();
+  var numAgents = 0;
+  var totalRowIdx = -1;
+  for (var k = 0; k < rawColB.length; k++) {
+    var strB = rawColB[k][0] ? rawColB[k][0].toString().trim() : "";
+    if (strB.toLowerCase().indexOf("total") !== -1 || strB.toLowerCase().indexOf("jumlah") !== -1) {
+      totalRowIdx = 6 + k;
+      break;
+    }
+    if (strB !== "") {
+      numAgents = k + 1;
+    }
+  }
+  if (numAgents === 0) numAgents = Math.min(36, scanMax);
+  
+  var namesValues = sheet.getRange(6, 2, numAgents, 1).getValues();
+  
+  var headerRange = sheet.getRange(4, startCol, 2, numCols);
+  var headerValues = headerRange.getValues();
+  
+  var dates = [];
+  for (var c = 0; c < numCols; c++) {
+    var val4 = headerValues[0][c];
+    var val5 = headerValues[1][c];
+    var dateLabel = "";
+    
+    if (val5 instanceof Date) {
+      dateLabel = formatDateDMYHelper(val5);
+    } else if (val5 && val5.toString().trim() !== "") {
+      dateLabel = val5.toString().trim();
+    } else if (val4 instanceof Date) {
+      dateLabel = formatDateDMYHelper(val4);
+    } else if (val4 && val4.toString().trim() !== "") {
+      dateLabel = val4.toString().trim();
+    } else {
+      dateLabel = "Meeting " + (c + 1);
+    }
+    dates.push({
+      colIndex: startCol + c,
+      label: dateLabel
+    });
+  }
+  
+  var dataRange = sheet.getRange(6, startCol, numAgents, numCols + 1);
+  var dataValues = dataRange.getValues();
+  
+  var actualTotalRow = (totalRowIdx !== -1) ? totalRowIdx : 47;
+  var totalDateRange = sheet.getRange(actualTotalRow, startCol, 1, numCols);
+  var totalDateValues = totalDateRange.getValues();
+  
+  var marketingList = [];
+  for (var i = 0; i < namesValues.length; i++) {
+    var name = namesValues[i][0] ? namesValues[i][0].toString().trim() : "";
+    if (name === "") continue;
+    
+    var rowData = dataValues[i];
+    var attendance = [];
+    for (var c = 0; c < numCols; c++) {
+      var val = rowData[c];
+      var present = (val === true || val.toString().toLowerCase() === "true" || val === 1 || val.toString() === "v" || val.toString() === "âœ”");
+      attendance.push(present);
+    }
+    
+    var totalHadirBulan = rowData[numCols] ? parseInt(rowData[numCols], 10) : 0;
+    
+    marketingList.push({
+      row: 6 + i,
+      name: name,
+      attendance: attendance,
+      totalHadirBulan: totalHadirBulan
+    });
+  }
+  
+  var dateTotals = [];
+  for (var c = 0; c < numCols; c++) {
+    dateTotals.push(totalDateValues[0][c] ? parseInt(totalDateValues[0][c], 10) : 0);
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({
+    status: "success",
+    monthIndex: monthIndex,
+    dates: dates,
+    marketingList: marketingList,
+    dateTotals: dateTotals
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function updateAbsensiMeeting(data) {
+  var ssId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+  var ss = SpreadsheetApp.openById(ssId);
+  var sheet = findAbsensiSheet(ss);
+  
+  if (!sheet) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "error",
+      message: "Sheet 'Absensi Meeting 2026' atau sheet absensi lainnya tidak ditemukan."
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  var row = parseInt(data.row, 10);
+  var col = parseInt(data.col, 10);
+  var present = (data.present === "true" || data.present === true);
+  
+  if (isNaN(row) || isNaN(col) || row < 6 || row > 100 || col < 4) {
+    return ContentService.createTextOutput(JSON.stringify({
+      status: "error",
+      message: "Parameter row (" + row + ") atau col (" + col + ") tidak valid."
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  var cell = sheet.getRange(row, col);
+  cell.setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
+  cell.setValue(present);
+  
+  SpreadsheetApp.flush();
+  
+  var configs = [
+    { start: 4, end: 7, total: 8, label: "Januari" },
+    { start: 10, end: 13, total: 14, label: "Februari" },
+    { start: 16, end: 20, total: 21, label: "Maret" },
+    { start: 23, end: 26, total: 27, label: "April" },
+    { start: 29, end: 32, total: 33, label: "Mei" },
+    { start: 35, end: 39, total: 40, label: "Juni" },
+    { start: 42, end: 45, total: 46, label: "Juli" },
+    { start: 48, end: 51, total: 52, label: "Agustus" },
+    { start: 54, end: 58, total: 59, label: "September" },
+    { start: 61, end: 64, total: 65, label: "Oktober" },
+    { start: 67, end: 70, total: 71, label: "November" },
+    { start: 73, end: 77, total: 78, label: "Desember" }
+  ];
+  
+  var totalCol = 8; // default fallback
+  for (var i = 0; i < configs.length; i++) {
+    if (col >= configs[i].start && col <= configs[i].end) {
+      totalCol = configs[i].total;
+      break;
+    }
+  }
+  
+  var actualTotalRow = 47;
+  var colBCheck = sheet.getRange(6, 2, Math.max(1, sheet.getLastRow() - 5), 1).getValues();
+  for (var k = 0; k < colBCheck.length; k++) {
+    var v = colBCheck[k][0] ? colBCheck[k][0].toString().trim().toLowerCase() : "";
+    if (v.indexOf("total") !== -1 || v.indexOf("jumlah") !== -1) {
+      actualTotalRow = 6 + k;
+      break;
+    }
+  }
+
+  var newRowTotal = sheet.getRange(row, totalCol).getValue();
+  var newColTotal = sheet.getRange(actualTotalRow, col).getValue();
+  
+  return ContentService.createTextOutput(JSON.stringify({
+    status: "success",
+    message: "Absensi berhasil diupdate.",
+    newRowTotal: newRowTotal,
+    newColTotal: newColTotal
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function getYearlyIgPostingHistory(e) {
+  var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+  var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+  var months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  
+  var historyMap = {};
+  
+  for (var m = 0; m < months.length; m++) {
+    var sheetName = "Recap Meeting " + months[m];
+    var sheet = findSheetByFlexibleName(ss, sheetName);
+    if (!sheet) continue;
+    
+    var sName = sheet.getName();
+    var yearMatch = sName.match(/\b(\d{4})\b/);
+    var sheetYear = yearMatch ? parseInt(yearMatch[1], 10) : 2026;
+    
+    var monthNum = m + 1;
+    
+    // === BATCH READ: baca seluruh sheet sekaligus (1 API call per sheet) ===
+    var lastCol = sheet.getLastColumn();
+    var maxRow = 120;
+    if (lastCol < 58) lastCol = 58;
+    if (lastCol > sheet.getLastColumn()) lastCol = sheet.getLastColumn();
+    if (maxRow > sheet.getLastRow()) maxRow = sheet.getLastRow();
+    if (maxRow <= 0 || lastCol <= 0) continue;
+    
+    var allValues = sheet.getRange(1, 1, maxRow, lastCol).getValues();
+    
+    // Deteksi kolom-kolom meeting (col 2, 10, 18, 26, 34, 42, 50, 58)
+    var checkCols = [2, 10, 18, 26, 34, 42, 50, 58];
+    var dateCols = [];
+    
+    for (var i = 0; i < checkCols.length; i++) {
+      var col = checkCols[i];
+      if (col > lastCol) break;
+      var colIdx = col - 1; // 0-based
+      
+      // Deteksi tanggal dari header rows 1-4
+      var foundDay = null;
+      var foundDayName = "Selasa";
+      for (var r = 0; r < 4; r++) {
+        var val = allValues[r] ? allValues[r][colIdx] : null;
+        if (!val && val !== 0) continue;
+        if (val instanceof Date) {
+          foundDay = val.getDate();
+          foundDayName = getIndonesianDayName(val.getDay());
+          break;
+        }
+        var valStr = val.toString().toLowerCase();
+        var numMatch = valStr.match(/\b(\d{1,2})\b/);
+        if (numMatch) {
+          foundDay = parseInt(numMatch[1], 10);
+          break;
+        }
+      }
+      
+      if (foundDay !== null) {
+        dateCols.push({ colIdx: colIdx, day: foundDay, dayName: foundDayName });
+      } else {
+        // Fallback: hitung hari Selasa untuk bulan ini
+        var tuesdays = [];
+        var d = new Date(sheetYear, m, 1);
+        while (d.getDay() !== 2) { d.setDate(d.getDate() + 1); }
+        while (d.getMonth() === m) {
+          tuesdays.push(d.getDate());
+          d.setDate(d.getDate() + 7);
+        }
+        if (i < tuesdays.length) {
+          dateCols.push({ colIdx: colIdx, day: tuesdays[i], dayName: "Selasa" });
+        }
+      }
+    }
+    
+    // Proses tiap kolom meeting
+    for (var d = 0; d < dateCols.length; d++) {
+      var colInfo = dateCols[d];
+      var colIdx0 = colInfo.colIdx; // 0-based index kolom ID Listing
+      var day = colInfo.day;
+      var dayName = colInfo.dayName;
+      var formattedDate = dayName + ", " + day + " " + months[m] + " " + sheetYear;
+      
+      // Baris data mulai dari row 5 (index 4)
+      for (var r = 4; r < maxRow; r++) {
+        var row = allValues[r];
+        if (!row) continue;
+        
+        var idListing = row[colIdx0] ? row[colIdx0].toString().trim() : "";
+        if (idListing === "") continue;
+        
+        // Bersihkan trailing ".0" (dari number formatting spreadsheet)
+        if (idListing.endsWith(".0")) {
+          idListing = idListing.substring(0, idListing.length - 2);
+        }
+        
+        // Kolom Posting IG = colIdx0 + 2 (0-based)
+        var igColIdx = colIdx0 + 2;
+        var igRaw = igColIdx < lastCol ? row[igColIdx] : null;
+        
+        var isDone = false;
+        if (igRaw !== null && igRaw !== undefined && igRaw !== "") {
+          if (typeof igRaw === "boolean") {
+            isDone = igRaw === true;
+          } else if (typeof igRaw === "number") {
+            isDone = igRaw === 1;
+          } else {
+            var igStr = igRaw.toString().trim().toLowerCase();
+            isDone = igStr === "true" || igStr === "done" || igStr === "ya" ||
+                     igStr === "yes" || igStr === "1" || igStr === "v" ||
+                     igStr === "âˆš" || igStr === "âœ”";
+          }
+        }
+        
+        if (isDone) {
+          // Ambil tanggal jadwal posting jika ada (kolom colIdx0 + 3)
+          var jadwalColIdx = colIdx0 + 3;
+          var jadwalVal = jadwalColIdx < lastCol ? row[jadwalColIdx] : null;
+          var dateToRecord = formattedDate;
+          if (jadwalVal && jadwalVal !== "") {
+            if (jadwalVal instanceof Date) {
+              var jDay = jadwalVal.getDate();
+              var jMonth = jadwalVal.getMonth();
+              var jYear = jadwalVal.getFullYear();
+              var jDayName = getIndonesianDayName(jadwalVal.getDay());
+              dateToRecord = jDayName + ", " + jDay + " " + months[jMonth] + " " + jYear;
+            } else {
+              var jadwalStr = jadwalVal.toString().trim();
+              if (jadwalStr !== "") dateToRecord = jadwalStr;
+            }
+          }
+          
+          if (!historyMap[idListing]) {
+            historyMap[idListing] = [];
+          }
+          // Hindari duplikat tanggal yang sama
+          if (historyMap[idListing].indexOf(dateToRecord) === -1) {
+            historyMap[idListing].push(dateToRecord);
+          }
+        }
+      }
+    }
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify({
+    "status": "success",
+    "history": historyMap
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function getIndonesianDayName(dayNum) {
+  var days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+  return days[dayNum] || "Selasa";
+}
+
+function getSavedCaptions(e) {
+  try {
+    var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+    var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+    var sheet = ss.getSheetByName("Captions") || ss.getSheetByName("captions");
+    
+    if (!sheet) {
+      return ContentService.createTextOutput(JSON.stringify({
+        "status": "success",
+        "captions": {}
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      return ContentService.createTextOutput(JSON.stringify({
+        "status": "success",
+        "captions": {}
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    var values = sheet.getRange(2, 1, lastRow - 1, 3).getValues();
+    var captionsMap = {};
+    for (var i = 0; i < values.length; i++) {
+      var idListing = values[i][0] ? values[i][0].toString().trim() : "";
+      var captionText = values[i][1] ? values[i][1].toString() : "";
+      if (idListing !== "") {
+        captionsMap[idListing] = captionText;
+      }
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "success",
+      "captions": captionsMap
+    })).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": err.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function saveCaption(data) {
+  try {
+    var idListing = data.idListing ? data.idListing.toString().trim() : "";
+    var caption = data.caption ? data.caption.toString() : "";
+    
+    if (!idListing) {
+      return ContentService.createTextOutput(JSON.stringify({
+        "status": "error",
+        "message": "ID Listing tidak boleh kosong."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+    var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+    var sheet = ss.getSheetByName("Captions") || ss.getSheetByName("captions");
+    
+    if (!sheet) {
+      sheet = ss.insertSheet("Captions");
+      sheet.getRange(1, 1, 1, 3).setValues([["ID Listing", "Caption", "Updated At"]]);
+      sheet.getRange(1, 1, 1, 3).setFontWeight("bold").setBackground("#D9EAD3");
+    }
+    
+    var lastRow = sheet.getLastRow();
+    var foundRow = -1;
+    
+    if (lastRow >= 2) {
+      var idValues = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+      for (var i = 0; i < idValues.length; i++) {
+        var existingId = idValues[i][0] ? idValues[i][0].toString().trim() : "";
+        if (existingId === idListing) {
+          foundRow = i + 2;
+          break;
+        }
+      }
+    }
+    
+    var nowStr = Utilities.formatDate(new Date(), "Asia/Jakarta", "yyyy-MM-dd HH:mm:ss");
+    if (foundRow !== -1) {
+      sheet.getRange(foundRow, 2).setValue(caption);
+      sheet.getRange(foundRow, 3).setValue(nowStr);
+    } else {
+      var newRow = Math.max(lastRow + 1, 2);
+      sheet.getRange(newRow, 1, 1, 3).setValues([[idListing, caption, nowStr]]);
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "success",
+      "message": "Caption ID " + idListing + " berhasil disimpan ke sheet Captions"
+    })).setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": err.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}

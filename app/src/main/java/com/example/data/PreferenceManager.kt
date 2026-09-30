@@ -20,6 +20,7 @@ class PreferenceManager(context: Context) {
         get() {
             val url = prefs.getString(KEY_APPS_SCRIPT_URL, DEFAULT_APPS_SCRIPT_URL)
             val oldUrls = setOf(
+                "https://script.google.com/macros/s/AKfycbwRMtT3EQ4e8RjWWjLsaziF8rn9raRyGgPgm2LV6LHDYpfbFCiQTD-DnXc13hT5GuDh/exec",
                 "https://script.google.com/macros/s/AKfycbw7Bgmn_vkExGXWlTyO_AOgW2cULo_E2FDeAtJD0xoYf8LJtA24TqqBqFAqIxbn8CH8/exec",
                 "https://script.google.com/macros/s/AKfycbwrCQKzNu047yMnQQEhkty1rvCsujrAHtyZGrczgB5-awZAh0R03XnMBIxqA1sHXwgL/exec",
                 "https://script.google.com/macros/s/AKfycbwimHayI2ub4x6xabamVvCribr97G3CUIJgEAlFF0MVqOVSHrsni6Zvs6A5MUY2UQMh/exec",
@@ -52,6 +53,7 @@ class PreferenceManager(context: Context) {
         get() {
             val url = prefs.getString(KEY_WEEKLY_MEETING_URL, DEFAULT_WEEKLY_MEETING_URL) ?: DEFAULT_WEEKLY_MEETING_URL
             val oldWeeklyUrls = setOf(
+                "https://script.google.com/macros/s/AKfycbwRMtT3EQ4e8RjWWjLsaziF8rn9raRyGgPgm2LV6LHDYpfbFCiQTD-DnXc13hT5GuDh/exec",
                 "https://script.google.com/macros/s/AKfycbw7Bgmn_vkExGXWlTyO_AOgW2cULo_E2FDeAtJD0xoYf8LJtA24TqqBqFAqIxbn8CH8/exec",
                 "https://script.google.com/macros/s/AKfycbnjoXMwvPMSLKdrcE7Pcvzj0O_8WRZZFNmetZ_a1KmVi9ahwAaINQ9aVZFVLMToX9g/exec",
                 "https://script.google.com/macros/s/AKfycbyRNk1K74ju5jFMqlR-eVebsGWgsQ73Mv666pgDF4F80DVRBk4I9BHRGYfao-QvwVZ6Rw/exec",
@@ -142,6 +144,10 @@ class PreferenceManager(context: Context) {
     fun saveAgentInfo(id: String, name: String, waUrl: String, avatarUrl: String) {
         prefs.edit().putString("agent_$id", "$name|||$waUrl|||$avatarUrl").apply()
     }
+
+    var highlightedMeListingIds: Set<String>
+        get() = prefs.getStringSet("highlighted_me_ids", emptySet()) ?: emptySet()
+        set(value) = prefs.edit().putStringSet("highlighted_me_ids", value).apply()
 
     // Cache timestamp for listing data – used to implement TTL-based refresh
     fun getListingCacheTime(id: String): Long = prefs.getLong("cache_time_$id", 0L)

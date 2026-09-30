@@ -106,21 +106,10 @@ fun DetailPagerScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text(
-                            text = "Jadwal ${schedule.idListing.ifBlank { "Detail" }}",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = when (pagerState.currentPage) {
-                                0 -> "Halaman Edit Jadwal"
-                                1 -> "Halaman Posts"
-                                else -> "Halaman Follow Up WhatsApp"
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.outline
-                        )
-                    }
+                    Text(
+                        text = "Jadwal ${schedule.idListing.ifBlank { "Detail" }}",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
                 },
                 navigationIcon = {
                     IconButton(
@@ -141,6 +130,32 @@ fun DetailPagerScreen(
                     }
                 },
                 actions = {
+                    val highlightedMeListingIds by viewModel.highlightedMeListingIds.collectAsState()
+                    val isHighlighted = highlightedMeListingIds.contains(schedule.idListing.trim())
+                    
+                    IconButton(
+                        onClick = {
+                            val newHighlight = !isHighlighted
+                            viewModel.updateWeeklyMeetingMeHighlight(
+                                month = schedule.sheetName,
+                                dateStr = schedule.tanggal,
+                                row = schedule.no,
+                                colIndex = 0,
+                                idListing = schedule.idListing,
+                                highlighted = newHighlight,
+                                onResult = { _, msg ->
+                                    Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (isHighlighted) Icons.Default.CheckCircle else Icons.Default.Check,
+                            contentDescription = "Tandai Biru Nama ME di Spreadsheet",
+                            tint = if (isHighlighted) Color(0xFF2563EB) else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
                     val isMeetingResult = schedule.type == "Meeting Result"
                     if (isMeetingResult) {
                         if (onEditMeetingListing != null) {

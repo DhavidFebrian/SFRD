@@ -281,6 +281,9 @@ function doPost(e) {
     if (action === "update_weekly_meeting_schedule") {
       return updateWeeklyMeetingSchedule(params);
     }
+    if (action === "update_weekly_meeting_me_highlight") {
+      return updateWeeklyMeetingMeHighlight(params);
+    }
     if (action === "update_absensi_meeting") {
       return updateAbsensiMeeting(params);
     }
@@ -716,12 +719,15 @@ function getWeeklyMeetingListings(e) {
   
   var dataRange = sheet.getRange(startRow, colIndex, numRows, 6);
   var values = dataRange.getValues();
+  var backgrounds = dataRange.getBackgrounds();
   
   var listings = [];
   for (var r = 0; r < values.length; r++) {
     var row = values[r];
     var idListing = row[0] ? row[0].toString().trim() : "";
     if (idListing !== "") {
+      var meBg = backgrounds && backgrounds[r] && backgrounds[r][4] ? backgrounds[r][4].toString().toLowerCase() : "";
+      var isMeHighlighted = meBg === "#2563eb" || meBg === "#0066ff" || meBg === "#0000ff" || meBg === "#1e88e5" || (meBg !== "" && meBg !== "#ffffff" && meBg !== "#000000" && meBg !== "rgba(0, 0, 0, 0)");
       listings.push({
         "no": (startRow + r),
         "row": (startRow + r),
@@ -732,7 +738,8 @@ function getWeeklyMeetingListings(e) {
         "postingIg": row[2] ? row[2].toString().trim() : "",
         "jadwalPosting": row[3] ? row[3].toString().trim() : "",
         "namaMe": row[4] ? row[4].toString().trim() : "",
-        "catatan": row[5] ? row[5].toString().trim() : ""
+        "catatan": row[5] ? row[5].toString().trim() : "",
+        "meHighlighted": isMeHighlighted
       });
     }
   }
@@ -1395,6 +1402,69 @@ function updateWeeklyMeetingSchedule(data) {
   return ContentService.createTextOutput(JSON.stringify({
     "status": "success",
     "message": "Berhasil mengubah jadwal posting menjadi: " + jadwalPosting
+  })).setMimeType(ContentService.MimeType.JSON);
+}
+
+function updateWeeklyMeetingMeHighlight(data) {
+  var sheetName = data.sheetName;
+  var dateStr = data.date;
+  var row = parseInt(data.row);
+  var col = parseInt(data.colIndex);
+  var highlighted = data.highlighted === true || data.highlighted === "true";
+  var idListing = data.idListing ? data.idListing.toString().trim() : "";
+  
+  var weeklyMeetingSpreadsheetId = "1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY";
+  var ss = SpreadsheetApp.openById(weeklyMeetingSpreadsheetId);
+  var sheet = findSheetByFlexibleName(ss, sheetName);
+  
+  if (!sheet) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Sheet not found"
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+
+  // Resolusi dinamis jika row atau colIndex tidak valid
+  var colInfo = dateStr ? getMeetingColumnAndMaxRow(dateStr, sheet) : null;
+  if ((isNaN(col) || col < 2) && colInfo) {
+    col = colInfo.col;
+  }
+  if ((isNaN(row) || row < 5) && col >= 2 && idListing !== "") {
+    var maxR = colInfo ? colInfo.maxRow : 120;
+    var colValues = sheet.getRange(5, col, maxR - 4, 1).getValues();
+    var cleanTarget = idListing.toLowerCase().replace(/[^a-z0-9]/g, "");
+    for (var r = 0; r < colValues.length; r++) {
+      var cellVal = colValues[r][0] ? colValues[r][0].toString().trim().toLowerCase().replace(/[^a-z0-9]/g, "") : "";
+      if (cellVal !== "" && cellVal === cleanTarget) {
+        row = 5 + r;
+        break;
+      }
+    }
+  }
+
+  if (isNaN(row) || isNaN(col) || row < 5 || col < 2) {
+    return ContentService.createTextOutput(JSON.stringify({
+      "status": "error",
+      "message": "Gagal menemukan posisi listing di sheet (row=" + row + ", col=" + col + ")"
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  // Kolom Nama ME adalah col + 4 (ID=col, Keterangan=col+1, PostingIG=col+2, Jadwal=col+3, NamaME=col+4)
+  var meCell = sheet.getRange(row, col + 4);
+  
+  if (highlighted) {
+    meCell.setBackground("#2563EB"); // Warna biru
+    meCell.setFontColor("#FFFFFF");  // Teks warna putih
+  } else {
+    meCell.setBackground(null);
+    meCell.setFontColor(null);
+  }
+  
+  SpreadsheetApp.flush();
+  
+  return ContentService.createTextOutput(JSON.stringify({
+    "status": "success",
+    "message": "Berhasil memperbarui highlight Nama ME di sheet " + sheet.getName() + " baris " + row
   })).setMimeType(ContentService.MimeType.JSON);
 }
 

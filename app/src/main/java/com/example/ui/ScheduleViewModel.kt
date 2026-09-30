@@ -632,6 +632,27 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     var formatNotDone = MutableStateFlow(preferenceManager.formatNotDone)
     var selectedMonth = MutableStateFlow(preferenceManager.selectedMonth)
     
+    // Highlighted ME Listing IDs state
+    private val _highlightedMeListingIds = MutableStateFlow<Set<String>>(preferenceManager.highlightedMeListingIds)
+    val highlightedMeListingIds: StateFlow<Set<String>> = _highlightedMeListingIds.asStateFlow()
+
+    fun toggleHighlightMe(idListing: String) {
+        val clean = idListing.trim()
+        if (clean.isBlank()) return
+        val current = _highlightedMeListingIds.value.toMutableSet()
+        if (current.contains(clean)) {
+            current.remove(clean)
+        } else {
+            current.add(clean)
+        }
+        _highlightedMeListingIds.value = current
+        preferenceManager.highlightedMeListingIds = current
+    }
+
+    fun isMeHighlighted(idListing: String): Boolean {
+        return _highlightedMeListingIds.value.contains(idListing.trim())
+    }
+    
     // Weekly Meeting States
     val meetingListings = MutableStateFlow<List<com.example.network.MeetingListing>>(emptyList())
     val selectedMeetingDate = MutableStateFlow<String?>(null)
@@ -1792,6 +1813,75 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    fun updateWeeklyMeetingMeHighlight(
+        month: String,
+        dateStr: String,
+        row: Int,
+        colIndex: Int,
+        idListing: String,
+        highlighted: Boolean,
+        onResult: ((Boolean, String) -> Unit)? = null
+    ) {
+        val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
+        val cleanId = idListing.trim()
+
+        // 1. Optimistic update: langsung ubah status highlight di UI
+        meetingListings.update { list ->
+            list.map { item ->
+                if (item.idListing.trim().equals(cleanId, ignoreCase = true) || (colIndex > 0 && item.colIndex == colIndex && item.no == row)) {
+                    item.copy(meHighlighted = highlighted)
+                } else item
+            }
+        }
+        allMonthlyMeetingListings.update { list ->
+            list.map { item ->
+                if (item.idListing.trim().equals(cleanId, ignoreCase = true) && (dateStr.isBlank() || item.date == dateStr)) {
+                    item.copy(meHighlighted = highlighted)
+                } else item
+            }
+        }
+
+        // Simpan preferensi lokal per listing ID
+        if (highlighted) {
+            val current = preferenceManager.highlightedMeListingIds.toMutableSet()
+            current.add(cleanId)
+            preferenceManager.highlightedMeListingIds = current
+            _highlightedMeListingIds.value = current
+        } else {
+            val current = preferenceManager.highlightedMeListingIds.toMutableSet()
+            current.remove(cleanId)
+            preferenceManager.highlightedMeListingIds = current
+            _highlightedMeListingIds.value = current
+        }
+
+        onResult?.invoke(true, if (highlighted) "Warna Nama ME di spreadsheet diubah ke Biru (teks Putih)!" else "Highlight Nama ME dinonaktifkan.")
+
+        if (baseUrl.isBlank()) return
+
+        val sheetName = if (month.isNotBlank()) month else getWeeklyMeetingSheetNameForMonth(dateStr)
+
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val request = com.example.network.UpdateMeetingMeHighlightRequest(
+                    sheetName = sheetName,
+                    date = dateStr,
+                    row = row,
+                    colIndex = colIndex,
+                    idListing = cleanId,
+                    highlighted = highlighted
+                )
+                val response = apiService.updateMeetingMeHighlight(baseUrl, request)
+                if (dateStr.isNotBlank()) {
+                    fetchMeetingListingsSilently(sheetName, dateStr)
+                }
+            } catch (e: Exception) {
+                if (dateStr.isNotBlank()) {
+                    fetchMeetingListingsSilently(sheetName, dateStr)
+                }
+            }
+        }
+    }
+
     fun getAgentAvatarByName(name: String): String? {
         if (name.isBlank()) return null
         val cleanLook = name.trim().lowercase()
@@ -1919,15 +2009,52 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         photoMonth: String = "",
         onResult: (Boolean, String) -> Unit
     ) {
-        val baseUrl = appsScriptUrl.value
+        val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
         if (baseUrl.isBlank()) {
             onResult(false, "URL Google Apps Script belum diatur di menu Setting.")
             return
         }
 
+        // 1. Immediate optimistic update in memory (0ms UI latency)
+        val previousIgListings = weeklyMeetingIgListings.value
+        val previousAllListings = allMonthlyMeetingListings.value
+
+        val updatedIgListings = previousIgListings.map { item ->
+            if (item.no == row && item.colIndex == colIndex) {
+                item.copy(jadwalPosting = jadwalPosting)
+            } else {
+                item
+            }
+        }
+        weeklyMeetingIgListings.value = updatedIgListings
+
+        val updatedAllListings = previousAllListings.map { item ->
+            if (item.no == row && item.colIndex == colIndex) {
+                item.copy(jadwalPosting = jadwalPosting)
+            } else {
+                item
+            }
+        }
+        allMonthlyMeetingListings.value = updatedAllListings
+
+        // Update all caches so switching filter/month maintains the updated date
+        igListingsCache.keys().toList().forEach { key ->
+            val cached = igListingsCache[key]
+            if (cached != null) {
+                igListingsCache[key] = cached.map { item ->
+                    if (item.no == row && item.colIndex == colIndex) {
+                        item.copy(jadwalPosting = jadwalPosting)
+                    } else {
+                        item
+                    }
+                }
+            }
+        }
+
+        // Notify UI immediately to close picker and dismiss spinner
+        onResult(true, "Tanggal posting berhasil diatur.")
+
         // Deteksi bulan dari dateStr (format: "Selasa, 8 Juli 2026" atau "2026-07-08")
-        val monthNames = listOf("Januari","Februari","Maret","April","Mei","Juni",
-                                "Juli","Agustus","September","Oktober","November","Desember")
         val detectedMonth = when {
             dateStr.contains("-01-") || dateStr.contains("Januari") -> "Januari"
             dateStr.contains("-02-") || dateStr.contains("Februari") -> "Februari"
@@ -1945,6 +2072,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         }
         val sheetName = getWeeklyMeetingSheetNameForMonth(detectedMonth)
 
+        // 2. Perform network update in background without blocking or resetting UI
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 val request = com.example.network.UpdateMeetingScheduleRequest(
@@ -1956,41 +2084,20 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 )
                 
                 val response = apiService.updateMeetingSchedule(baseUrl, request)
-                if (response.status.lowercase() == "success") {
-                    // 1. Clear cache so subsequent queries won't hit stale cache
-                    igListingsCache.clear()
-
-                    // 2. Immediate optimistic update of weeklyMeetingIgListings
-                    val currentList = weeklyMeetingIgListings.value
-                    val updatedList = currentList.map { item ->
-                        if (item.no == row && item.colIndex == colIndex) {
-                            item.copy(jadwalPosting = jadwalPosting)
-                        } else {
-                            item
-                        }
-                    }
-                    weeklyMeetingIgListings.value = updatedList
-
+                if (response.status.lowercase() != "success") {
+                    // Rollback if server responded with error
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        onResult(true, response.message)
-                    }
-
-                    // 3. Re-fetch from server with forceRefresh = true
-                    fetchWeeklyMeetingIgListings(detectedMonth, forceRefresh = true)
-                    if (photoMonth.isNotBlank() && photoMonth.lowercase() != detectedMonth.lowercase()) {
-                        fetchWeeklyMeetingIgListings(photoMonth, forceRefresh = true)
-                    }
-                    if (selectedMeetingDate.value != null && selectedMeetingMonth.value != null) {
-                        fetchMeetingListings(selectedMeetingMonth.value!!, selectedMeetingDate.value!!)
-                    }
-                } else {
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        onResult(false, response.message)
+                        weeklyMeetingIgListings.value = previousIgListings
+                        allMonthlyMeetingListings.value = previousAllListings
+                        _weeklyMeetingIgSyncStatus.value = SyncState.Error("Gagal menyimpan ke spreadsheet: ${response.message}")
                     }
                 }
             } catch (e: Exception) {
+                // Rollback on connection failure
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    onResult(false, "Gagal mengubah tanggal posting: ${e.localizedMessage ?: "Masalah koneksi"}")
+                    weeklyMeetingIgListings.value = previousIgListings
+                    allMonthlyMeetingListings.value = previousAllListings
+                    _weeklyMeetingIgSyncStatus.value = SyncState.Error("Gagal menyimpan ke server: ${e.localizedMessage ?: "Masalah koneksi"}")
                 }
             }
         }

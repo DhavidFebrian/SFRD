@@ -97,6 +97,9 @@ interface SheetsApiService {
     @POST
     suspend fun updateMeetingSchedule(@Url url: String, @Body request: UpdateMeetingScheduleRequest): GeneralResponse
 
+    @POST
+    suspend fun updateMeetingMeHighlight(@Url url: String, @Body request: UpdateMeetingMeHighlightRequest): GeneralResponse
+
     @GET
     suspend fun getAbsensiMeeting(@Url url: String): AbsensiResponse
 
@@ -106,6 +109,17 @@ interface SheetsApiService {
     @GET
     suspend fun getYearlyIgPostingHistory(@Url url: String): YearlyIgHistoryResponse
 }
+
+@JsonClass(generateAdapter = true)
+data class UpdateMeetingMeHighlightRequest(
+    @Json(name = "action") val action: String = "update_weekly_meeting_me_highlight",
+    @Json(name = "sheetName") val sheetName: String,
+    @Json(name = "date") val date: String,
+    @Json(name = "row") val row: Int,
+    @Json(name = "colIndex") val colIndex: Int,
+    @Json(name = "idListing") val idListing: String = "",
+    @Json(name = "highlighted") val highlighted: Boolean = true
+)
 
 @JsonClass(generateAdapter = true)
 data class YearlyIgHistoryResponse(
@@ -220,7 +234,8 @@ data class MeetingListing(
     @Json(name = "postingIg") val postingIg: String = "",
     @Json(name = "jadwalPosting") val jadwalPosting: String = "",
     @Json(name = "namaMe") val namaMe: String = "",
-    @Json(name = "catatan") val catatan: String = ""
+    @Json(name = "catatan") val catatan: String = "",
+    @Json(name = "meHighlighted") val meHighlighted: Boolean = false
 )
 
 @JsonClass(generateAdapter = true)
@@ -231,4 +246,5 @@ data class MeetingListingsResponse(
     @Json(name = "listings") val listings: List<MeetingListing> = emptyList(),
     @Json(name = "message") val message: String? = null
 )
+
 

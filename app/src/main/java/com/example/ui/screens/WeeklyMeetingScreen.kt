@@ -88,6 +88,7 @@ fun WeeklyMeetingScreen(
     val listingDescMap by viewModel.listingDescMap.collectAsState()
     val agentInfoMap by viewModel.agentInfoMap.collectAsState()
     val listingSoldMap by viewModel.listingSoldMap.collectAsState()
+    val highlightedMeListingIds by viewModel.highlightedMeListingIds.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedFilter by remember { mutableStateOf("Semua") }
@@ -761,6 +762,7 @@ fun WeeklyMeetingScreen(
                                     ) {
                                         Box(modifier = Modifier.weight(1f)) {
                                             val listing = pair[0]
+                                            val isHighlighted = listing.meHighlighted || highlightedMeListingIds.contains(listing.idListing.trim())
                                             MeetingListingCard(
                                                 listing = listing,
                                                 imageUrl = listingImagesMap[listing.idListing.trim()],
@@ -768,7 +770,18 @@ fun WeeklyMeetingScreen(
                                                 price = listingPriceMap[listing.idListing.trim()],
                                                 agentInfo = agentInfoMap[listing.idListing.trim()],
                                                 isSold = listingSoldMap[listing.idListing.trim()] == true,
+                                                isMeHighlighted = isHighlighted,
                                                 onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, listing.namaMe) },
+                                                onToggleHighlight = {
+                                                    viewModel.updateWeeklyMeetingMeHighlight(
+                                                        month = selectedMonth ?: "",
+                                                        dateStr = listing.date,
+                                                        row = listing.row,
+                                                        colIndex = listing.colIndex,
+                                                        idListing = listing.idListing,
+                                                        highlighted = !isHighlighted
+                                                    )
+                                                },
                                                 onClick = {
                                                     selectedListingForDetail = listing
                                                 }
@@ -777,6 +790,7 @@ fun WeeklyMeetingScreen(
                                         if (pair.size > 1) {
                                             Box(modifier = Modifier.weight(1f)) {
                                                 val listing = pair[1]
+                                                val isHighlighted = listing.meHighlighted || highlightedMeListingIds.contains(listing.idListing.trim())
                                                 MeetingListingCard(
                                                     listing = listing,
                                                     imageUrl = listingImagesMap[listing.idListing.trim()],
@@ -784,7 +798,18 @@ fun WeeklyMeetingScreen(
                                                     price = listingPriceMap[listing.idListing.trim()],
                                                     agentInfo = agentInfoMap[listing.idListing.trim()],
                                                     isSold = listingSoldMap[listing.idListing.trim()] == true,
+                                                    isMeHighlighted = isHighlighted,
                                                     onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, listing.namaMe) },
+                                                    onToggleHighlight = {
+                                                        viewModel.updateWeeklyMeetingMeHighlight(
+                                                            month = selectedMonth ?: "",
+                                                            dateStr = listing.date,
+                                                            row = listing.row,
+                                                            colIndex = listing.colIndex,
+                                                            idListing = listing.idListing,
+                                                            highlighted = !isHighlighted
+                                                        )
+                                                    },
                                                     onClick = {
                                                         selectedListingForDetail = listing
                                                     }
@@ -906,7 +931,9 @@ fun MeetingListingCard(
     price: String?,
     agentInfo: AgentInfo?,
     isSold: Boolean,
+    isMeHighlighted: Boolean = false,
     onFetchImage: ((String) -> Unit)? = null,
+    onToggleHighlight: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     LaunchedEffect(listing.idListing, imageUrl) {
@@ -969,6 +996,30 @@ fun MeetingListingCard(
                                 fontWeight = FontWeight.Bold
                             )
                         }
+                    }
+                }
+
+                // Check button on top-right of image to highlight ME in spreadsheet
+                if (onToggleHighlight != null) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(6.dp)
+                            .size(26.dp)
+                            .shadow(2.dp, CircleShape)
+                            .background(
+                                if (isMeHighlighted) Color(0xFF2563EB) else MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                CircleShape
+                            )
+                            .clickable { onToggleHighlight() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isMeHighlighted) Icons.Default.CheckCircle else Icons.Default.Check,
+                            contentDescription = "Tandai Nama ME",
+                            tint = if (isMeHighlighted) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
                     }
                 }
 
@@ -1090,23 +1141,39 @@ fun MeetingListingCard(
                 // ME details
                 if (listing.namaMe.isNotBlank()) {
                     Spacer(modifier = Modifier.height(2.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    Box(
+                        modifier = Modifier
+                            .then(
+                                if (isMeHighlighted) {
+                                    Modifier
+                                        .background(Color(0xFF2563EB), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                } else {
+                                    Modifier
+                                }
+                            )
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.outline,
-                            modifier = Modifier.size(10.dp)
-                        )
-                        Text(
-                            text = "ME: ${listing.namaMe}",
-                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = null,
+                                tint = if (isMeHighlighted) Color.White else MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Text(
+                                text = "ME: ${listing.namaMe}",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 9.sp,
+                                    fontWeight = if (isMeHighlighted) FontWeight.Bold else FontWeight.Normal
+                                ),
+                                color = if (isMeHighlighted) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
 
@@ -1132,6 +1199,40 @@ fun MeetingListingCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Status Toggle Button (full width at bottom like Publish Screen)
+                if (onToggleHighlight != null) {
+                    val meStatusColor = if (isMeHighlighted) Color(0xFF2563EB) else MaterialTheme.colorScheme.outline
+                    Surface(
+                        color = if (isMeHighlighted) Color(0xFF2563EB) else meStatusColor.copy(alpha = 0.08f),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, if (isMeHighlighted) Color(0xFF2563EB) else meStatusColor.copy(alpha = 0.35f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onToggleHighlight() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isMeHighlighted) Icons.Default.CheckCircle else Icons.Default.Check,
+                                contentDescription = null,
+                                tint = if (isMeHighlighted) Color.White else meStatusColor,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isMeHighlighted) "Sudah Ditandai" else "Tandai ME",
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
+                                color = if (isMeHighlighted) Color.White else meStatusColor
+                            )
+                        }
+                    }
                 }
             }
         }
