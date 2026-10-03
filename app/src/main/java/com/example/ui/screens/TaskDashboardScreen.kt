@@ -83,26 +83,15 @@ fun TaskDashboardScreen(
     val weeklyMeetingIgListings by viewModel.weeklyMeetingIgListings.collectAsState()
 
     val selectedMonth by viewModel.selectedMonth.collectAsState()
-    val defaultUploadIgMonth = remember {
-        val cal = Calendar.getInstance()
-        val yr = cal.get(Calendar.YEAR)
-        val mth = cal.get(Calendar.MONTH) // 0-indexed
-        val monthNames = listOf("Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember")
-        val mName = monthNames.getOrElse(mth) { "September" }
-        "$mName $yr"
-    }
-    var selectedUploadIgMonth by remember { mutableStateOf(defaultUploadIgMonth) }
+    val selectedUploadIgMonth by viewModel.publishSelectedMonth.collectAsState()
     val igSyncStatus by viewModel.weeklyMeetingIgSyncStatus.collectAsState()
 
-    // Sync month selection when switching to Upload IG tab
-    LaunchedEffect(selectedSubTab) {
-        if (selectedSubTab == 2) {
+    // Fetch when opening Upload IG tab or when month changes.
+    // Non-forced: cached data is shown instantly and refreshed in background if stale (>60s).
+    LaunchedEffect(selectedSubTab, selectedUploadIgMonth, isUploadIgOnly) {
+        if (selectedSubTab == 2 || isUploadIgOnly) {
             viewModel.fetchWeeklyMeetingIgListings(selectedUploadIgMonth)
         }
-    }
-    // Fetch when month changes within Upload IG tab
-    LaunchedEffect(selectedUploadIgMonth) {
-        viewModel.fetchWeeklyMeetingIgListings(selectedUploadIgMonth)
     }
     val syncStatus by viewModel.syncStatus.collectAsState()
     val listingImagesMap by viewModel.listingImagesMap.collectAsState()
@@ -553,11 +542,7 @@ fun TaskDashboardScreen(
                     2 -> {
                         // Task Upload IG with 2 sub-pages (Unpublished & Published)
                         // Month selector for Upload IG
-                        val allIgMonths = listOf(
-                            "Semua Bulan",
-                            "Januari 2026", "Februari 2026", "Maret 2026", "April 2026", "Mei 2026", "Juni 2026",
-                            "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026"
-                        )
+                        val allIgMonths = viewModel.ALL_PUBLISH_MONTHS
                         var igMonthExpanded by remember { mutableStateOf(false) }
 
                         // Unpublished: has jadwalPosting AND postingIg=false, sorted strictly ascending by date (oldest first)
@@ -698,7 +683,7 @@ fun TaskDashboardScreen(
                                                             DropdownMenuItem(
                                                                 text = { Text(m, style = MaterialTheme.typography.bodyMedium) },
                                                                 onClick = {
-                                                                    selectedUploadIgMonth = m
+                                                                    viewModel.selectPublishMonth(m)
                                                                     igMonthExpanded = false
                                                                 }
                                                             )
@@ -765,7 +750,7 @@ fun TaskDashboardScreen(
                                                         .size(48.dp)
                                                         .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f), RoundedCornerShape(10.dp))
                                                         .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
-                                                        .clickable { viewModel.fetchWeeklyMeetingIgListings(selectedUploadIgMonth, forceRefresh = true) },
+                                                        .clickable { viewModel.selectPublishMonth(selectedUploadIgMonth, forceRefresh = true) },
                                                     contentAlignment = Alignment.Center
                                                 ) {
                                                     if (igSyncStatus is SyncState.Loading) {
@@ -900,7 +885,7 @@ fun TaskDashboardScreen(
                                                             val date = parts.getOrNull(0) ?: ""
                                                             val colIndex = parts.getOrNull(1)?.toIntOrNull() ?: 0
                                                             viewModel.updateWeeklyMeetingIgPost(
-                                                                photoMonth = selectedMonth,
+                                                                photoMonth = selectedUploadIgMonth,
                                                                 dateStr = date,
                                                                 row = item.no,
                                                                 colIndex = colIndex,

@@ -11,6 +11,7 @@ import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
@@ -335,11 +336,14 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     // Set up Retrofit dynamically
     private val apiService: SheetsApiService by lazy {
         val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            // BASIC: logging BODY untuk payload JSON besar (tiap 10 detik) memperlambat parsing & memakan memori
+            level = HttpLoggingInterceptor.Level.BASIC
         }
         val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(20, TimeUnit.SECONDS)
+            // Google Apps Script sering butuh >15 detik (cold start + redirect), timeout 15s menyebabkan data gagal dimuat
+            .readTimeout(45, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             .addInterceptor(logging)
             .build()
 
@@ -659,6 +663,33 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     val selectedMeetingMonth = MutableStateFlow<String?>(null)
     private val _meetingSyncStatus = MutableStateFlow<SyncState>(SyncState.Idle)
     val meetingSyncStatus: StateFlow<SyncState> = _meetingSyncStatus.asStateFlow()
+
+    val ALL_PUBLISH_MONTHS = listOf(
+        "September 2026",
+        "Oktober 2026",
+        "Agustus 2026",
+        "Juli 2026",
+        "Juni 2026",
+        "Semua Bulan"
+    )
+
+    val publishSelectedMonth = MutableStateFlow(
+        if (preferenceManager.publishSelectedMonth.contains("Oktober", ignoreCase = true)) "September 2026"
+        else preferenceManager.publishSelectedMonth
+    )
+
+    init {
+        if (preferenceManager.publishSelectedMonth.contains("Oktober", ignoreCase = true)) {
+            preferenceManager.publishSelectedMonth = "September 2026"
+        }
+    }
+
+    fun selectPublishMonth(month: String, forceRefresh: Boolean = false) {
+        val clean = month.trim()
+        publishSelectedMonth.value = clean
+        preferenceManager.publishSelectedMonth = clean
+        fetchWeeklyMeetingIgListings(clean, forceRefresh = forceRefresh)
+    }
 
     val weeklyMeetingIgListings = MutableStateFlow<List<com.example.network.MeetingListing>>(emptyList())
     val allMonthlyMeetingListings = MutableStateFlow<List<com.example.network.MeetingListing>>(emptyList())
@@ -983,13 +1014,81 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
 
     fun getWeeklyMeetingSheetNameForMonth(photoMonth: String): String {
         val cleaned = photoMonth.trim()
-        if (cleaned.startsWith("Recap Meeting ", ignoreCase = true)) {
-            return cleaned
-        }
+            .replace("Recap Meeting ", "", ignoreCase = true)
+            .replace(Regex("\\s*202[0-9]"), "")
+            .trim()
+        if (cleaned.isBlank()) return "Recap Meeting"
         return "Recap Meeting $cleaned"
     }
 
     private val igListingsCache = java.util.concurrent.ConcurrentHashMap<String, List<com.example.network.MeetingListing>>()
+    // Raw (all keterangan) listings per cacheKey, so allMonthlyMeetingListings stays consistent with the displayed month
+    private val igAllListingsCache = java.util.concurrent.ConcurrentHashMap<String, List<com.example.network.MeetingListing>>()
+    private val igCacheTimestamps = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private var igFetchJob: kotlinx.coroutines.Job? = null
+    @Volatile private var igInFlightKey: String? = null
+    @Volatile private var igActiveKey: String? = null
+    @Volatile private var igDisplayedKey: String? = null
+    @Volatile var lastIgRequestMonth: String = ""
+        private set
+    private val igCacheFreshMs = 60_000L
+
+    private val igListingsJsonAdapter by lazy {
+        val moshi = Moshi.Builder().addLast(KotlinJsonAdapterFactory()).build()
+        val type = com.squareup.moshi.Types.newParameterizedType(List::class.java, com.example.network.MeetingListing::class.java)
+        moshi.adapter<List<com.example.network.MeetingListing>>(type)
+    }
+
+    private fun igDiskCacheFile(cacheKey: String): java.io.File {
+        val safe = cacheKey.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        return java.io.File(getApplication<Application>().cacheDir, "ig_listings_$safe.json")
+    }
+
+    private fun loadIgListingsFromDisk(cacheKey: String): List<com.example.network.MeetingListing>? {
+        return try {
+            val f = igDiskCacheFile(cacheKey)
+            if (!f.exists()) null else igListingsJsonAdapter.fromJson(f.readText())
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    private fun saveIgListingsToDisk(cacheKey: String, all: List<com.example.network.MeetingListing>) {
+        try {
+            igDiskCacheFile(cacheKey).writeText(igListingsJsonAdapter.toJson(all))
+        } catch (e: Exception) {
+            // cache disk bersifat opsional
+        }
+    }
+
+    private fun filterIgOnly(all: List<com.example.network.MeetingListing>) =
+        all.filter { it.keterangan.trim().equals("IG", ignoreCase = true) }
+
+    private fun applyIgListings(cacheKey: String, all: List<com.example.network.MeetingListing>, filtered: List<com.example.network.MeetingListing>) {
+        igDisplayedKey = cacheKey
+        allMonthlyMeetingListings.value = all
+        weeklyMeetingIgListings.value = filtered
+    }
+
+    /** Re-fetch the month currently selected in PublishDesk (used by the top refresh button). */
+    fun refreshCurrentIgListings() {
+        fetchWeeklyMeetingIgListings(publishSelectedMonth.value, forceRefresh = true)
+    }
+
+    private suspend fun fetchMeetingSheetWithRetry(url: String): com.example.network.MeetingListingsResponse? {
+        repeat(2) { attempt ->
+            try {
+                val response = apiService.getMeetingListings(url)
+                if (response.status.lowercase() == "success") return response
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // retry sekali
+            }
+            if (attempt == 0) kotlinx.coroutines.delay(800)
+        }
+        return null
+    }
 
     fun fetchWeeklyMeetingIgListings(photoMonth: String, forceRefresh: Boolean = false) {
         val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
@@ -998,55 +1097,82 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
             return
         }
         
-        val cleanMonth = photoMonth.trim()
+        val targetMonth = photoMonth.ifBlank { publishSelectedMonth.value }
+        val cleanMonth = targetMonth.trim()
         val cacheKey = if (cleanMonth.isBlank() || cleanMonth.contains("Semua", ignoreCase = true)) "SEMUA" else getWeeklyMeetingSheetNameForMonth(cleanMonth)
-        
-        if (!forceRefresh && igListingsCache.containsKey(cacheKey)) {
-            val cachedListings = igListingsCache[cacheKey] ?: emptyList()
-            weeklyMeetingIgListings.value = cachedListings
-            val isSemua = cacheKey == "SEMUA"
-            val msg = if (isSemua) "Berhasil memuat ${cachedListings.size} postingan IG dari Semua Bulan!" else "Berhasil memuat ${cachedListings.size} postingan IG!"
-            _weeklyMeetingIgSyncStatus.value = SyncState.Success(msg)
+        val isSemua = cacheKey == "SEMUA"
+        lastIgRequestMonth = cleanMonth
+        igActiveKey = cacheKey
+
+        // 1. Stale-while-revalidate: memory cache first, or disk cache immediately
+        val memCached = igListingsCache[cacheKey]
+        if (memCached != null) {
+            applyIgListings(cacheKey, igAllListingsCache[cacheKey] ?: allMonthlyMeetingListings.value, memCached)
+            val age = System.currentTimeMillis() - (igCacheTimestamps[cacheKey] ?: 0L)
+            if (!forceRefresh && age < igCacheFreshMs) {
+                val msg = if (isSemua) "Berhasil memuat ${memCached.size} postingan IG dari Semua Bulan!" else "Berhasil memuat ${memCached.size} postingan IG ($cleanMonth)!"
+                _weeklyMeetingIgSyncStatus.value = SyncState.Success(msg)
+                return
+            }
+        } else {
+            // Load disk cache immediately (0ms wait) if memory is empty
+            val disk = loadIgListingsFromDisk(cacheKey)
+            if (disk != null) {
+                val filteredDisk = filterIgOnly(disk)
+                igListingsCache[cacheKey] = filteredDisk
+                igAllListingsCache[cacheKey] = disk
+                applyIgListings(cacheKey, disk, filteredDisk)
+            } else if (igDisplayedKey != cacheKey) {
+                // Only clear if switching to an entirely different month with zero cache
+                weeklyMeetingIgListings.value = emptyList()
+            }
+        }
+
+        // 2. Dedupe: a request for this same month is already running
+        if (igFetchJob?.isActive == true && igInFlightKey == cacheKey) {
+            _weeklyMeetingIgSyncStatus.value = SyncState.Loading
             return
         }
-        
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        igFetchJob?.cancel()
+        igInFlightKey = cacheKey
+
+        igFetchJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             _weeklyMeetingIgSyncStatus.value = SyncState.Loading
+
             try {
-                val isSemua = cacheKey == "SEMUA"
                 val combinedListings = mutableListOf<com.example.network.MeetingListing>()
-                
+                val separator = if (baseUrl.contains("?")) "&" else "?"
+                var anySuccess: Boolean
+
                 if (isSemua) {
-                    val monthsToFetch = listOf("Juni 2026", "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026")
-                    val deferreds = monthsToFetch.map { m ->
+                    val monthsToFetch = listOf("Juni", "Juli", "Agustus", "September")
+                    val results = monthsToFetch.map { m ->
                         async(kotlinx.coroutines.Dispatchers.IO) {
-                            try {
-                                val sheetName = getWeeklyMeetingSheetNameForMonth(m)
-                                val encodedSheet = java.net.URLEncoder.encode(sheetName, "UTF-8")
-                                val separator = if (baseUrl.contains("?")) "&" else "?"
-                                val url = "$baseUrl${separator}action=get_all_weekly_meeting_listings&sheetName=$encodedSheet"
-                                val response = apiService.getMeetingListings(url)
-                                if (response.status.lowercase() == "success") response.listings else emptyList<com.example.network.MeetingListing>()
-                            } catch (e: Exception) {
-                                emptyList<com.example.network.MeetingListing>()
-                            }
+                            val encodedSheet = java.net.URLEncoder.encode(getWeeklyMeetingSheetNameForMonth(m), "UTF-8")
+                            fetchMeetingSheetWithRetry("$baseUrl${separator}action=get_all_weekly_meeting_listings&sheetName=$encodedSheet")
                         }
-                    }
-                    val results = deferreds.awaitAll()
-                    results.forEach { resList -> combinedListings.addAll(resList) }
+                    }.awaitAll()
+                    anySuccess = results.any { it != null }
+                    results.forEach { r -> r?.let { combinedListings.addAll(it.listings) } }
                 } else {
-                    val sheetName = getWeeklyMeetingSheetNameForMonth(cleanMonth)
-                    val encodedSheet = java.net.URLEncoder.encode(sheetName, "UTF-8")
-                    val separator = if (baseUrl.contains("?")) "&" else "?"
-                    val url = "$baseUrl${separator}action=get_all_weekly_meeting_listings&sheetName=$encodedSheet"
-                    val response = try {
-                        apiService.getMeetingListings(url)
-                    } catch (e: Exception) {
-                        null
+                    val encodedSheet = java.net.URLEncoder.encode(getWeeklyMeetingSheetNameForMonth(cleanMonth), "UTF-8")
+                    val response = fetchMeetingSheetWithRetry("$baseUrl${separator}action=get_all_weekly_meeting_listings&sheetName=$encodedSheet")
+                    anySuccess = response != null
+                    response?.let { combinedListings.addAll(it.listings) }
+                }
+
+                ensureActive()
+
+                if (!anySuccess) {
+                    // Network/server failure: KEEP the currently displayed data instead of wiping it
+                    if (igActiveKey == cacheKey) {
+                        val hasData = weeklyMeetingIgListings.value.isNotEmpty()
+                        _weeklyMeetingIgSyncStatus.value = SyncState.Error(
+                            if (hasData) "Koneksi lambat, menampilkan data tersimpan."
+                            else "Gagal mengambil data IG: server tidak merespons. Coba refresh."
+                        )
                     }
-                    if (response != null && response.status.lowercase() == "success") {
-                        combinedListings.addAll(response.listings)
-                    }
+                    return@launch
                 }
                 
                 // Process each listing item so all meetings in the month are fully displayed without dropping double IDs
@@ -1060,18 +1186,37 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                     }
                     listing.copy(namaMe = mergedNamaMe)
                 }
-                
-                allMonthlyMeetingListings.value = processedListings
-                val filtered = processedListings.filter { 
-                    it.keterangan.trim().equals("IG", ignoreCase = true) 
+                val filtered = filterIgOnly(processedListings)
+
+                // SMART FALLBACK: If current month (e.g. Oktober 2026) has 0 listings because meeting hasn't occurred yet,
+                // automatically fallback to previous month (September 2026) so user doesn't see a blank screen!
+                if (filtered.isEmpty() && !isSemua && cleanMonth.contains("Oktober", ignoreCase = true) && !forceRefresh) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        selectPublishMonth("September 2026")
+                    }
+                    return@launch
                 }
+
                 igListingsCache[cacheKey] = filtered
-                weeklyMeetingIgListings.value = filtered
-                val msg = if (isSemua) "Berhasil memuat ${filtered.size} postingan IG dari Semua Bulan!" else "Berhasil memuat ${filtered.size} postingan IG!"
-                _weeklyMeetingIgSyncStatus.value = SyncState.Success(msg)
+                igAllListingsCache[cacheKey] = processedListings
+                igCacheTimestamps[cacheKey] = System.currentTimeMillis()
+                saveIgListingsToDisk(cacheKey, processedListings)
+
+                // Only apply if the user is still looking at this month (prevents stale responses overwriting newer ones)
+                if (igActiveKey == cacheKey) {
+                    applyIgListings(cacheKey, processedListings, filtered)
+                    val msg = if (isSemua) "Berhasil memuat ${filtered.size} postingan IG dari Semua Bulan!" else "Berhasil memuat ${filtered.size} postingan IG ($cleanMonth)!"
+                    _weeklyMeetingIgSyncStatus.value = SyncState.Success(msg)
+                }
                 fetchYearlyIgPostingHistory()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                _weeklyMeetingIgSyncStatus.value = SyncState.Error("Gagal mengambil data IG: ${e.localizedMessage ?: "Masalah koneksi"}")
+                if (igActiveKey == cacheKey) {
+                    _weeklyMeetingIgSyncStatus.value = SyncState.Error("Gagal mengambil data IG: ${e.localizedMessage ?: "Masalah koneksi"}")
+                }
+            } finally {
+                if (igInFlightKey == cacheKey) igInFlightKey = null
             }
         }
     }
@@ -1089,7 +1234,56 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
             onResult(false, "URL Google Apps Script belum diatur.")
             return
         }
-        val sheetName = getWeeklyMeetingSheetNameForMonth(photoMonth)
+
+        val postingVal = if (postingIg) "DONE" else ""
+
+        // 1. Immediate optimistic memory update (0ms latency)
+        val previousIgListings = weeklyMeetingIgListings.value
+        val previousAllListings = allMonthlyMeetingListings.value
+
+        val updatedIgListings = previousIgListings.map { item ->
+            if (item.no == row && item.colIndex == colIndex) {
+                item.copy(postingIg = postingVal)
+            } else {
+                item
+            }
+        }
+        weeklyMeetingIgListings.value = updatedIgListings
+
+        val updatedAllListings = previousAllListings.map { item ->
+            if (item.no == row && item.colIndex == colIndex) {
+                item.copy(postingIg = postingVal)
+            } else {
+                item
+            }
+        }
+        allMonthlyMeetingListings.value = updatedAllListings
+
+        // Update the memory cache of the month currently displayed (row/col indexes repeat across monthly sheets)
+        igDisplayedKey?.let { key ->
+            igListingsCache[key] = updatedIgListings
+            igAllListingsCache[key] = updatedAllListings
+        }
+
+        // Determine month
+        val detectedMonth = when {
+            dateStr.contains("-01-") || dateStr.contains("Januari") -> "Januari"
+            dateStr.contains("-02-") || dateStr.contains("Februari") -> "Februari"
+            dateStr.contains("-03-") || dateStr.contains("Maret") -> "Maret"
+            dateStr.contains("-04-") || dateStr.contains("April") -> "April"
+            dateStr.contains("-05-") || dateStr.contains("Mei") -> "Mei"
+            dateStr.contains("-06-") || dateStr.contains("Juni") -> "Juni"
+            dateStr.contains("-07-") || dateStr.contains("Juli") -> "Juli"
+            dateStr.contains("-08-") || dateStr.contains("Agustus") -> "Agustus"
+            dateStr.contains("-09-") || dateStr.contains("September") -> "September"
+            dateStr.contains("-10-") || dateStr.contains("Oktober") -> "Oktober"
+            dateStr.contains("-11-") || dateStr.contains("November") -> "November"
+            dateStr.contains("-12-") || dateStr.contains("Desember") -> "Desember"
+            else -> photoMonth.ifBlank { selectedMonth.value }
+        }
+        val sheetName = getWeeklyMeetingSheetNameForMonth(detectedMonth)
+
+        onResult(true, if (postingIg) "Status posting IG: DONE" else "Status posting IG: Belum")
         
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
@@ -1102,19 +1296,21 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 )
                 val response = apiService.updateMeetingIgPost(baseUrl, request)
                 if (response.status.lowercase() == "success") {
-                    igListingsCache.clear()
-                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        onResult(true, response.message)
-                    }
-                    fetchWeeklyMeetingIgListings(photoMonth, forceRefresh = true)
+                    // Mark caches stale but keep showing data; refresh the month the user is viewing
+                    igCacheTimestamps.clear()
+                    refreshCurrentIgListings()
                 } else {
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                        onResult(false, response.message)
+                        weeklyMeetingIgListings.value = previousIgListings
+                        allMonthlyMeetingListings.value = previousAllListings
+                        _weeklyMeetingIgSyncStatus.value = SyncState.Error("Gagal menyimpan ke spreadsheet: ${response.message}")
                     }
                 }
             } catch (e: Exception) {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                    onResult(false, "Gagal mengupdate status: ${e.localizedMessage ?: "Masalah koneksi"}")
+                    weeklyMeetingIgListings.value = previousIgListings
+                    allMonthlyMeetingListings.value = previousAllListings
+                    _weeklyMeetingIgSyncStatus.value = SyncState.Error("Gagal menyimpan ke server: ${e.localizedMessage ?: "Masalah koneksi"}")
                 }
             }
         }
@@ -2037,18 +2233,10 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         }
         allMonthlyMeetingListings.value = updatedAllListings
 
-        // Update all caches so switching filter/month maintains the updated date
-        igListingsCache.keys().toList().forEach { key ->
-            val cached = igListingsCache[key]
-            if (cached != null) {
-                igListingsCache[key] = cached.map { item ->
-                    if (item.no == row && item.colIndex == colIndex) {
-                        item.copy(jadwalPosting = jadwalPosting)
-                    } else {
-                        item
-                    }
-                }
-            }
+        // Update the memory cache of the month currently displayed (row/col indexes repeat across monthly sheets)
+        igDisplayedKey?.let { key ->
+            igListingsCache[key] = updatedIgListings
+            igAllListingsCache[key] = updatedAllListings
         }
 
         // Notify UI immediately to close picker and dismiss spinner
@@ -2084,7 +2272,11 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 )
                 
                 val response = apiService.updateMeetingSchedule(baseUrl, request)
-                if (response.status.lowercase() != "success") {
+                if (response.status.lowercase() == "success") {
+                    // Mark caches stale but keep showing data; refresh the month the user is viewing
+                    igCacheTimestamps.clear()
+                    refreshCurrentIgListings()
+                } else {
                     // Rollback if server responded with error
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                         weeklyMeetingIgListings.value = previousIgListings

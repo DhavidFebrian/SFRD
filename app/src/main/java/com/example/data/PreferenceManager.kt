@@ -84,6 +84,10 @@ class PreferenceManager(context: Context) {
             }
         }
 
+    var publishSelectedMonth: String
+        get() = prefs.getString("publish_selected_month", "September 2026") ?: "September 2026"
+        set(value) = prefs.edit().putString("publish_selected_month", value.trim()).apply()
+
     var isFirstLaunch: Boolean
         get() = prefs.getBoolean("is_first_launch", true)
         set(value) = prefs.edit().putBoolean("is_first_launch", value).apply()

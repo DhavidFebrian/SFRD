@@ -92,12 +92,9 @@ fun SchedulingDialog(
     // Collapse state for search/month filters - default COLLAPSED
     var isFilterExpanded by remember { mutableStateOf(false) }
 
-    // Month synced with WeeklyMeeting selected month, but overridable inside this dialog
-    val globalSelectedMonth by viewModel.selectedMonth.collectAsStateWithLifecycle()
-    var dialogMonth by remember { mutableStateOf(globalSelectedMonth) }
+    val dialogMonth by viewModel.publishSelectedMonth.collectAsStateWithLifecycle()
     var monthDropdownExpanded by remember { mutableStateOf(false) }
-    val allMonths = listOf("Januari","Februari","Maret","April","Mei","Juni",
-        "Juli","Agustus","September","Oktober","November","Desember")
+    val allMonths = viewModel.ALL_PUBLISH_MONTHS
 
     // State for the native Date Picker
     var showDatePickerForListing by remember { mutableStateOf<com.example.network.MeetingListing?>(null) }
@@ -107,11 +104,6 @@ fun SchedulingDialog(
     var detailListing by remember { mutableStateOf<com.example.network.MeetingListing?>(null) }
     
     val snackbarHostState = remember { SnackbarHostState() }
-
-    // Fetch when dialog opens or month changes
-    LaunchedEffect(dialogMonth) {
-        viewModel.fetchWeeklyMeetingIgListings(dialogMonth)
-    }
 
     // Process lists: separate Unscheduled vs Scheduled
     val processedLists = remember(igListings, searchQuery) {
@@ -338,7 +330,7 @@ fun SchedulingDialog(
                                         DropdownMenuItem(
                                             text = { Text(m) },
                                             onClick = {
-                                                dialogMonth = m
+                                                viewModel.selectPublishMonth(m)
                                                 monthDropdownExpanded = false
                                                 isFilterExpanded = false
                                             }
@@ -1407,21 +1399,15 @@ fun SchedulingScreenContent(
     var searchQuery by remember { mutableStateOf("") }
     var isFilterExpanded by remember { mutableStateOf(false) }
 
-    val globalSelectedMonth by viewModel.selectedMonth.collectAsStateWithLifecycle()
-    var dialogMonth by remember { mutableStateOf(globalSelectedMonth) }
+    val dialogMonth by viewModel.publishSelectedMonth.collectAsStateWithLifecycle()
     var monthDropdownExpanded by remember { mutableStateOf(false) }
-    val allMonths = listOf("Januari","Februari","Maret","April","Mei","Juni",
-        "Juli","Agustus","September","Oktober","November","Desember")
+    val allMonths = viewModel.ALL_PUBLISH_MONTHS
 
     var showDatePickerForListing by remember { mutableStateOf<com.example.network.MeetingListing?>(null) }
     var isSubmittingUpdate by remember { mutableStateOf<com.example.network.MeetingListing?>(null) }
     var detailListing by remember { mutableStateOf<com.example.network.MeetingListing?>(null) }
 
     val snackbarHostState = remember { SnackbarHostState() }
-
-    LaunchedEffect(dialogMonth) {
-        viewModel.fetchWeeklyMeetingIgListings(dialogMonth)
-    }
 
     val processedLists = remember(igListings, searchQuery) {
         val filteredListings = if (searchQuery.isBlank()) igListings
@@ -1573,12 +1559,25 @@ fun SchedulingScreenContent(
                                     DropdownMenuItem(
                                         text = { Text(m) },
                                         onClick = {
-                                            dialogMonth = m
+                                            viewModel.selectPublishMonth(m)
                                             monthDropdownExpanded = false
                                             isFilterExpanded = false
                                         }
                                     )
                                 }
+                            }
+                        }
+                        IconButton(
+                            onClick = { viewModel.selectPublishMonth(dialogMonth, forceRefresh = true) },
+                            enabled = igSyncStatus !is SyncState.Loading,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
+                        ) {
+                            if (igSyncStatus is SyncState.Loading) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }

@@ -37,8 +37,11 @@ fun PublishScreen(
     val pagerState = rememberPagerState(pageCount = { 2 })
     val igSyncStatus by viewModel.weeklyMeetingIgSyncStatus.collectAsState()
     val unreadCount by viewModel.unreadChatCount.collectAsState()
-    val selectedMonth by viewModel.selectedMonth.collectAsState()
+    val publishSelectedMonth by viewModel.publishSelectedMonth.collectAsState()
     var isSearchExpanded by remember { mutableStateOf(false) }
+
+    // NOTE: data fetching is handled by each tab (Upload IG / Scheduling) for its own selected month.
+    // A separate forced fetch here used a different month and raced with the tabs, causing data to vanish.
 
     Column(
         modifier = modifier
@@ -73,7 +76,7 @@ fun PublishScreen(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = if (pagerState.currentPage == 0) "Upload Instagram" else "Instagram Scheduling",
+                    text = (if (pagerState.currentPage == 0) "Upload Instagram" else "Instagram Scheduling") + " · $publishSelectedMonth",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -90,7 +93,10 @@ fun PublishScreen(
 
             // Top Refresh button
             IconButton(
-                onClick = { viewModel.fetchWeeklyMeetingIgListings(selectedMonth, forceRefresh = true) },
+                onClick = {
+                    viewModel.refreshCurrentIgListings()
+                    viewModel.syncDataSilently()
+                },
                 enabled = igSyncStatus !is SyncState.Loading
             ) {
                 if (igSyncStatus is SyncState.Loading) {
