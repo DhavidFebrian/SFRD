@@ -12,8 +12,8 @@ class PreferenceManager(context: Context) {
         private const val KEY_WEEKLY_MEETING_URL = "weekly_meeting_url"
         
         // DEFAULT_URL: Paste your Google Apps Script URL here so new devices connect auto-magically!
-        const val DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbytrM7-rYQ_EjK9pzHJn4GvFL8j9ypajc6-BzzAqbCCbawXoXf9Gi9E0ECPNmjVsXIH/exec"
-        const val DEFAULT_WEEKLY_MEETING_URL = "https://script.google.com/macros/s/AKfycbytrM7-rYQ_EjK9pzHJn4GvFL8j9ypajc6-BzzAqbCCbawXoXf9Gi9E0ECPNmjVsXIH/exec"
+        const val DEFAULT_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxigpXtPgjTlAKhTDLeTm_UlVrVtXs3864ybMElNbNA2Yz8sMBXhjPAtZ_NxVQn8qQQ/exec"
+        const val DEFAULT_WEEKLY_MEETING_URL = "https://script.google.com/macros/s/AKfycbxigpXtPgjTlAKhTDLeTm_UlVrVtXs3864ybMElNbNA2Yz8sMBXhjPAtZ_NxVQn8qQQ/exec"
     }
 
     var appsScriptUrl: String
@@ -43,7 +43,12 @@ class PreferenceManager(context: Context) {
                 "https://script.google.com/macros/s/AKfycbwuQr6LM8mEZo3I19WuxUVwJqzhMTKKlL22xxN_0MSerBEMSABKhOm2ZVqddItk-TXj/exec",
                 "https://script.google.com/macros/s/AKfycbySAF6KfUkbU29NBYF847gZwPTWkBARS2Z1QR1Od93MhO2zVzgqcBqYRijrCd1FZEe9/exec",
                 "https://script.google.com/macros/s/AKfycbywA2HD3yfOn8NtmLFQNN_KHIhxDbvpIIzIopG8X-0zmn1OGGYbEuV1RqEltd9z2h1g/exec",
-                "https://script.google.com/macros/s/AKfycbxW6HWBMwGlLY8PZVqWJn6rKrWmIJO4LLUYh2tz0mZ7rZv_BI2cfdADYkVTqT5QDOjT/exec"
+                "https://script.google.com/macros/s/AKfycbxW6HWBMwGlLY8PZVqWJn6rKrWmIJO4LLUYh2tz0mZ7rZv_BI2cfdADYkVTqT5QDOjT/exec",
+                "https://script.google.com/macros/s/AKfycbytrM7-rYQ_EjK9pzHJn4GvFL8j9ypajc6-BzzAqbCCbawXoXf9Gi9E0ECPNmjVsXIH/exec",
+                "https://script.google.com/macros/s/AKfycbxTba8EMLnlOEBVtk421YXIew9bW3wZg3veMk0Eh4WCTbSTTHSWAg3EY-K-yNSAK8Rq/exec",
+                "https://script.google.com/macros/s/AKfycbwcKHbX-Y9vxiGxviqqUcxAqmxa8VqFLdmiTl_Jaceyd9DhK4X0bmjmp7ZhAu5sNG96/exec",
+                "https://script.google.com/macros/s/AKfycbwgu3LOdtScpgIqxkoplJ5UKctPF5mwREprIZJsBiiA_Bf2yxgAkLXWTotshIBrsJdC/exec",
+                "https://script.google.com/macros/s/AKfycbxrc-VPtGhbQKxpjsAh4hBUXUCokmZ21Oq5QxMfb3tAnlC1Z7NVK9hi31ptW14t5R7X/exec"
             )
             return if (url.isNullOrBlank() || oldUrls.contains(url)) DEFAULT_APPS_SCRIPT_URL else url
         }
@@ -60,7 +65,12 @@ class PreferenceManager(context: Context) {
                 "https://script.google.com/macros/s/AKfycbywA2HD3yfOn8NtmLFQNN_KHIhxDbvpIIzIopG8X-0zmn1OGGYbEuV1RqEltd9z2h1g/exec",
                 "https://script.google.com/macros/s/AKfycbySAF6KfUkbU29NBYF847gZwPTWkBARS2Z1QR1Od93MhO2zVzgqcBqYRijrCd1FZEe9/exec",
                 "https://script.google.com/macros/s/AKfycbwuQr6LM8mEZo3I19WuxUVwJqzhMTKKlL22xxN_0MSerBEMSABKhOm2ZVqddItk-TXj/exec",
-                "https://script.google.com/macros/s/AKfycbxW6HWBMwGlLY8PZVqWJn6rKrWmIJO4LLUYh2tz0mZ7rZv_BI2cfdADYkVTqT5QDOjT/exec"
+                "https://script.google.com/macros/s/AKfycbxW6HWBMwGlLY8PZVqWJn6rKrWmIJO4LLUYh2tz0mZ7rZv_BI2cfdADYkVTqT5QDOjT/exec",
+                "https://script.google.com/macros/s/AKfycbytrM7-rYQ_EjK9pzHJn4GvFL8j9ypajc6-BzzAqbCCbawXoXf9Gi9E0ECPNmjVsXIH/exec",
+                "https://script.google.com/macros/s/AKfycbxTba8EMLnlOEBVtk421YXIew9bW3wZg3veMk0Eh4WCTbSTTHSWAg3EY-K-yNSAK8Rq/exec",
+                "https://script.google.com/macros/s/AKfycbwcKHbX-Y9vxiGxviqqUcxAqmxa8VqFLdmiTl_Jaceyd9DhK4X0bmjmp7ZhAu5sNG96/exec",
+                "https://script.google.com/macros/s/AKfycbwgu3LOdtScpgIqxkoplJ5UKctPF5mwREprIZJsBiiA_Bf2yxgAkLXWTotshIBrsJdC/exec",
+                "https://script.google.com/macros/s/AKfycbxrc-VPtGhbQKxpjsAh4hBUXUCokmZ21Oq5QxMfb3tAnlC1Z7NVK9hi31ptW14t5R7X/exec"
             )
             return if (url.isNullOrBlank() || oldWeeklyUrls.contains(url)) DEFAULT_WEEKLY_MEETING_URL else url
         }

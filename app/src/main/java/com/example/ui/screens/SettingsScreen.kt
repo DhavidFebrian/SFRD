@@ -1521,7 +1521,7 @@ function getAbsensiMeeting(e) {
   var numCols = endCol - startCol + 1;
   
   var lastRow = sheet.getLastRow();
-  var scanMax = Math.max(1, lastRow - 5);
+  var scanMax = Math.max(60, lastRow);
   var rawColB = sheet.getRange(6, 2, scanMax, 1).getValues();
   var numAgents = 0;
   var totalRowIdx = -1;
@@ -1535,7 +1535,7 @@ function getAbsensiMeeting(e) {
       numAgents = k + 1;
     }
   }
-  if (numAgents === 0) numAgents = Math.min(36, scanMax);
+  if (numAgents === 0) numAgents = Math.min(50, scanMax);
   
   var namesValues = sheet.getRange(6, 2, numAgents, 1).getValues();
   
@@ -1661,8 +1661,8 @@ function updateAbsensiMeeting(data) {
     }
   }
   
-  var actualTotalRow = 47;
-  var colBCheck = sheet.getRange(6, 2, Math.max(1, sheet.getLastRow() - 5), 1).getValues();
+  var actualTotalRow = 48;
+  var colBCheck = sheet.getRange(6, 2, Math.max(60, sheet.getLastRow()), 1).getValues();
   for (var k = 0; k < colBCheck.length; k++) {
     var v = colBCheck[k][0] ? colBCheck[k][0].toString().trim().toLowerCase() : "";
     if (v.indexOf("total") !== -1 || v.indexOf("jumlah") !== -1) {

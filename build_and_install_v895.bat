@@ -1,11 +1,11 @@
 @echo off
-title SFRD v8.9.3 - Build dan Install ke HP
+title SFRD v8.9.5 - Build dan Install ke HP
 color 0A
 
 cd /d "c:\Users\dhavi\antigravity\SFRD"
 
 echo ========================================================
-echo   SFRD v8.9.3: Build dan Install ke Perangkat HP
+echo   SFRD v8.9.5: Build dan Install ke Perangkat HP
 echo ========================================================
 echo.
 
@@ -21,8 +21,8 @@ if %ERRORLEVEL% NEQ 0 (
 
 echo.
 echo [2/3] Menyalin APK ke root folder...
-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "SFRD-v8.9.3.apk"
-copy /Y "app\build\outputs\apk\debug\app-debug.apk" "RWC_Media_Production_v8.9.3.apk"
+copy /Y "app\build\outputs\apk\debug\app-debug.apk" "SFRD-v8.9.5.apk"
+copy /Y "app\build\outputs\apk\debug\app-debug.apk" "RWC_Media_Production_v8.9.5.apk"
 
 echo.
 echo [3/3] Menginstall APK ke HP via ADB...
@@ -34,7 +34,7 @@ if %ERRORLEVEL% NEQ 0 (
 ) else (
     echo.
     echo ========================================================
-    echo   SUKSES TERINSTALL DI HP (v8.9.3)!
+    echo   SUKSES TERINSTALL DI HP (v8.9.5)!
     echo ========================================================
 )
 

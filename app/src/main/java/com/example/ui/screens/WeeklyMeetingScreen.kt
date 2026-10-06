@@ -692,32 +692,67 @@ fun WeeklyMeetingScreen(
                                     ),
                                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f))
                                 ) {
-                                    Row(
+                                    val igCount = remember(listings) {
+                                        listings.count { it.keterangan.contains("ig", ignoreCase = true) || it.keterangan.contains("instagram", ignoreCase = true) }
+                                    }
+                                    val hotCount = remember(listings) {
+                                        listings.count { it.keterangan.contains("hot", ignoreCase = true) }
+                                    }
+                                    val fotoUlangCount = remember(listings) {
+                                        listings.count { it.keterangan.contains("ulang", ignoreCase = true) }
+                                    }
+                                    Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(horizontal = 12.dp, vertical = 8.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = Icons.Default.DateRange,
-                                                contentDescription = null,
-                                                tint = MaterialTheme.colorScheme.secondary,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(Modifier.width(6.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(
+                                                    imageVector = Icons.Default.DateRange,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.secondary,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Total Listing: ${listings.size}",
+                                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                )
+                                            }
+                                            if (filteredListings.size != listings.size) {
+                                                Text(
+                                                    text = "Ditemukan: ${filteredListings.size}",
+                                                    style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
                                             Text(
-                                                text = "Total Listing: ${listings.size}",
-                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                                text = "📱 IG: $igCount",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                                                 color = MaterialTheme.colorScheme.onSecondaryContainer
                                             )
-                                        }
-                                        if (filteredListings.size != listings.size) {
                                             Text(
-                                                text = "Ditemukan: ${filteredListings.size}",
-                                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-                                                color = MaterialTheme.colorScheme.primary
+                                                text = "🔥 Hot Property: $hotCount",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                                            )
+                                            Text(
+                                                text = "📸 Foto Ulang: $fotoUlangCount",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer
                                             )
                                         }
                                     }
@@ -1008,7 +1043,7 @@ fun MeetingListingCard(
                             .size(26.dp)
                             .shadow(2.dp, CircleShape)
                             .background(
-                                if (isMeHighlighted) Color(0xFF2563EB) else MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
                                 CircleShape
                             )
                             .clickable { onToggleHighlight() },
@@ -1017,7 +1052,7 @@ fun MeetingListingCard(
                         Icon(
                             imageVector = if (isMeHighlighted) Icons.Default.CheckCircle else Icons.Default.Check,
                             contentDescription = "Tandai Nama ME",
-                            tint = if (isMeHighlighted) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -1143,15 +1178,6 @@ fun MeetingListingCard(
                     Spacer(modifier = Modifier.height(2.dp))
                     Box(
                         modifier = Modifier
-                            .then(
-                                if (isMeHighlighted) {
-                                    Modifier
-                                        .background(Color(0xFF2563EB), RoundedCornerShape(4.dp))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                } else {
-                                    Modifier
-                                }
-                            )
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -1160,16 +1186,16 @@ fun MeetingListingCard(
                             Icon(
                                 imageVector = Icons.Default.Person,
                                 contentDescription = null,
-                                tint = if (isMeHighlighted) Color.White else MaterialTheme.colorScheme.outline,
+                                tint = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.size(10.dp)
                             )
                             Text(
                                 text = "ME: ${listing.namaMe}",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontSize = 9.sp,
-                                    fontWeight = if (isMeHighlighted) FontWeight.Bold else FontWeight.Normal
+                                    fontWeight = FontWeight.Normal
                                 ),
-                                color = if (isMeHighlighted) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -1205,11 +1231,11 @@ fun MeetingListingCard(
 
                 // Status Toggle Button (full width at bottom like Publish Screen)
                 if (onToggleHighlight != null) {
-                    val meStatusColor = if (isMeHighlighted) Color(0xFF2563EB) else MaterialTheme.colorScheme.outline
+                    val meStatusColor = MaterialTheme.colorScheme.outline
                     Surface(
-                        color = if (isMeHighlighted) Color(0xFF2563EB) else meStatusColor.copy(alpha = 0.08f),
+                        color = meStatusColor.copy(alpha = 0.08f),
                         shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, if (isMeHighlighted) Color(0xFF2563EB) else meStatusColor.copy(alpha = 0.35f)),
+                        border = BorderStroke(1.dp, meStatusColor.copy(alpha = 0.35f)),
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onToggleHighlight() }
@@ -1222,14 +1248,14 @@ fun MeetingListingCard(
                             Icon(
                                 imageVector = if (isMeHighlighted) Icons.Default.CheckCircle else Icons.Default.Check,
                                 contentDescription = null,
-                                tint = if (isMeHighlighted) Color.White else meStatusColor,
+                                tint = meStatusColor,
                                 modifier = Modifier.size(12.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = if (isMeHighlighted) "Sudah Ditandai" else "Tandai ME",
                                 style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp),
-                                color = if (isMeHighlighted) Color.White else meStatusColor
+                                color = meStatusColor
                             )
                         }
                     }

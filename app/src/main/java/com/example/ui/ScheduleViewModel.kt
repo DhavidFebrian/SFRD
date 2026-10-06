@@ -1413,6 +1413,8 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    private val meetingListingsCache = java.util.concurrent.ConcurrentHashMap<String, List<com.example.network.MeetingListing>>()
+
     fun fetchMeetingListings(month: String, dateStr: String) {
         val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
         if (baseUrl.isBlank()) {
@@ -1423,6 +1425,15 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         selectedMeetingMonth.value = month
         val dateChanged = selectedMeetingDate.value != dateStr
         selectedMeetingDate.value = dateStr
+        val cacheKey = "$month|$dateStr"
+        val cached = meetingListingsCache[cacheKey]
+        if (cached != null) {
+            // Tampilkan data cache langsung (instan), lalu segarkan di latar belakang
+            meetingListings.value = cached
+            _meetingSyncStatus.value = SyncState.Success("")
+            fetchMeetingListingsSilently(month, dateStr)
+            return
+        }
         if (dateChanged || meetingListings.value.isEmpty()) {
             meetingListings.value = emptyList() // Only clear when switching to a different date
         }
@@ -1436,6 +1447,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 
                 val response = apiService.getMeetingListings(url)
                 if (response.status.lowercase() == "success") {
+                    meetingListingsCache[cacheKey] = response.listings
                     meetingListings.value = response.listings
                     _meetingSyncStatus.value = SyncState.Success("Berhasil memuat ${response.listings.size} listing hasil meeting!")
                     
@@ -1464,7 +1476,8 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 
                 val response = apiService.getMeetingListings(url)
                 if (response.status.lowercase() == "success") {
-                    if (meetingListings.value != response.listings) {
+                    meetingListingsCache["$month|$dateStr"] = response.listings
+                    if (selectedMeetingDate.value == dateStr && meetingListings.value != response.listings) {
                         meetingListings.value = response.listings
                     }
                     response.listings.forEach { listing ->

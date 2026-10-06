@@ -1,11 +1,11 @@
 @echo off
-title SFRD v8.9.4 - Build & Install ke HP
+title SFRD v8.9.4 - Build dan Install ke HP
 color 0A
 
 cd /d "c:\Users\dhavi\antigravity\SFRD"
 
 echo ========================================================
-echo   SFRD v8.9.4: Build & Install ke Perangkat HP
+echo   SFRD v8.9.4: Build dan Install ke Perangkat HP
 echo ========================================================
 echo.
 
