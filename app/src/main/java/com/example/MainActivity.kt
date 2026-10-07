@@ -498,62 +498,24 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize(),
                         contentWindowInsets = WindowInsets(0, 0, 0, 0),
                         bottomBar = {
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
-                                tonalElevation = 8.dp,
-                                shadowElevation = 12.dp,
-                                border = androidx.compose.foundation.BorderStroke(
-                                    width = 1.dp,
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
-                                )
-                            ) {
-                                NavigationBar(
-                                    containerColor = Color.Transparent,
-                                    modifier = Modifier.testTag("bottom_nav_bar"),
-                                    windowInsets = WindowInsets(0, 0, 0, 0)
-                                ) {
-                                    TabItem.values().filter { it in listOf(TabItem.MEETING, TabItem.MEDIA, TabItem.DASHBOARD, TabItem.CONTENT, TabItem.PUBLISH) }.forEach { tab ->
-                                        val isSelected = currentTab == tab
-                                        NavigationBarItem(
-                                            selected = isSelected,
-                                            onClick = { 
-                                                currentTab = tab
-                                                if (tab == TabItem.TAMBAH) {
-                                                    viewmodel.resetForm()
-                                                }
-                                            },
-                                            icon = {
-                                                Icon(
-                                                    imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
-                                                    contentDescription = tab.title,
-                                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            },
-                                            label = { 
-                                                Text(
-                                                    text = tab.title,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                    style = MaterialTheme.typography.labelSmall.copy(
-                                                        fontSize = 10.sp,
-                                                        letterSpacing = (-0.3).sp
-                                                    ),
-                                                    maxLines = 1,
-                                                    softWrap = false,
-                                                    overflow = TextOverflow.Ellipsis
-                                                ) 
-                                            },
-                                            colors = NavigationBarItemDefaults.colors(
-                                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                                            ),
-                                            modifier = Modifier.testTag(tab.tag)
-                                        )
+                            // v8.9.6: Neon glow floating navigation (Navigation Tabs V2 style)
+                            val navTabs = remember {
+                                listOf(TabItem.MEETING, TabItem.MEDIA, TabItem.DASHBOARD, TabItem.CONTENT, TabItem.PUBLISH)
+                            }
+                            val navItems = remember(navTabs) {
+                                navTabs.map { com.example.ui.components.GlowNavItem(it.title, it.selectedIcon, it.unselectedIcon, it.tag) }
+                            }
+                            com.example.ui.components.GlowNavBar(
+                                items = navItems,
+                                selectedIndex = navTabs.indexOf(currentTab),
+                                onSelect = { index ->
+                                    val tab = navTabs[index]
+                                    currentTab = tab
+                                    if (tab == TabItem.TAMBAH) {
+                                        viewmodel.resetForm()
                                     }
                                 }
-                            }
+                            )
                         }
                     ) { innerPadding ->
                         Column(

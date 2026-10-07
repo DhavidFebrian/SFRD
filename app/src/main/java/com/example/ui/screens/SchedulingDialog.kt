@@ -149,6 +149,9 @@ fun SchedulingDialog(
     LaunchedEffect(pagerState.currentPage) {
         selectedTabState = pagerState.currentPage
     }
+    LaunchedEffect(dialogMonth) {
+        viewModel.fetchWeeklyMeetingIgListings(dialogMonth)
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -1436,6 +1439,9 @@ fun SchedulingScreenContent(
     }
     LaunchedEffect(pagerState.currentPage) {
         selectedTabState = pagerState.currentPage
+    }
+    LaunchedEffect(dialogMonth) {
+        viewModel.fetchWeeklyMeetingIgListings(dialogMonth)
     }
 
     Scaffold(

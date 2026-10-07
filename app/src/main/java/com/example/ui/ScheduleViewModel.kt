@@ -665,22 +665,22 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     val meetingSyncStatus: StateFlow<SyncState> = _meetingSyncStatus.asStateFlow()
 
     val ALL_PUBLISH_MONTHS = listOf(
+        "Semua Bulan",
         "September 2026",
         "Oktober 2026",
         "Agustus 2026",
         "Juli 2026",
-        "Juni 2026",
-        "Semua Bulan"
+        "Juni 2026"
     )
 
     val publishSelectedMonth = MutableStateFlow(
-        if (preferenceManager.publishSelectedMonth.contains("Oktober", ignoreCase = true)) "September 2026"
-        else preferenceManager.publishSelectedMonth
+        preferenceManager.publishSelectedMonth.ifBlank { "Semua Bulan" }
     )
 
     init {
-        if (preferenceManager.publishSelectedMonth.contains("Oktober", ignoreCase = true)) {
-            preferenceManager.publishSelectedMonth = "September 2026"
+        // Default to "Semua Bulan" for scheduling / publish if not set or legacy
+        if (preferenceManager.publishSelectedMonth.isBlank()) {
+            preferenceManager.publishSelectedMonth = "Semua Bulan"
         }
     }
 
@@ -1145,7 +1145,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 var anySuccess: Boolean
 
                 if (isSemua) {
-                    val monthsToFetch = listOf("Juni", "Juli", "Agustus", "September")
+                    val monthsToFetch = listOf("Juni", "Juli", "Agustus", "September", "Oktober")
                     val results = monthsToFetch.map { m ->
                         async(kotlinx.coroutines.Dispatchers.IO) {
                             val encodedSheet = java.net.URLEncoder.encode(getWeeklyMeetingSheetNameForMonth(m), "UTF-8")

@@ -95,7 +95,7 @@ class PreferenceManager(context: Context) {
         }
 
     var publishSelectedMonth: String
-        get() = prefs.getString("publish_selected_month", "September 2026") ?: "September 2026"
+        get() = prefs.getString("publish_selected_month", "Semua Bulan") ?: "Semua Bulan"
         set(value) = prefs.edit().putString("publish_selected_month", value.trim()).apply()
 
     var isFirstLaunch: Boolean
