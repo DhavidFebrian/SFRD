@@ -5,6 +5,7 @@ import android.app.DatePickerDialog
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import java.util.Date
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -46,6 +48,7 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import com.example.ui.SyncState
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -111,8 +114,10 @@ fun TaskDashboardScreen(
     var scheduleToDelete by remember { mutableStateOf<Schedule?>(null) }
     var taskEditToDelete by remember { mutableStateOf<EditFotoTask?>(null) }
     var selectedTaskForIgMockup by remember { mutableStateOf<EditFotoTask?>(null) }
+    var uploadTaskToReschedule by remember { mutableStateOf<EditFotoTask?>(null) }
 
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     // Filter Task Foto Ulang (type starts with "done" and status != "done")
     val taskFotoUlangList = remember(schedules, searchQuery, selectedTypeFilter) {
@@ -140,27 +145,8 @@ fun TaskDashboardScreen(
         }
     }
 
-    // Filter Task Edit Foto (by search query and only showing non-completed ones across all months)
-    val taskEditFotoList = remember(editFotoTasks, searchQuery, selectedTypeFilter) {
-        editFotoTasks.filter {
-            val isNotDone = !it.done
-            val matchesQuery = searchQuery.isBlank() ||
-                    it.namaMe.contains(searchQuery, ignoreCase = true) ||
-                    it.idListing.contains(searchQuery, ignoreCase = true) ||
-                    it.editNotes.contains(searchQuery, ignoreCase = true) ||
-                    it.judul.contains(searchQuery, ignoreCase = true)
-            
-            val matchesFilter = when (selectedTypeFilter) {
-                "Up Foto" -> it.editNotes.contains("up foto", ignoreCase = true) || it.judul.contains("up foto", ignoreCase = true)
-                "Edit Video" -> it.editNotes.contains("video", ignoreCase = true) || it.judul.contains("video", ignoreCase = true)
-                "Garis Tanah" -> it.editNotes.contains("garis", ignoreCase = true) || it.editNotes.contains("tanah", ignoreCase = true) || it.judul.contains("garis", ignoreCase = true) || it.judul.contains("tanah", ignoreCase = true)
-                "Edit Foto" -> true
-                else -> true
-            }
-            
-            isNotDone && matchesQuery && matchesFilter
-        }
-    }
+    // Edit Foto kini punya tab tersendiri di dalam Content dan memakai data weekly meeting IG.
+    val taskEditFotoList = emptyList<EditFotoTask>()
 
     var selectedUploadIgDateFilter by remember { mutableStateOf<String?>(null) }
 
@@ -202,7 +188,7 @@ fun TaskDashboardScreen(
                 editNotes = listing.catatan.trim(),
                 done = isPosted,
                 judul = taskJudul,
-                source = "${listing.date}|||${listing.colIndex}"
+                source = "${listing.date}|||${listing.colIndex}|||${listing.row}"
             )
         }.filter { task ->
             val matchesSearch = if (searchQuery.isBlank()) true else {
@@ -241,17 +227,9 @@ fun TaskDashboardScreen(
                     it.lokasi.contains(searchQuery, ignoreCase = true)
             isTask && matchesQuery
         }
-        val baseEditFoto = editFotoTasks.filter {
-            val isNotDone = !it.done
-            val matchesQuery = searchQuery.isBlank() ||
-                    it.namaMe.contains(searchQuery, ignoreCase = true) ||
-                    it.idListing.contains(searchQuery, ignoreCase = true) ||
-                    it.editNotes.contains(searchQuery, ignoreCase = true) ||
-                    it.judul.contains(searchQuery, ignoreCase = true)
-            isNotDone && matchesQuery
-        }
+        val baseEditFoto = emptyList<EditFotoTask>()
 
-        val filtersList = listOf("Semua", "Up Foto", "Edit Video", "Garis Tanah", "Edit Foto")
+        val filtersList = listOf("Semua", "Up Foto", "Edit Video", "Garis Tanah")
         filtersList.associateWith { filterName ->
             when (filterName) {
                 "Semua" -> baseFotoUlang.size + baseEditFoto.size
@@ -290,7 +268,6 @@ fun TaskDashboardScreen(
                     }
                     fu + ef
                 }
-                "Edit Foto" -> baseEditFoto.size
                 else -> 0
             }
         }
@@ -305,12 +282,16 @@ fun TaskDashboardScreen(
                     title = {
                         Column {
                             Text(
-                                text = if (selectedSubTab == 2) "Upload Instagram" else "Dashboard Task",
+                                text = if (selectedSubTab == 2) "Upload Instagram" else "Content Desk",
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.titleMedium
                             )
                             Text(
-                                text = if (selectedSubTab == 2) "Daftar postingan siap upload ke Instagram" else "Kelola tugas foto ulang dan editing foto RWC",
+                                text = when (selectedSubTab) {
+                                    1 -> "Antrean Edit Foto dari meeting minggu ini"
+                                    2 -> "Daftar postingan siap upload ke Instagram"
+                                    else -> "Kelola seluruh task content RWC"
+                                },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -416,8 +397,25 @@ fun TaskDashboardScreen(
                 }
             }
 
-            // Search Bar & Filters - visible only in Foto Ulang and Edit Foto tabs
-            if (selectedSubTab != 2) {
+            if (!isUploadIgOnly) {
+                TabRow(selectedTabIndex = selectedSubTab.coerceIn(0, 1)) {
+                    Tab(
+                        selected = selectedSubTab == 0,
+                        onClick = { selectedSubTab = 0 },
+                        icon = { Icon(Icons.Default.Article, null, Modifier.size(18.dp)) },
+                        text = { Text("Content", fontWeight = FontWeight.Bold) }
+                    )
+                    Tab(
+                        selected = selectedSubTab == 1,
+                        onClick = { selectedSubTab = 1 },
+                        icon = { Icon(Icons.Default.AutoFixHigh, null, Modifier.size(18.dp)) },
+                        text = { Text("Edit Foto", fontWeight = FontWeight.Bold) }
+                    )
+                }
+            }
+
+            // Search Bar & Filters khusus tab Content
+            if (selectedSubTab == 0) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -444,7 +442,7 @@ fun TaskDashboardScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // 5 Modern Interactive Filter Chips: Semua, Up Foto, Edit Video, Garis Tanah, Edit Foto
+                    // Filter task Content; Edit Foto sudah dipisah menjadi tab tersendiri.
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -452,7 +450,7 @@ fun TaskDashboardScreen(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val filters = listOf("Semua", "Up Foto", "Edit Video", "Garis Tanah", "Edit Foto")
+                        val filters = listOf("Semua", "Up Foto", "Edit Video", "Garis Tanah")
                         filters.forEach { filter ->
                             val isSelected = selectedTypeFilter == filter
                             val count = filterCounts[filter] ?: 0
@@ -494,7 +492,7 @@ fun TaskDashboardScreen(
                     .fillMaxWidth()
             ) {
                 when (selectedSubTab) {
-                    0, 1 -> {
+                    0 -> {
                         // Unified Content Desk List (Foto Ulang & Edit Foto)
                         if (taskFotoUlangList.isEmpty() && taskEditFotoList.isEmpty()) {
                             EmptyStateTask(
@@ -539,6 +537,13 @@ fun TaskDashboardScreen(
                             }
                         }
                     }
+                    1 -> EditFotoMeetingScreen(
+                        viewModel = viewModel,
+                        onOpenDrawer = onOpenDrawer,
+                        onNavigateToChat = onNavigateToChat,
+                        modifier = Modifier.fillMaxSize(),
+                        showTopBar = false
+                    )
                     2 -> {
                         // Task Upload IG with 2 sub-pages (Unpublished & Published)
                         // Month selector for Upload IG
@@ -858,6 +863,12 @@ fun TaskDashboardScreen(
                                                 subtitle = emptySub
                                             )
                                         } else {
+                                            val unpublishedGroups = if (page == 0) {
+                                                listToUse.groupBy { task ->
+                                                    com.example.data.normalizeDate(task.jadwalPosting)
+                                                        .ifBlank { task.jadwalPosting.trim() }
+                                                }
+                                            } else emptyMap()
                                             LazyVerticalGrid(
                                                 columns = GridCells.Fixed(2),
                                                 state = if (page == 0) gridState0 else gridState1,
@@ -866,10 +877,7 @@ fun TaskDashboardScreen(
                                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                                                 modifier = Modifier.fillMaxSize()
                                             ) {
-                                                items(
-                                                    items = listToUse,
-                                                    key = { "${it.idListing}_${it.namaMe}_${it.jadwalPosting}_${it.no}_${it.source}_$page" }
-                                                ) { item ->
+                                                val renderCard: @Composable (com.example.data.EditFotoTask) -> Unit = { item ->
                                                     val context = LocalContext.current
                                                     TaskUploadIgCard(
                                                         task = item,
@@ -887,7 +895,7 @@ fun TaskDashboardScreen(
                                                             viewModel.updateWeeklyMeetingIgPost(
                                                                 photoMonth = selectedUploadIgMonth,
                                                                 dateStr = date,
-                                                                row = item.no,
+                                                                row = parts.getOrNull(2)?.toIntOrNull()?.takeIf { it > 0 } ?: item.no,
                                                                 colIndex = colIndex,
                                                                 postingIg = !item.postingIg,
                                                                 onResult = { success, msg ->
@@ -896,10 +904,76 @@ fun TaskDashboardScreen(
                                                             )
                                                         },
                                                         onDelete = {},
+                                                        onEditSchedule = if (page == 0) ({ uploadTaskToReschedule = item }) else null,
                                                         onClick = {
                                                             selectedTaskForIgMockup = item
                                                         }
                                                     )
+                                                }
+
+                                                if (page == 0) {
+                                                    unpublishedGroups.forEach { (dateKey, dateItems) ->
+                                                        item(
+                                                            key = "date_header_$dateKey",
+                                                            span = { GridItemSpan(maxLineSpan) }
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .padding(top = 2.dp)
+                                                                    .background(
+                                                                        brush = Brush.horizontalGradient(
+                                                                            listOf(
+                                                                                com.example.ui.components.GlowNavSelectedBlue.copy(alpha = 0.82f),
+                                                                                com.example.ui.components.GlowNavSelectedViolet.copy(alpha = 0.76f)
+                                                                            )
+                                                                        ),
+                                                                        shape = RoundedCornerShape(9.dp)
+                                                                    )
+                                                            ) {
+                                                                Row(
+                                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                                                    verticalAlignment = Alignment.CenterVertically
+                                                                ) {
+                                                                    Icon(
+                                                                        Icons.Default.CalendarToday,
+                                                                        contentDescription = null,
+                                                                        tint = Color.White,
+                                                                        modifier = Modifier.size(14.dp)
+                                                                    )
+                                                                    Spacer(Modifier.width(6.dp))
+                                                                    Text(
+                                                                        text = formatJadwalPostingDate(dateKey),
+                                                                        style = MaterialTheme.typography.labelMedium,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = Color.White,
+                                                                        modifier = Modifier.weight(1f)
+                                                                    )
+                                                                    Surface(
+                                                                        color = Color.White.copy(alpha = 0.18f),
+                                                                        shape = RoundedCornerShape(50)
+                                                                    ) {
+                                                                        Text(
+                                                                            text = "${dateItems.size} postingan",
+                                                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                                                            style = MaterialTheme.typography.labelSmall,
+                                                                            fontWeight = FontWeight.Bold,
+                                                                            color = Color.White
+                                                                        )
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        items(
+                                                            items = dateItems,
+                                                            key = { "${it.idListing}_${it.namaMe}_${it.jadwalPosting}_${it.no}_${it.source}_$page" }
+                                                        ) { renderCard(it) }
+                                                    }
+                                                } else {
+                                                    items(
+                                                        items = listToUse,
+                                                        key = { "${it.idListing}_${it.namaMe}_${it.jadwalPosting}_${it.no}_${it.source}_$page" }
+                                                    ) { renderCard(it) }
                                                 }
                                             }
                                         }
@@ -990,6 +1064,45 @@ fun TaskDashboardScreen(
                     selectedTaskForIgMockup = null
                 }
             )
+        }
+
+        uploadTaskToReschedule?.let { task ->
+            val initialMillis = remember(task) {
+                runCatching {
+                    SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(com.example.data.normalizeDate(task.jadwalPosting))?.time
+                }.getOrNull() ?: System.currentTimeMillis()
+            }
+            val datePickerState = rememberDatePickerState(initialSelectedDateMillis = initialMillis)
+            DatePickerDialog(
+                onDismissRequest = { uploadTaskToReschedule = null },
+                confirmButton = {
+                    TextButton(onClick = {
+                        datePickerState.selectedDateMillis?.let { millis ->
+                            val newDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(millis))
+                            val parts = task.source.split("|||")
+                            val meetingDate = parts.getOrNull(0).orEmpty()
+                            val colIndex = parts.getOrNull(1)?.toIntOrNull() ?: 0
+                            val sheetRow = parts.getOrNull(2)?.toIntOrNull()?.takeIf { it > 0 } ?: task.no
+                            uploadTaskToReschedule = null
+                            viewModel.updateWeeklyMeetingSchedule(
+                                dateStr = meetingDate,
+                                row = sheetRow,
+                                colIndex = colIndex,
+                                jadwalPosting = newDate,
+                                photoMonth = selectedUploadIgMonth
+                            ) { _, message ->
+                                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }) { Text("SIMPAN") }
+                },
+                dismissButton = { TextButton(onClick = { uploadTaskToReschedule = null }) { Text("BATAL") } }
+            ) {
+                DatePicker(
+                    state = datePickerState,
+                    title = { Text("Edit Jadwal Posting", Modifier.padding(start = 24.dp, top = 24.dp)) }
+                )
+            }
         }
 
         // Download Images Screen Overlay Integration
@@ -1628,6 +1741,7 @@ fun TaskUploadIgCard(
     onFetchImage: (String) -> Unit,
     onTogglePosting: () -> Unit,
     onDelete: () -> Unit,
+    onEditSchedule: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     val cleanId = task.idListing.trim()
@@ -1866,6 +1980,25 @@ fun TaskUploadIgCard(
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
+
+                if (!task.postingIg && onEditSchedule != null) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().clickable { onEditSchedule() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(Icons.Default.EditCalendar, contentDescription = null, modifier = Modifier.size(12.dp), tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Edit Jadwal", style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold, fontSize = 9.sp), color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(5.dp))
+                }
 
                 // Status Toggle Button (full width at bottom)
                 Surface(

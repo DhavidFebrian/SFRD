@@ -60,14 +60,14 @@ data class GlowNavItem(
 // Palette inspired by "Navigation Tabs V2" (dark glass + blue/violet neon glow)
 private val NavBgTop = Color(0xFF151933)
 private val NavBgBottom = Color(0xFF0A0C18)
-private val NeonBlue = Color(0xFF4F7CFF)
+val GlowNavSelectedBlue = Color(0xFF4F7CFF)
 private val NeonCyan = Color(0xFF38BDF8)
-private val NeonViolet = Color(0xFF8B5CF6)
+val GlowNavSelectedViolet = Color(0xFF8B5CF6)
 private val InactiveTint = Color(0xFF8A90A8)
 
 /**
  * Floating dark pill navigation bar with a sliding neon-glow indicator,
- * spring physics, press-scale and haptic micro-interactions (v8.9.6).
+ * spring physics, press-scale and haptic micro-interactions (v8.9.7).
  */
 @Composable
 fun GlowNavBar(
@@ -87,8 +87,8 @@ fun GlowNavBar(
             .shadow(
                 elevation = 20.dp,
                 shape = containerShape,
-                ambientColor = NeonViolet.copy(alpha = 0.55f),
-                spotColor = NeonBlue.copy(alpha = 0.65f)
+                ambientColor = GlowNavSelectedViolet.copy(alpha = 0.55f),
+                spotColor = GlowNavSelectedBlue.copy(alpha = 0.65f)
             )
             .background(
                 brush = Brush.verticalGradient(listOf(NavBgTop, NavBgBottom)),
@@ -98,9 +98,9 @@ fun GlowNavBar(
                 width = 1.dp,
                 brush = Brush.horizontalGradient(
                     listOf(
-                        NeonBlue.copy(alpha = 0.55f),
-                        NeonViolet.copy(alpha = 0.65f),
-                        NeonBlue.copy(alpha = 0.40f)
+                        GlowNavSelectedBlue.copy(alpha = 0.55f),
+                        GlowNavSelectedViolet.copy(alpha = 0.65f),
+                        GlowNavSelectedBlue.copy(alpha = 0.40f)
                     )
                 ),
                 shape = containerShape
@@ -139,8 +139,8 @@ fun GlowNavBar(
                         drawCircle(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    NeonViolet.copy(alpha = 0.45f),
-                                    NeonBlue.copy(alpha = 0.18f),
+                                    GlowNavSelectedViolet.copy(alpha = 0.45f),
+                                    GlowNavSelectedBlue.copy(alpha = 0.18f),
                                     Color.Transparent
                                 ),
                                 center = Offset(size.width / 2f, size.height * 0.95f),
@@ -163,21 +163,21 @@ fun GlowNavBar(
                     .shadow(
                         elevation = 12.dp,
                         shape = indicatorShape,
-                        ambientColor = NeonViolet,
-                        spotColor = NeonBlue
+                        ambientColor = GlowNavSelectedViolet,
+                        spotColor = GlowNavSelectedBlue
                     )
                     .background(
                         brush = Brush.verticalGradient(
                             listOf(
-                                NeonBlue.copy(alpha = 0.38f),
-                                NeonViolet.copy(alpha = 0.30f)
+                                GlowNavSelectedBlue.copy(alpha = 0.38f),
+                                GlowNavSelectedViolet.copy(alpha = 0.30f)
                             )
                         ),
                         shape = indicatorShape
                     )
                     .border(
                         width = 1.3.dp,
-                        brush = Brush.linearGradient(listOf(NeonCyan, NeonBlue, NeonViolet)),
+                        brush = Brush.linearGradient(listOf(NeonCyan, GlowNavSelectedBlue, GlowNavSelectedViolet)),
                         shape = indicatorShape
                     )
             )

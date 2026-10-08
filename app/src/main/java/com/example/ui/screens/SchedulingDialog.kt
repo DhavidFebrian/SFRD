@@ -457,7 +457,7 @@ fun SchedulingDialog(
                                             isSubmittingUpdate = listing
                                             viewModel.updateWeeklyMeetingSchedule(
                                                 dateStr = listing.date,
-                                                row = listing.no,
+                                                row = listing.row.takeIf { it > 0 } ?: listing.no,
                                                 colIndex = listing.colIndex,
                                                 jadwalPosting = "-",
                                                 photoMonth = dialogMonth,
@@ -526,7 +526,7 @@ fun SchedulingDialog(
                             
                             viewModel.updateWeeklyMeetingSchedule(
                                 dateStr = listing.date,
-                                row = listing.no,
+                                row = listing.row.takeIf { it > 0 } ?: listing.no,
                                 colIndex = listing.colIndex,
                                 jadwalPosting = formattedDate,
                                 photoMonth = dialogMonth,
@@ -1680,7 +1680,7 @@ fun SchedulingScreenContent(
                                     onClearSchedule = {
                                         isSubmittingUpdate = listing
                                         viewModel.updateWeeklyMeetingSchedule(
-                                            dateStr = listing.date, row = listing.no, colIndex = listing.colIndex,
+                                            dateStr = listing.date, row = listing.row.takeIf { it > 0 } ?: listing.no, colIndex = listing.colIndex,
                                             jadwalPosting = "-", photoMonth = dialogMonth,
                                             onResult = { _, _ -> isSubmittingUpdate = null }
                                         )
@@ -1740,7 +1740,7 @@ fun SchedulingScreenContent(
                         showDatePickerForListing = null
                         isSubmittingUpdate = listing
                         viewModel.updateWeeklyMeetingSchedule(
-                            dateStr = listing.date, row = listing.no, colIndex = listing.colIndex,
+                            dateStr = listing.date, row = listing.row.takeIf { it > 0 } ?: listing.no, colIndex = listing.colIndex,
                             jadwalPosting = formattedDate, photoMonth = dialogMonth,
                             onResult = { _, _ -> isSubmittingUpdate = null }
                         )

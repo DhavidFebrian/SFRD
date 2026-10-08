@@ -95,7 +95,7 @@ class MainActivity : ComponentActivity() {
             .okHttpClient(okHttpClient)
             .memoryCache {
                 MemoryCache.Builder(this)
-                    .maxSizePercent(0.25)
+                    .maxSizePercent(0.15)
                     .build()
             }
             .diskCache {
@@ -105,7 +105,9 @@ class MainActivity : ComponentActivity() {
                     .build()
             }
             .respectCacheHeaders(false) // Force cache local images regardless of server headers
-            .crossfade(true) // Smooth image fade-in transition
+            // Grid-heavy screens render many thumbnails; disabling per-image animation
+            // avoids extra layers and invalidations while scrolling.
+            .crossfade(false)
             .build()
         Coil.setImageLoader(imageLoader)
         
@@ -133,7 +135,6 @@ class MainActivity : ComponentActivity() {
             val viewmodel: ScheduleViewModel = viewModel()
             val isDarkTheme by viewmodel.isDarkTheme.collectAsState()
             val themeStyle by viewmodel.selectedThemeStyle.collectAsState()
-            val uiLayoutMode by viewmodel.uiLayoutMode.collectAsState()
             val isNotificationsEnabled by viewmodel.isNotificationsEnabled.collectAsState()
             
             MyApplicationTheme(darkTheme = isDarkTheme, themeStyle = themeStyle) {
@@ -164,9 +165,6 @@ class MainActivity : ComponentActivity() {
                 }
                 
                 val selectedChatSchedule by viewmodel.selectedScheduleFromChat.collectAsState()
-                val listingImagesMap by viewmodel.listingImagesMap.collectAsState()
-                val listingImagesGalleryMap by viewmodel.listingImagesGalleryMap.collectAsState()
-                val agentInfoMap by viewmodel.agentInfoMap.collectAsState()
                 
                 val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
                 val scope = rememberCoroutineScope()
@@ -184,6 +182,12 @@ class MainActivity : ComponentActivity() {
                 }
                 
                 if (selectedChatSchedule != null) {
+                    // Subscribe to large, frequently changing maps only while the detail
+                    // overlay actually consumes them. This avoids recomposing the entire
+                    // app shell whenever a background thumbnail finishes loading.
+                    val listingImagesMap by viewmodel.listingImagesMap.collectAsState()
+                    val listingImagesGalleryMap by viewmodel.listingImagesGalleryMap.collectAsState()
+                    val agentInfoMap by viewmodel.agentInfoMap.collectAsState()
                     com.example.ui.screens.DetailPagerScreen(
                         schedule = selectedChatSchedule!!,
                         listingImagesMap = listingImagesMap,
@@ -486,7 +490,7 @@ class MainActivity : ComponentActivity() {
                             
                             Spacer(Modifier.weight(1f))
                             Text(
-                                "Versi V5.8",
+                                "Versi V8.9.7",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.padding(horizontal = 28.dp, vertical = 16.dp)
@@ -498,7 +502,7 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize(),
                         contentWindowInsets = WindowInsets(0, 0, 0, 0),
                         bottomBar = {
-                            // v8.9.6: Neon glow floating navigation (Navigation Tabs V2 style)
+                            // v8.9.7: Neon glow floating navigation (Navigation Tabs V2 style)
                             val navTabs = remember {
                                 listOf(TabItem.MEETING, TabItem.MEDIA, TabItem.DASHBOARD, TabItem.CONTENT, TabItem.PUBLISH)
                             }

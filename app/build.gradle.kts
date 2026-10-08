@@ -14,8 +14,8 @@ android {
     applicationId = "com.aistudio.jadwalfoto.qywrkx"
     minSdk = 24
     targetSdk = 36
-    versionCode = 896
-    versionName = "8.9.6"
+    versionCode = 897
+    versionName = "8.9.7"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

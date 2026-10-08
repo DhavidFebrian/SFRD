@@ -792,6 +792,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     val absensiSyncStatus: StateFlow<SyncState> = _absensiSyncStatus.asStateFlow()
     val selectedAbsenMonthIndex = MutableStateFlow<Int?>(null)
     private val absensiUpdateJobs = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Job>()
+    private val silentAbsensiJobs = java.util.concurrent.ConcurrentHashMap<Int, kotlinx.coroutines.Job>()
 
     fun fetchAbsensiMeeting(monthIndex: Int) {
         selectedAbsenMonthIndex.value = monthIndex
@@ -823,8 +824,12 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     fun fetchAbsensiMeetingSilently(monthIndex: Int) {
         val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
         if (baseUrl.isBlank()) return
+        if (silentAbsensiJobs[monthIndex]?.isActive == true) return
 
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val job = viewModelScope.launch(
+            context = kotlinx.coroutines.Dispatchers.IO,
+            start = kotlinx.coroutines.CoroutineStart.LAZY
+        ) {
             try {
                 val separator = if (baseUrl.contains("?")) "&" else "?"
                 val url = "${baseUrl}${separator}action=get_absensi_meeting&monthIndex=$monthIndex"
@@ -836,6 +841,9 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 }
             } catch (_: Exception) {}
         }
+        silentAbsensiJobs[monthIndex] = job
+        job.invokeOnCompletion { silentAbsensiJobs.remove(monthIndex, job) }
+        job.start()
     }
 
     private fun safeConvertToInt(value: Any?): Int {
@@ -1242,7 +1250,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         val previousAllListings = allMonthlyMeetingListings.value
 
         val updatedIgListings = previousIgListings.map { item ->
-            if (item.no == row && item.colIndex == colIndex) {
+            if ((item.row == row || (item.row == 0 && item.no == row)) && item.colIndex == colIndex) {
                 item.copy(postingIg = postingVal)
             } else {
                 item
@@ -1251,7 +1259,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         weeklyMeetingIgListings.value = updatedIgListings
 
         val updatedAllListings = previousAllListings.map { item ->
-            if (item.no == row && item.colIndex == colIndex) {
+            if ((item.row == row || (item.row == 0 && item.no == row)) && item.colIndex == colIndex) {
                 item.copy(postingIg = postingVal)
             } else {
                 item
@@ -1414,6 +1422,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     }
 
     private val meetingListingsCache = java.util.concurrent.ConcurrentHashMap<String, List<com.example.network.MeetingListing>>()
+    private val silentMeetingJobs = java.util.concurrent.ConcurrentHashMap<String, kotlinx.coroutines.Job>()
 
     fun fetchMeetingListings(month: String, dateStr: String) {
         val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
@@ -1467,8 +1476,13 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     fun fetchMeetingListingsSilently(month: String, dateStr: String) {
         val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
         if (baseUrl.isBlank()) return
+        val requestKey = "$month|$dateStr"
+        if (silentMeetingJobs[requestKey]?.isActive == true) return
         
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        val job = viewModelScope.launch(
+            context = kotlinx.coroutines.Dispatchers.IO,
+            start = kotlinx.coroutines.CoroutineStart.LAZY
+        ) {
             try {
                 val separator = if (baseUrl.contains("?")) "&" else "?"
                 val encodedSheet = java.net.URLEncoder.encode(month, "UTF-8")
@@ -1476,7 +1490,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 
                 val response = apiService.getMeetingListings(url)
                 if (response.status.lowercase() == "success") {
-                    meetingListingsCache["$month|$dateStr"] = response.listings
+                    meetingListingsCache[requestKey] = response.listings
                     if (selectedMeetingDate.value == dateStr && meetingListings.value != response.listings) {
                         meetingListings.value = response.listings
                     }
@@ -1486,6 +1500,9 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 }
             } catch (_: Exception) {}
         }
+        silentMeetingJobs[requestKey] = job
+        job.invokeOnCompletion { silentMeetingJobs.remove(requestKey, job) }
+        job.start()
     }
 
     fun getAutofilledMeForListingId(id: String): String {
@@ -2224,12 +2241,18 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
             return
         }
 
+        // Batalkan fetch lama agar respons spreadsheet yang stale tidak menimpa
+        // perubahan optimistis dan membuat card tetap/muncul kembali sesaat.
+        igFetchJob?.cancel()
+        igFetchJob = null
+        igInFlightKey = null
+
         // 1. Immediate optimistic update in memory (0ms UI latency)
         val previousIgListings = weeklyMeetingIgListings.value
         val previousAllListings = allMonthlyMeetingListings.value
 
         val updatedIgListings = previousIgListings.map { item ->
-            if (item.no == row && item.colIndex == colIndex) {
+            if ((item.row == row || (item.row == 0 && item.no == row)) && item.colIndex == colIndex) {
                 item.copy(jadwalPosting = jadwalPosting)
             } else {
                 item
@@ -2238,7 +2261,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         weeklyMeetingIgListings.value = updatedIgListings
 
         val updatedAllListings = previousAllListings.map { item ->
-            if (item.no == row && item.colIndex == colIndex) {
+            if ((item.row == row || (item.row == 0 && item.no == row)) && item.colIndex == colIndex) {
                 item.copy(jadwalPosting = jadwalPosting)
             } else {
                 item
@@ -2288,7 +2311,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 if (response.status.lowercase() == "success") {
                     // Mark caches stale but keep showing data; refresh the month the user is viewing
                     igCacheTimestamps.clear()
-                    refreshCurrentIgListings()
+                    fetchWeeklyMeetingIgListings(photoMonth.ifBlank { publishSelectedMonth.value }, forceRefresh = true)
                 } else {
                     // Rollback if server responded with error
                     kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
@@ -3288,7 +3311,9 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 .debounce(1000)
                 .collect { list ->
                     try {
-                        com.example.receiver.AlarmReceiver.syncAllAlarms(application, list)
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            com.example.receiver.AlarmReceiver.syncAllAlarms(application, list)
+                        }
                     } catch (e: Exception) {
                         android.util.Log.e("ScheduleViewModel", "Failed to sync alarms: ${e.message}", e)
                     }
@@ -3587,8 +3612,11 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     }
 
     // Silent real-time sync for background updates without disrupting UI states
+    private var silentSyncJob: kotlinx.coroutines.Job? = null
+
     fun syncDataSilently() {
-        viewModelScope.launch {
+        if (silentSyncJob?.isActive == true) return
+        silentSyncJob = viewModelScope.launch {
             repository.syncPendingSchedules()
             repository.syncFromGoogleSheets()
             syncChats()
