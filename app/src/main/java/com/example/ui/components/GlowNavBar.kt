@@ -67,7 +67,7 @@ private val InactiveTint = Color(0xFF8A90A8)
 
 /**
  * Floating dark pill navigation bar with a sliding neon-glow indicator,
- * spring physics, press-scale and haptic micro-interactions (v8.9.7).
+ * spring physics, press-scale and haptic micro-interactions (v8.9.8).
  */
 @Composable
 fun GlowNavBar(

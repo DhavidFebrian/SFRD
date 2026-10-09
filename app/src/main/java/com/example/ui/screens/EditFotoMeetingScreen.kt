@@ -5,8 +5,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -17,6 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -40,7 +43,6 @@ fun EditFotoMeetingScreen(
     showTopBar: Boolean = true
 ) {
     val listings by viewModel.weeklyMeetingIgListings.collectAsState()
-    val highlightedIds by viewModel.highlightedMeListingIds.collectAsState()
     val syncState by viewModel.weeklyMeetingIgSyncStatus.collectAsState()
     val images by viewModel.listingImagesMap.collectAsState()
     val gallery by viewModel.listingImagesGalleryMap.collectAsState()
@@ -65,16 +67,26 @@ fun EditFotoMeetingScreen(
         start.timeInMillis to end.timeInMillis
     }
 
-    LaunchedEffect(currentMonth) { viewModel.fetchWeeklyMeetingIgListings(currentMonth) }
-    val pending = remember(listings, highlightedIds, search) {
+    LaunchedEffect(currentMonth) {
+        // Warna sel spreadsheet adalah sumber utama status edit, jadi selalu ambil
+        // format terbaru ketika halaman dibuka dan jangan mengandalkan cache lokal.
+        viewModel.fetchWeeklyMeetingIgListings(currentMonth, forceRefresh = true)
+    }
+    val pending = remember(listings, search) {
         val parser = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }
         listings.filter { item ->
             val millis = runCatching { parser.parse(normalizeDate(item.date))?.time }.getOrNull()
             millis != null && millis >= weekBounds.first && millis < weekBounds.second &&
                 item.keterangan.trim().equals("IG", true) && !item.meHighlighted &&
-                !highlightedIds.contains(item.idListing.trim()) &&
                 (search.isBlank() || item.idListing.contains(search, true) || item.namaMe.contains(search, true) || item.catatan.contains(search, true))
         }.sortedWith(compareBy<MeetingListing> { normalizeDate(it.date) }.thenBy { it.no })
+    }
+    val postingGroups = remember(pending) {
+        pending.groupBy { listing ->
+            normalizeDate(listing.jadwalPosting).ifBlank {
+                listing.jadwalPosting.trim().ifBlank { "BELUM_DIJADWALKAN" }
+            }
+        }
     }
 
     Scaffold(
@@ -120,25 +132,76 @@ fun EditFotoMeetingScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    itemsIndexed(
-                        pending,
-                        key = { index, listing ->
-                            "${normalizeDate(listing.date)}_${listing.row}_${listing.colIndex}_${listing.no}_${listing.idListing}_$index"
-                        }
-                    ) { _, listing ->
-                        LaunchedEffect(listing.idListing) {
-                            if (listing.idListing.isNotBlank()) viewModel.fetchListingImageIfNeeded(listing.idListing, listing.namaMe)
-                        }
-                        EditFotoIgCard(
-                            listing, images[listing.idListing.trim()], titles[listing.idListing.trim()],
-                            onClick = { selectedListing = listing },
-                            onDone = {
-                                viewModel.updateWeeklyMeetingMeHighlight(
-                                    viewModel.getWeeklyMeetingSheetNameForMonth(currentMonth), listing.date, listing.row,
-                                    listing.colIndex, listing.idListing, true
-                                ) { _, msg -> Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() }
+                    postingGroups.forEach { (dateKey, dateItems) ->
+                        item(
+                            key = "edit_date_header_$dateKey",
+                            span = { GridItemSpan(maxLineSpan) }
+                        ) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 2.dp)
+                                    .background(
+                                        Brush.horizontalGradient(
+                                            listOf(
+                                                com.example.ui.components.GlowNavSelectedBlue.copy(alpha = .82f),
+                                                com.example.ui.components.GlowNavSelectedViolet.copy(alpha = .76f)
+                                            )
+                                        ),
+                                        RoundedCornerShape(9.dp)
+                                    )
+                            ) {
+                                Row(
+                                    Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.CalendarToday, null, Modifier.size(14.dp), tint = Color.White)
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        if (dateKey == "BELUM_DIJADWALKAN") {
+                                            "Belum dijadwalkan"
+                                        } else {
+                                            formatPublishJadwalPostingDate(dateKey).ifBlank { "Belum dijadwalkan" }
+                                        },
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Surface(color = Color.White.copy(alpha = .18f), shape = RoundedCornerShape(50)) {
+                                        Text(
+                                            "${dateItems.size} postingan",
+                                            Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
+                                }
                             }
-                        )
+                        }
+
+                        items(
+                            dateItems,
+                            key = { listing ->
+                                "${normalizeDate(listing.date)}_${listing.row}_${listing.colIndex}_${listing.no}_${listing.idListing}"
+                            }
+                        ) { listing ->
+                            LaunchedEffect(listing.idListing) {
+                                if (listing.idListing.isNotBlank()) viewModel.fetchListingImageIfNeeded(listing.idListing, listing.namaMe)
+                            }
+                            EditFotoIgCard(
+                                listing, images[listing.idListing.trim()], titles[listing.idListing.trim()],
+                                onClick = { selectedListing = listing },
+                                onDone = {
+                                    viewModel.updateWeeklyMeetingMeHighlight(
+                                        viewModel.getWeeklyMeetingSheetNameForMonth(currentMonth), listing.date,
+                                        listing.row.takeIf { it > 0 } ?: listing.no,
+                                        listing.colIndex, listing.idListing, true
+                                    ) { _, msg -> Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -171,20 +234,52 @@ private fun EditFotoIgCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp), elevation = CardDefaults.cardElevation(3.dp)
+        shape = RoundedCornerShape(14.dp),
+        elevation = CardDefaults.cardElevation(2.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = .25f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column {
-            Box(Modifier.fillMaxWidth().aspectRatio(1.08f).background(MaterialTheme.colorScheme.surfaceVariant)) {
+            Box(Modifier.fillMaxWidth().height(120.dp).background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .5f))) {
                 if (imageUrl != null) AsyncImage(imageUrl, "Foto listing ${listing.idListing}", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                 else Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Icon(Icons.Default.Image, null, Modifier.size(38.dp), tint = MaterialTheme.colorScheme.outline) }
-                Surface(color = MaterialTheme.colorScheme.primary, shape = RoundedCornerShape(bottomEnd = 12.dp)) {
-                    Text("IG", Modifier.padding(horizontal = 10.dp, vertical = 5.dp), color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold)
+                Surface(
+                    color = Color(0xFF2563EB).copy(alpha = .94f),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp)
+                ) {
+                    Row(Modifier.padding(horizontal = 6.dp, vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.AutoFixHigh, null, Modifier.size(10.dp), tint = Color.White)
+                        Spacer(Modifier.width(3.dp))
+                        Text("Belum Edit", color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold)
+                    }
                 }
+                Surface(
+                    color = Color(0xFFE1306C).copy(alpha = .92f),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp)
+                ) {
+                    Text("IG", Modifier.padding(horizontal = 6.dp, vertical = 3.dp), color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold)
+                }
+                Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(3.dp).background(Color(0xFF2563EB)))
             }
-            Column(Modifier.padding(11.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(listing.namaMe.ifBlank { "Nama ME belum diisi" }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("ID ${listing.idListing.ifBlank { "-" }}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                Text(title?.takeIf { it.isNotBlank() } ?: listing.catatan.ifBlank { "Buka untuk melihat preview" }, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Column(Modifier.padding(horizontal = 8.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("#${listing.row.takeIf { it > 0 } ?: listing.no}", color = Color.White, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.ExtraBold, modifier = Modifier.background(Color(0xFF2563EB), RoundedCornerShape(3.dp)).padding(horizontal = 4.dp, vertical = 1.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(listing.idListing.ifBlank { "Manual" }, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Text(title?.takeIf { it.isNotBlank() } ?: listing.catatan.ifBlank { "Buka untuk melihat preview" }, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Person, null, Modifier.size(10.dp), tint = MaterialTheme.colorScheme.outline)
+                    Spacer(Modifier.width(3.dp))
+                    Text(listing.namaMe.ifBlank { "Nama ME belum diisi" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.CalendarToday, null, Modifier.size(10.dp), tint = MaterialTheme.colorScheme.outline)
+                    Spacer(Modifier.width(3.dp))
+                    Text(formatPublishJadwalPostingDate(listing.jadwalPosting).ifBlank { "Belum dijadwalkan" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
                 FilledTonalButton(onClick = onDone, modifier = Modifier.fillMaxWidth().heightIn(min = 42.dp), contentPadding = PaddingValues(horizontal = 8.dp)) {
                     Icon(Icons.Default.Done, null, Modifier.size(16.dp)); Spacer(Modifier.width(5.dp)); Text("Sudah Edit", maxLines = 1)
                 }

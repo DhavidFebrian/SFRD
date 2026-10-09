@@ -720,6 +720,7 @@ function getWeeklyMeetingListings(e) {
   var dataRange = sheet.getRange(startRow, colIndex, numRows, 6);
   var values = dataRange.getValues();
   var backgrounds = dataRange.getBackgrounds();
+  var fontColors = dataRange.getFontColors();
   
   var listings = [];
   for (var r = 0; r < values.length; r++) {
@@ -727,7 +728,10 @@ function getWeeklyMeetingListings(e) {
     var idListing = row[0] ? row[0].toString().trim() : "";
     if (idListing !== "") {
       var meBg = backgrounds && backgrounds[r] && backgrounds[r][4] ? backgrounds[r][4].toString().toLowerCase() : "";
-      var isMeHighlighted = meBg === "#2563eb" || meBg === "#0066ff" || meBg === "#0000ff" || meBg === "#1e88e5" || (meBg !== "" && meBg !== "#ffffff" && meBg !== "#000000" && meBg !== "rgba(0, 0, 0, 0)");
+      var meFont = fontColors && fontColors[r] && fontColors[r][4] ? fontColors[r][4].toString().toLowerCase() : "";
+      var isBlueBackground = meBg === "#2563eb" || meBg === "#0066ff" || meBg === "#0000ff" || meBg === "#1e88e5";
+      var isWhiteText = meFont === "#ffffff" || meFont === "white";
+      var isMeHighlighted = isBlueBackground && isWhiteText;
       listings.push({
         "no": (startRow + r),
         "row": (startRow + r),
@@ -1086,14 +1090,21 @@ function getAllWeeklyMeetingListings(e) {
     
     var dataRange = sheet.getRange(startRow, colIndex, numRows, 6);
     var values = dataRange.getValues();
+    var backgrounds = dataRange.getBackgrounds();
+    var fontColors = dataRange.getFontColors();
     
     for (var r = 0; r < values.length; r++) {
       var row = values[r];
       var idListing = row[0] ? row[0].toString().trim() : "";
       var keterangan = row[1] ? row[1].toString().trim() : "";
       if (idListing !== "") {
+        var meBg = backgrounds && backgrounds[r] && backgrounds[r][4] ? backgrounds[r][4].toString().toLowerCase() : "";
+        var meFont = fontColors && fontColors[r] && fontColors[r][4] ? fontColors[r][4].toString().toLowerCase() : "";
+        var isBlueBackground = meBg === "#2563eb" || meBg === "#0066ff" || meBg === "#0000ff" || meBg === "#1e88e5";
+        var isWhiteText = meFont === "#ffffff" || meFont === "white";
         listings.push({
           "no": (startRow + r),
+          "row": (startRow + r),
           "date": dateStr,
           "colIndex": colIndex,
           "idListing": idListing,
@@ -1101,7 +1112,8 @@ function getAllWeeklyMeetingListings(e) {
           "postingIg": row[2] ? row[2].toString().trim() : "",
           "jadwalPosting": row[3] ? row[3].toString().trim() : "",
           "namaMe": row[4] ? row[4].toString().trim() : "",
-          "catatan": row[5] ? row[5].toString().trim() : ""
+          "catatan": row[5] ? row[5].toString().trim() : "",
+          "meHighlighted": isBlueBackground && isWhiteText
         });
       }
     }

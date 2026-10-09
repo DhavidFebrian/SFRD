@@ -490,7 +490,7 @@ class MainActivity : ComponentActivity() {
                             
                             Spacer(Modifier.weight(1f))
                             Text(
-                                "Versi V8.9.7",
+                                "Versi V8.9.8",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.outline,
                                 modifier = Modifier.padding(horizontal = 28.dp, vertical = 16.dp)
@@ -502,7 +502,7 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize(),
                         contentWindowInsets = WindowInsets(0, 0, 0, 0),
                         bottomBar = {
-                            // v8.9.7: Neon glow floating navigation (Navigation Tabs V2 style)
+                            // v8.9.8: Neon glow floating navigation (Navigation Tabs V2 style)
                             val navTabs = remember {
                                 listOf(TabItem.MEETING, TabItem.MEDIA, TabItem.DASHBOARD, TabItem.CONTENT, TabItem.PUBLISH)
                             }

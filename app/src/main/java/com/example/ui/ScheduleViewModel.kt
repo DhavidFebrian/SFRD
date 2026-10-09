@@ -1098,6 +1098,50 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         return null
     }
 
+    /**
+     * Deployment Apps Script lama belum menyertakan row/meHighlighted pada endpoint bulanan.
+     * Ambil metadata format per tanggal secara paralel lalu gabungkan tanpa mengubah data utama.
+     */
+    private suspend fun enrichMeetingEditStatus(
+        baseUrl: String,
+        separator: String,
+        listings: List<com.example.network.MeetingListing>
+    ): List<com.example.network.MeetingListing> {
+        if (listings.isEmpty() || listings.none { it.row <= 0 }) return listings
+
+        val dates = listings.asSequence().map { it.date.trim() }.filter { it.isNotEmpty() }.distinct().toList()
+        if (dates.isEmpty()) return listings
+
+        val detailed = kotlinx.coroutines.coroutineScope {
+            dates.map { date ->
+                async(kotlinx.coroutines.Dispatchers.IO) {
+                    val parsed = runCatching { SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(date) }.getOrNull()
+                    val calendar = Calendar.getInstance().apply { if (parsed != null) time = parsed }
+                    val sheetName = "Recap Meeting ${getMonthName(calendar.get(Calendar.MONTH))}"
+                    val encodedSheet = java.net.URLEncoder.encode(sheetName, "UTF-8")
+                    val encodedDate = java.net.URLEncoder.encode(date, "UTF-8")
+                    fetchMeetingSheetWithRetry(
+                        "$baseUrl${separator}action=get_weekly_meeting_listings&sheetName=$encodedSheet&date=$encodedDate"
+                    )?.listings.orEmpty()
+                }
+            }.awaitAll().flatten()
+        }
+
+        if (detailed.isEmpty()) return listings
+        val detailsByCell = detailed.associateBy {
+            "${it.date.trim()}|||${it.colIndex}|||${normalizeIdListing(it.idListing)}"
+        }
+        return listings.map { item ->
+            val detail = detailsByCell[
+                "${item.date.trim()}|||${item.colIndex}|||${normalizeIdListing(item.idListing)}"
+            ]
+            if (detail == null) item else item.copy(
+                row = detail.row.takeIf { it > 0 } ?: detail.no,
+                meHighlighted = detail.meHighlighted
+            )
+        }
+    }
+
     fun fetchWeeklyMeetingIgListings(photoMonth: String, forceRefresh: Boolean = false) {
         val baseUrl = weeklyMeetingUrl.value.ifBlank { appsScriptUrl.value }
         if (baseUrl.isBlank()) {
@@ -1183,8 +1227,11 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                     return@launch
                 }
                 
+                val enrichedListings = enrichMeetingEditStatus(baseUrl, separator, combinedListings)
+                ensureActive()
+
                 // Process each listing item so all meetings in the month are fully displayed without dropping double IDs
-                val processedListings = combinedListings.map { listing ->
+                val processedListings = enrichedListings.map { listing ->
                     val id = listing.idListing.trim()
                     val cleanNamaMe = listing.namaMe.trim()
                     val mergedNamaMe = if (id == "11091") {
@@ -2055,6 +2102,15 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         meetingListings.update { list ->
             list.map { item ->
                 if (item.idListing.trim().equals(cleanId, ignoreCase = true) || (colIndex > 0 && item.colIndex == colIndex && item.no == row)) {
+                    item.copy(meHighlighted = highlighted)
+                } else item
+            }
+        }
+        weeklyMeetingIgListings.update { list ->
+            list.map { item ->
+                val sameCell = item.colIndex == colIndex &&
+                    (item.row == row || (item.row == 0 && item.no == row))
+                if (sameCell || (item.idListing.trim().equals(cleanId, ignoreCase = true) && item.date == dateStr)) {
                     item.copy(meHighlighted = highlighted)
                 } else item
             }

@@ -210,6 +210,11 @@ fun TaskDashboardScreen(
             matchesSearch && matchesDate
         }
     }
+    val editedIgCells = remember(weeklyMeetingIgListings) {
+        weeklyMeetingIgListings.associate { listing ->
+            "${listing.date}|||${listing.colIndex}|||${listing.row}" to listing.meHighlighted
+        }
+    }
 
     val editFotoNotDoneCount = remember(taskEditFotoList) {
         taskEditFotoList.size
@@ -881,6 +886,7 @@ fun TaskDashboardScreen(
                                                     val context = LocalContext.current
                                                     TaskUploadIgCard(
                                                         task = item,
+                                                        isEdited = editedIgCells[item.source] == true,
                                                         listingImagesMap = listingImagesMap,
                                                         listingSoldMap = listingSoldMap,
                                                         listingTitleMap = listingTitleMap,
@@ -943,7 +949,7 @@ fun TaskDashboardScreen(
                                                                     )
                                                                     Spacer(Modifier.width(6.dp))
                                                                     Text(
-                                                                        text = formatJadwalPostingDate(dateKey),
+                                                                        text = formatPublishJadwalPostingDate(dateKey),
                                                                         style = MaterialTheme.typography.labelMedium,
                                                                         fontWeight = FontWeight.Bold,
                                                                         color = Color.White,
@@ -1640,7 +1646,7 @@ fun TaskEditFotoCard(
                     ) {
                         Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
                         Text(
-                            text = "Upload IG #${task.no} : ${formatJadwalPostingDate(task.jadwalPosting)}",
+                            text = "Upload IG #${task.no} : ${formatPublishJadwalPostingDate(task.jadwalPosting)}",
                             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -1732,6 +1738,7 @@ fun TaskEditFotoCard(
 @Composable
 fun TaskUploadIgCard(
     task: EditFotoTask,
+    isEdited: Boolean = false,
     listingImagesMap: Map<String, String>,
     listingSoldMap: Map<String, Boolean> = emptyMap(),
     listingTitleMap: Map<String, String> = emptyMap(),
@@ -1863,6 +1870,32 @@ fun TaskUploadIgCard(
                         color = Color.White
                     )
                 }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .background(
+                            if (isEdited) Color(0xFF2563EB).copy(alpha = 0.94f)
+                            else Color(0xFF64748B).copy(alpha = 0.90f),
+                            RoundedCornerShape(6.dp)
+                        )
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Icon(
+                            if (isEdited) Icons.Default.AutoFixHigh else Icons.Default.HourglassEmpty,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(10.dp)
+                        )
+                        Text(
+                            if (isEdited) "Sudah Edit" else "Belum Edit",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                }
                 // Status accent bar at bottom of image
                 Box(
                     modifier = Modifier
@@ -1971,7 +2004,7 @@ fun TaskUploadIgCard(
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         Icon(Icons.Default.CalendarToday, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(9.dp))
                         Text(
-                            text = formatJadwalPostingDate(task.jadwalPosting),
+                            text = formatPublishJadwalPostingDate(task.jadwalPosting),
                             style = MaterialTheme.typography.bodySmall.copy(fontSize = 9.sp),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1
@@ -1999,7 +2032,6 @@ fun TaskUploadIgCard(
                     }
                     Spacer(modifier = Modifier.height(5.dp))
                 }
-
                 // Status Toggle Button (full width at bottom)
                 Surface(
                     color = statusColor.copy(alpha = 0.1f),
@@ -2106,7 +2138,7 @@ private fun mapScheduleToEditFotoTask(schedule: Schedule): EditFotoTask {
     )
 }
 
-private fun formatJadwalPostingDate(rawDate: String): String {
+internal fun formatPublishJadwalPostingDate(rawDate: String): String {
     val trimmed = rawDate.trim()
     if (trimmed.isEmpty()) return ""
 
