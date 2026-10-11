@@ -3,6 +3,7 @@ package com.example
 import org.junit.Assert.*
 import org.junit.Test
 import com.example.data.normalizeDate
+import com.example.ui.screens.parsePublishJadwalPostingDateToEpoch
 
 class ExampleUnitTest {
   @Test
@@ -32,6 +33,23 @@ class ExampleUnitTest {
     val projectionText = "Meeting Listing Admin: www.sfrd.com/listing/98452 - ME: John"
     val candidates2 = com.example.ui.screens.extractIdCandidates(projectionText)
     assertEquals("98452", candidates2.first().id)
+  }
+
+  @Test
+  fun postingDatesSortFromOldestAndPutUnscheduledLast() {
+    val dates = listOf(
+      "Tue Oct 13 2026 00:00:00 GMT+0700 (Waktu Indonesia Barat)",
+      "BELUM_DIJADWALKAN",
+      "Sun Oct 11 2026 00:00:00 GMT+0700 (Waktu Indonesia Barat)",
+      "Mon Oct 12 2026 00:00:00 GMT+0700 (Waktu Indonesia Barat)"
+    )
+
+    val sorted = dates.sortedBy(::parsePublishJadwalPostingDateToEpoch)
+
+    assertTrue(sorted[0].startsWith("Sun"))
+    assertTrue(sorted[1].startsWith("Mon"))
+    assertTrue(sorted[2].startsWith("Tue"))
+    assertEquals("BELUM_DIJADWALKAN", sorted[3])
   }
 }
 

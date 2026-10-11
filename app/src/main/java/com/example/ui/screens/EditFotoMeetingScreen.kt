@@ -86,7 +86,11 @@ fun EditFotoMeetingScreen(
             normalizeDate(listing.jadwalPosting).ifBlank {
                 listing.jadwalPosting.trim().ifBlank { "BELUM_DIJADWALKAN" }
             }
-        }
+        }.entries.sortedWith(
+            compareBy<Map.Entry<String, List<MeetingListing>>> {
+                parsePublishJadwalPostingDateToEpoch(it.key)
+            }.thenBy { it.key }
+        )
     }
 
     Scaffold(

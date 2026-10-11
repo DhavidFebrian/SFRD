@@ -562,7 +562,7 @@ fun TaskDashboardScreen(
                                 val hasJadwal = jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
                                 hasJadwal && !task.postingIg
                             }.sortedWith(
-                                compareBy<com.example.data.EditFotoTask> { parseJadwalPostingDateToEpoch(it.jadwalPosting) }
+                                compareBy<com.example.data.EditFotoTask> { parsePublishJadwalPostingDateToEpoch(it.jadwalPosting) }
                                     .thenBy { it.no }
                             )
                         }
@@ -573,7 +573,7 @@ fun TaskDashboardScreen(
                                 val hasJadwal = jadwal.isNotEmpty() && jadwal != "-" && !jadwal.lowercase().contains("belum")
                                 hasJadwal && task.postingIg
                             }.sortedWith(
-                                compareBy<com.example.data.EditFotoTask> { parseJadwalPostingDateToEpoch(it.jadwalPosting) }
+                                compareBy<com.example.data.EditFotoTask> { parsePublishJadwalPostingDateToEpoch(it.jadwalPosting) }
                                     .thenBy { it.no }
                             )
                         }
@@ -2224,7 +2224,7 @@ internal fun formatPublishJadwalPostingDate(rawDate: String): String {
     return clean
 }
 
-private fun parseJadwalPostingDateToEpoch(rawDate: String): Long {
+internal fun parsePublishJadwalPostingDateToEpoch(rawDate: String): Long {
     val trimmed = rawDate.trim()
     val fallbackFuture = 253402300799000L // Year 9999
     if (trimmed.isEmpty() || trimmed == "-" || trimmed.lowercase().contains("belum")) return fallbackFuture
