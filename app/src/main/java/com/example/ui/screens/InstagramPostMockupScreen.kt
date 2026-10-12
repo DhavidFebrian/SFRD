@@ -1821,7 +1821,7 @@ private fun isTitleDuplicateOrHeadline(
 }
 
 // Dynamic Instagram caption generator
-private fun buildInstagramCaption(
+internal fun buildInstagramCaption(
     rawDesc: String,
     idListing: String,
     rawPrice: String,

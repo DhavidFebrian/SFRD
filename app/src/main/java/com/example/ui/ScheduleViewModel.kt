@@ -734,6 +734,132 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    val reelsListings = MutableStateFlow<List<com.example.data.ReelItem>>(emptyList())
+    private val _reelsSyncStatus = MutableStateFlow<SyncState>(SyncState.Success("Siap"))
+    val reelsSyncStatus: StateFlow<SyncState> = _reelsSyncStatus.asStateFlow()
+    private var reelsFetchedAt = 0L
+
+    /** Membaca tab Reels (gid 506914265) langsung melalui endpoint publik Google Sheets. */
+    fun fetchReels(forceRefresh: Boolean = false) {
+        if (!forceRefresh && reelsListings.value.isNotEmpty() && System.currentTimeMillis() - reelsFetchedAt < 60_000L) return
+
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            _reelsSyncStatus.value = SyncState.Loading
+            try {
+                val url = "https://docs.google.com/spreadsheets/d/1ydmss-ADSeJpw7KJyQzT44RUNaqu5wJ0UJrIxn_8EmY/gviz/tq?tqx=out:json&gid=506914265&range=B4:H1000"
+                val request = okhttp3.Request.Builder().url(url).get().build()
+                val body = getOrCreateScrapingClient().newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) error("HTTP ${response.code}")
+                    response.body?.string().orEmpty()
+                }
+                val jsonText = body.substringAfter("google.visualization.Query.setResponse(", "")
+                    .substringBeforeLast(");", "")
+                if (jsonText.isBlank()) error("Format respons Reels tidak valid")
+
+                val rows = org.json.JSONObject(jsonText)
+                    .getJSONObject("table")
+                    .getJSONArray("rows")
+                val parsed = buildList {
+                    for (index in 0 until rows.length()) {
+                        val cells = rows.getJSONObject(index).optJSONArray("c") ?: continue
+                        fun cellText(position: Int): String {
+                            val cell = cells.optJSONObject(position) ?: return ""
+                            val formatted = cell.optString("f").trim()
+                            if (formatted.isNotBlank()) return formatted
+                            val value = cell.opt("v")
+                            if (value == null || value == org.json.JSONObject.NULL) return ""
+                            return when (value) {
+                                is Number -> if (value.toDouble() % 1.0 == 0.0) value.toLong().toString() else value.toString()
+                                else -> value.toString().trim()
+                            }
+                        }
+
+                        val idListing = cellText(1)
+                        val driveLink = cellText(2)
+                        if (idListing.isBlank() && driveLink.isBlank()) continue
+                        val postingCell = cells.optJSONObject(3)
+                        val postingIg = postingCell?.optBoolean("v", false) == true ||
+                            postingCell?.optString("f")?.equals("TRUE", ignoreCase = true) == true
+                        val rawDate = cellText(4)
+                        add(
+                            com.example.data.ReelItem(
+                                row = index + 5,
+                                no = cellText(0).toDoubleOrNull()?.toInt() ?: index + 1,
+                                idListing = idListing,
+                                driveLink = driveLink,
+                                postingIg = postingIg,
+                                jadwalPosting = com.example.data.normalizeDate(rawDate).ifBlank { rawDate },
+                                namaMe = cellText(5),
+                                catatan = cellText(6)
+                            )
+                        )
+                    }
+                }
+                reelsListings.value = parsed
+                reelsFetchedAt = System.currentTimeMillis()
+                _reelsSyncStatus.value = SyncState.Success("${parsed.size} video Reels dimuat")
+                showDailyReelsReminderIfNeeded(parsed)
+                fetchSavedCaptions()
+            } catch (e: Exception) {
+                _reelsSyncStatus.value = SyncState.Error("Gagal memuat Reels: ${e.localizedMessage ?: "masalah koneksi"}")
+            }
+        }
+    }
+
+    /** Shows one combined reminder per calendar day for unpublished Reels due today. */
+    private fun showDailyReelsReminderIfNeeded(items: List<com.example.data.ReelItem>) {
+        if (!preferenceManager.isNotificationsEnabled) return
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        if (preferenceManager.lastReelsReminderDate == today) return
+        val dueToday = items.filter { reel ->
+            !reel.postingIg && com.example.data.normalizeDate(reel.jadwalPosting) == today
+        }
+        if (dueToday.isEmpty()) return
+
+        val context = getApplication<Application>().applicationContext
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context,
+                android.Manifest.permission.POST_NOTIFICATIONS
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) return
+
+        val channelId = "reels_daily_reminder"
+        val manager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            manager.createNotificationChannel(
+                android.app.NotificationChannel(
+                    channelId,
+                    "Reminder Posting Reels",
+                    android.app.NotificationManager.IMPORTANCE_HIGH
+                ).apply { description = "Reminder Reels yang harus diposting hari ini" }
+            )
+        }
+        val clickIntent = android.content.Intent(context, com.example.MainActivity::class.java).apply {
+            flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendingIntent = android.app.PendingIntent.getActivity(
+            context,
+            898,
+            clickIntent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        val ids = dueToday.joinToString(", ") { it.idListing }.take(180)
+        val message = "${dueToday.size} Reels dijadwalkan hari ini: $ids"
+        val notification = androidx.core.app.NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(android.R.drawable.ic_popup_reminder)
+            .setContentTitle("Reminder Posting Reels")
+            .setContentText(message)
+            .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(message))
+            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+            .setCategory(androidx.core.app.NotificationCompat.CATEGORY_REMINDER)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+        preferenceManager.lastReelsReminderDate = today
+        manager.notify(898, notification)
+    }
+
     fun saveCaptionToDatabase(
         idListing: String,
         caption: String,

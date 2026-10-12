@@ -1,10 +1,7 @@
 package com.example.ui.screens
 
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -17,14 +14,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.ui.ScheduleViewModel
 import com.example.ui.SyncState
-import kotlinx.coroutines.launch
 
 /**
  * PublishScreen combines Upload IG + Scheduling into one cohesive screen.
  * Tab 0 = Upload IG (from TaskDashboardScreen with isUploadIgOnly=true)
  * Tab 1 = Scheduling (embedded SchedulingScreenContent — not a dialog)
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PublishScreen(
     viewModel: ScheduleViewModel,
@@ -33,9 +28,9 @@ fun PublishScreen(
     onNavigateToForm: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    val coroutineScope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(pageCount = { 2 })
+    var publishMode by remember { mutableIntStateOf(0) } // 0 = Feeds, 1 = Reels, 2 = Scheduling
     val igSyncStatus by viewModel.weeklyMeetingIgSyncStatus.collectAsState()
+    val reelsSyncStatus by viewModel.reelsSyncStatus.collectAsState()
     val unreadCount by viewModel.unreadChatCount.collectAsState()
     val publishSelectedMonth by viewModel.publishSelectedMonth.collectAsState()
     var isSearchExpanded by remember { mutableStateOf(false) }
@@ -76,7 +71,11 @@ fun PublishScreen(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = (if (pagerState.currentPage == 0) "Upload Instagram" else "Instagram Scheduling") + " · $publishSelectedMonth",
+                    text = when (publishMode) {
+                        1 -> "Reels · video Google Drive"
+                        2 -> "Scheduling · $publishSelectedMonth"
+                        else -> "Feeds · Instagram · $publishSelectedMonth"
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -94,12 +93,15 @@ fun PublishScreen(
             // Top Refresh button
             IconButton(
                 onClick = {
-                    viewModel.refreshCurrentIgListings()
-                    viewModel.syncDataSilently()
+                    if (publishMode == 1) viewModel.fetchReels(true) else {
+                        viewModel.refreshCurrentIgListings()
+                        viewModel.syncDataSilently()
+                    }
                 },
-                enabled = igSyncStatus !is SyncState.Loading
+                enabled = if (publishMode == 1) reelsSyncStatus !is SyncState.Loading else igSyncStatus !is SyncState.Loading
             ) {
-                if (igSyncStatus is SyncState.Loading) {
+                if ((publishMode == 1 && reelsSyncStatus is SyncState.Loading) ||
+                    (publishMode == 0 && igSyncStatus is SyncState.Loading)) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(18.dp),
                         strokeWidth = 2.dp,
@@ -134,98 +136,66 @@ fun PublishScreen(
             }
         }
 
-        // TabRow with sliding indicator
+        // Primary content type selector. Kept separate from workflow tabs so the hierarchy stays clear.
         TabRow(
-            selectedTabIndex = pagerState.currentPage,
+            selectedTabIndex = publishMode,
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.height(46.dp),
+            modifier = Modifier.height(44.dp),
             indicator = { tabPositions ->
-                if (pagerState.currentPage < tabPositions.size) {
+                if (publishMode < tabPositions.size) {
                     TabRowDefaults.SecondaryIndicator(
-                        modifier = Modifier.tabIndicatorOffset(tabPositions[pagerState.currentPage]),
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[publishMode]),
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
         ) {
-            Tab(
-                selected = pagerState.currentPage == 0,
-                onClick = {
-                    coroutineScope.launch {
-                        pagerState.animateScrollToPage(0)
-                    }
-                },
+            listOf(
+                Triple(0, Icons.Default.GridView, "Feeds"),
+                Triple(1, Icons.Default.SmartDisplay, "Reels"),
+                Triple(2, Icons.Default.EditCalendar, "Scheduling")
+            ).forEach { (index, icon, label) -> Tab(
+                selected = publishMode == index,
+                onClick = { publishMode = index },
                 text = {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.CloudUpload,
+                            imageVector = icon,
                             contentDescription = null,
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Upload IG",
+                            text = label,
                             style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = if (pagerState.currentPage == 0) FontWeight.Bold else FontWeight.Normal
+                                fontWeight = if (publishMode == index) FontWeight.Bold else FontWeight.Normal
                             )
                         )
                     }
                 }
-            )
-            Tab(
-                selected = pagerState.currentPage == 1,
-                onClick = {
-                    coroutineScope.launch {
-                        pagerState.animateScrollToPage(1)
-                    }
-                },
-                text = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.EditCalendar,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Scheduling",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = if (pagerState.currentPage == 1) FontWeight.Bold else FontWeight.Normal
-                            )
-                        )
-                    }
-                }
-            )
+            ) }
         }
 
-        // HorizontalPager hosting Upload IG and Scheduling views
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) { page ->
-            when (page) {
-                0 -> TaskDashboardScreen(
-                    viewModel = viewModel,
-                    onOpenDrawer = onOpenDrawer,
-                    initialSubTab = 2,
-                    isUploadIgOnly = true,
-                    onNavigateToChat = onNavigateToChat,
-                    onNavigateToForm = onNavigateToForm,
-                    isExternalFilterExpanded = isSearchExpanded
-                )
-                1 -> SchedulingScreenContent(
-                    viewModel = viewModel
-                )
-            }
+        when (publishMode) {
+            0 -> TaskDashboardScreen(
+                viewModel = viewModel,
+                onOpenDrawer = onOpenDrawer,
+                initialSubTab = 2,
+                isUploadIgOnly = true,
+                onNavigateToChat = onNavigateToChat,
+                onNavigateToForm = onNavigateToForm,
+                isExternalFilterExpanded = isSearchExpanded
+            )
+            1 -> ReelsPublishScreen(
+                viewModel = viewModel,
+                isSearchExpanded = isSearchExpanded,
+                modifier = Modifier.fillMaxWidth().weight(1f)
+            )
+            else -> SchedulingScreenContent(viewModel = viewModel)
         }
     }
 }

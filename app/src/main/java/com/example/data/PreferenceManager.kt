@@ -118,6 +118,10 @@ class PreferenceManager(context: Context) {
         get() = prefs.getBoolean("is_notifications_enabled", true)
         set(value) = prefs.edit().putBoolean("is_notifications_enabled", value).apply()
 
+    var lastReelsReminderDate: String
+        get() = prefs.getString("last_reels_reminder_date", "") ?: ""
+        set(value) = prefs.edit().putString("last_reels_reminder_date", value).apply()
+
     var formatDone: String
         get() = prefs.getString("format_done", "") ?: ""
         set(value) = prefs.edit().putString("format_done", value).apply()
