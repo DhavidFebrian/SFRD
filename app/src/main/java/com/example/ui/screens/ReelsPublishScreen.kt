@@ -6,16 +6,16 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
-import android.graphics.Bitmap
-import android.widget.Toast
+import android.webkit.CookieManager
 import android.webkit.WebChromeClient
-import android.webkit.WebResourceError
-import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -43,11 +43,26 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
 import coil.compose.AsyncImage
 import com.example.data.ReelItem
 import com.example.ui.ScheduleViewModel
 import com.example.ui.SyncState
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
+import java.io.IOException
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -239,6 +254,7 @@ private fun ReelCard(reel: ReelItem, caption: String, onClick: () -> Unit) {
     }
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReelPreviewDialog(reel: ReelItem, viewModel: ScheduleViewModel, onDismiss: () -> Unit) {
@@ -253,15 +269,73 @@ private fun ReelPreviewDialog(reel: ReelItem, viewModel: ScheduleViewModel, onDi
     }
     var caption by remember(reel.idListing) { mutableStateOf("") }
     var captionEdited by remember(reel.idListing) { mutableStateOf(false) }
+    var playRequested by remember(reel.idListing) { mutableStateOf(false) }
     var previewLoading by remember(reel.idListing) { mutableStateOf(true) }
     var playbackFailed by remember(reel.idListing) { mutableStateOf(false) }
-    var retryKey by remember(reel.idListing) { mutableIntStateOf(0) }
-    var webView by remember(reel.idListing) { mutableStateOf<WebView?>(null) }
+    var playbackErrorMessage by remember(reel.idListing) { mutableStateOf<String?>(null) }
+    var useDrivePreview by remember(reel.idListing) { mutableStateOf(false) }
+    var driveWebView by remember(reel.idListing) { mutableStateOf<WebView?>(null) }
     DisposableEffect(reel.idListing) {
         onDispose {
-            webView?.run { stopLoading(); loadUrl("about:blank"); destroy() }
-            webView = null
+            driveWebView?.apply { stopLoading(); loadUrl("about:blank"); destroy() }
+            driveWebView = null
         }
+    }
+    val mediaSource = remember(reel.videoUrl) {
+        val client = OkHttpClient.Builder().addNetworkInterceptor { chain ->
+            val original = chain.request()
+            val request = if (original.header("Range") == null) {
+                original.newBuilder().header("Range", "bytes=0-").build()
+            } else original
+            chain.proceed(request).also { response ->
+                if (response.header("Content-Type")?.startsWith("text/html") == true) {
+                    val html = response.peekBody(8_192).string()
+                    if (html.contains("Quota exceeded", ignoreCase = true) || html.contains("Too many users", ignoreCase = true)) {
+                        response.close()
+                        throw IOException("DRIVE_QUOTA_EXCEEDED")
+                    }
+                }
+            }
+        }.build()
+        val httpFactory = OkHttpDataSource.Factory(client)
+            .setUserAgent("Mozilla/5.0 (Linux; Android ${Build.VERSION.RELEASE}) AppleWebKit/537.36 Chrome/140 Mobile Safari/537.36")
+            .setDefaultRequestProperties(mapOf(
+                "Accept" to "video/mp4,video/*;q=0.9,*/*;q=0.8",
+                "Referer" to "https://drive.google.com/"
+            ))
+        val item = MediaItem.Builder().setUri(reel.videoUrl).setMimeType(MimeTypes.VIDEO_MP4).build()
+        ProgressiveMediaSource.Factory(DefaultDataSource.Factory(context, httpFactory)).createMediaSource(item)
+    }
+    val player = remember(reel.videoUrl) {
+        val loadControl = DefaultLoadControl.Builder().setBufferDurationsMs(2_000, 15_000, 500, 1_000).build()
+        ExoPlayer.Builder(context).setLoadControl(loadControl).build().apply {
+            setMediaSource(mediaSource)
+            prepare()
+        }
+    }
+    DisposableEffect(player) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(state: Int) {
+                previewLoading = state == Player.STATE_BUFFERING || state == Player.STATE_IDLE
+                if (state == Player.STATE_READY) playbackFailed = false
+            }
+            override fun onPlayerError(error: PlaybackException) {
+                previewLoading = false
+                playbackFailed = true
+                if (reel.previewUrl.isNotBlank()) {
+                    useDrivePreview = true
+                    player.stop()
+                }
+                playbackErrorMessage = if (generateSequence<Throwable>(error) { it.cause }
+                        .any { it.message?.contains("DRIVE_QUOTA_EXCEEDED") == true }) {
+                    "Kuota video Google Drive sedang penuh · coba lagi nanti atau buka Drive"
+                } else {
+                    "Preview gagal dimuat · ketuk untuk mencoba lagi"
+                }
+            }
+        }
+        player.addListener(listener)
+        onDispose { player.removeListener(listener); player.release() }
     }
     LaunchedEffect(reel.idListing, captions, generatedCaption) {
         val resolved = captions[reel.idListing].takeUnless { it.isNullOrBlank() } ?: generatedCaption
@@ -288,71 +362,88 @@ private fun ReelPreviewDialog(reel: ReelItem, viewModel: ScheduleViewModel, onDi
                     }
                 )
 
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                 Box(
-                    Modifier.fillMaxWidth().weight(1f).background(Color.Black),
+                    Modifier.fillMaxWidth().height(420.dp).background(Color.Black),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (reel.previewUrl.isNotBlank()) {
-                        key(retryKey) {
-                            AndroidView(
-                                factory = {
-                                    WebView(context).apply {
-                                        webView = this
-                                        setBackgroundColor(android.graphics.Color.BLACK)
-                                        settings.javaScriptEnabled = true
-                                        settings.domStorageEnabled = true
-                                        settings.mediaPlaybackRequiresUserGesture = false
-                                        settings.loadsImagesAutomatically = true
-                                        webChromeClient = WebChromeClient()
-                                        webViewClient = object : WebViewClient() {
-                                            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-                                                previewLoading = true
-                                                playbackFailed = false
-                                            }
-
-                                            override fun onPageFinished(view: WebView?, url: String?) {
-                                                previewLoading = false
-                                                playbackFailed = false
-                                            }
-
-                                            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-                                                if (request?.isForMainFrame == true) {
-                                                    previewLoading = false
-                                                    playbackFailed = true
-                                                }
-                                            }
-                                        }
-                                        loadUrl(reel.previewUrl)
+                    if (useDrivePreview) {
+                        AndroidView(
+                            factory = {
+                                WebView(context).apply {
+                                    driveWebView = this
+                                    setBackgroundColor(android.graphics.Color.BLACK)
+                                    settings.javaScriptEnabled = true
+                                    settings.domStorageEnabled = true
+                                    settings.mediaPlaybackRequiresUserGesture = false
+                                    settings.useWideViewPort = true
+                                    settings.loadWithOverviewMode = true
+                                    // Drive's mobile touch controls cover the frame with a dark scrim.
+                                    // Its desktop controls use a compact bar and leave the video unobscured.
+                                    settings.userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+                                    CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                                    webChromeClient = WebChromeClient()
+                                    webViewClient = WebViewClient()
+                                    if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                                        WebViewCompat.addDocumentStartJavaScript(
+                                            this, REEL_PLAYER_CONTROLS_SCRIPT,
+                                            setOf("https://drive.google.com")
+                                        )
                                     }
-                                },
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        }
+                                    loadUrl(reel.previewUrl)
+                                }
+                            },
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else if (reel.videoUrl.isNotBlank()) {
+                        AndroidView(
+                            factory = {
+                                PlayerView(context).apply {
+                                    this.player = player
+                                    useController = true
+                                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                    setShowBuffering(PlayerView.SHOW_BUFFERING_WHEN_PLAYING)
+                                    setBackgroundColor(android.graphics.Color.BLACK)
+                                }
+                            },
+                            update = { it.player = player },
+                            modifier = Modifier.fillMaxSize()
+                        )
                     }
-                    if (previewLoading || playbackFailed) {
+                    if (!useDrivePreview && (!playRequested || playbackFailed)) {
                         AsyncImage(
                             model = reel.thumbnailUrl,
                             contentDescription = "Preview Reels ${reel.idListing}",
                             modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit
                         )
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (playbackFailed) {
-                                FilledIconButton(
-                                    onClick = { playbackFailed = false; previewLoading = true; retryKey++ },
-                                    modifier = Modifier.size(64.dp),
-                                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.White.copy(alpha = .92f))
-                                ) { Icon(Icons.Default.Refresh, "Coba lagi", Modifier.size(36.dp), tint = Color.Black) }
+                            FilledIconButton(
+                                onClick = {
+                                    playRequested = true
+                                    playbackFailed = false
+                                    playbackErrorMessage = null
+                                    previewLoading = true
+                                    if (player.playerError != null) {
+                                        player.setMediaSource(mediaSource)
+                                        player.prepare()
+                                    }
+                                    player.play()
+                                },
+                                modifier = Modifier.size(64.dp),
+                                colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color.White.copy(alpha = .92f))
+                            ) {
+                                Icon(if (playbackFailed) Icons.Default.Refresh else Icons.Default.PlayArrow, if (playbackFailed) "Coba lagi" else "Putar", Modifier.size(36.dp), tint = Color.Black)
                             }
                             if (previewLoading && !playbackFailed) {
                                 Surface(shape = RoundedCornerShape(12.dp), color = Color.Black.copy(alpha = .68f)) {
                                     Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                         CircularProgressIndicator(Modifier.size(15.dp), strokeWidth = 2.dp, color = Color.White)
                                         Spacer(Modifier.width(7.dp))
-                                        Text("Memuat player video…", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                                        Text("Menyiapkan video…", color = Color.White, style = MaterialTheme.typography.labelSmall)
                                     }
                                 }
                             } else if (playbackFailed) {
-                                Text("Preview gagal dimuat · ketuk untuk mencoba lagi", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                                Text(playbackErrorMessage ?: "Preview gagal dimuat · ketuk untuk mencoba lagi", color = Color.White, style = MaterialTheme.typography.labelSmall)
                             }
                         }
                     }
@@ -403,6 +494,7 @@ private fun ReelPreviewDialog(reel: ReelItem, viewModel: ScheduleViewModel, onDi
                         ) { Icon(Icons.Default.Save, null, Modifier.size(16.dp)); Spacer(Modifier.width(5.dp)); Text("Simpan") }
                     }
                 }
+                }
             }
         }
     }
@@ -416,6 +508,18 @@ private fun ReelInfoRow(label: String, value: String) {
         Text(value, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
     }
 }
+
+// Drive's control section paints a 90%-opaque backdrop across the entire video.
+// Remove only that backdrop; retain Drive's playback, audio and seek controls.
+private val REEL_PLAYER_CONTROLS_SCRIPT = """
+    (function() {
+      document.addEventListener('DOMContentLoaded',function() {
+        var style = document.createElement('style');
+        style.textContent = 'section.VUN2V{background:transparent!important;background-image:none!important}';
+        document.head.appendChild(style);
+      });
+    })();
+""".trimIndent()
 
 private fun buildReelCaption(
     reel: ReelItem,
