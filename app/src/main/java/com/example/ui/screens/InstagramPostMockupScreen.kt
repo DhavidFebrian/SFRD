@@ -53,6 +53,7 @@ fun InstagramPostMockupScreen(
     listingTitleMap: Map<String, String> = emptyMap(),
     allMeetingListings: List<com.example.network.MeetingListing> = emptyList(),
     viewModel: com.example.ui.ScheduleViewModel? = null,
+    isListingEdited: Boolean = true,
     onDismiss: () -> Unit,
     onViewDetails: () -> Unit = {}
 ) {
@@ -99,6 +100,7 @@ fun InstagramPostMockupScreen(
                     listingTitleMap = listingTitleMap,
                     allMeetingListings = allMeetingListings,
                     viewModel = viewModel,
+                    isListingEdited = isListingEdited,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -118,6 +120,7 @@ fun InstagramPostFeedContent(
     allMeetingListings: List<com.example.network.MeetingListing> = emptyList(),
     viewModel: com.example.ui.ScheduleViewModel? = null,
     isSold: Boolean = false,
+    isListingEdited: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -175,6 +178,7 @@ fun InstagramPostFeedContent(
     var showWaChooserDialog by remember { mutableStateOf(false) }
 
     var showRwcDownloadDialog by remember { mutableStateOf(false) }
+    var showListingNotEditedDialog by remember { mutableStateOf(false) }
     var showWaBlastDialog by remember { mutableStateOf(false) }
     var downloadedUris by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
 
@@ -409,6 +413,31 @@ fun InstagramPostFeedContent(
                                 )
                             }
                         }
+                        }
+
+                        if (!isListingEdited) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.58f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Surface(
+                                    color = Color(0xFFD32F2F).copy(alpha = 0.94f),
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(2.dp, Color.White.copy(alpha = 0.9f))
+                                ) {
+                                    Text(
+                                        text = "LISTING BELUM EDIT",
+                                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                                        color = Color.White,
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Black,
+                                        letterSpacing = 1.sp,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -1153,7 +1182,9 @@ fun InstagramPostFeedContent(
                         // 2. Download Foto button (Middle button for RWC portal Design 3 cover & images)
                         Button(
                             onClick = {
-                                if (cleanId.isNotBlank()) {
+                                if (!isListingEdited) {
+                                    showListingNotEditedDialog = true
+                                } else if (cleanId.isNotBlank()) {
                                     showRwcDownloadDialog = true
                                 } else {
                                     Toast.makeText(context, "ID Listing tidak tersedia", Toast.LENGTH_SHORT).show()
@@ -1162,13 +1193,23 @@ fun InstagramPostFeedContent(
                             modifier = Modifier.weight(1.1f),
                             contentPadding = PaddingValues(horizontal = 4.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFF25D366) // WA Green theme matching Blast ke WA Group
+                                containerColor = if (isListingEdited) Color(0xFF25D366) else Color(0xFFD32F2F)
                             ),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Icon(Icons.Default.Download, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                            Icon(
+                                if (isListingEdited) Icons.Default.Download else Icons.Default.SupportAgent,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Download Foto", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                if (isListingEdited) "Download Foto" else "Belum Edit",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
 
                         // 3. Detail Listing button
@@ -1274,6 +1315,86 @@ fun InstagramPostFeedContent(
                 showRwcDownloadDialog = false
                 downloadedUris = uris
                 showWaBlastDialog = true
+            }
+        )
+    }
+
+    if (showListingNotEditedDialog) {
+        AlertDialog(
+            onDismissRequest = { showListingNotEditedDialog = false },
+            icon = {
+                Icon(
+                    Icons.Default.WarningAmber,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(34.dp)
+                )
+            },
+            title = {
+                Text(
+                    "Listing Belum Edit",
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        "Foto belum dapat di-download sebelum listing selesai diedit.",
+                        textAlign = TextAlign.Center
+                    )
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = .55f),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(
+                            "Please contact Production Team",
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    Text(
+                        "Pesan WhatsApp akan menyertakan link detail listing #${cleanId.ifBlank { "N/A" }}.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (cleanId.isBlank()) {
+                            Toast.makeText(context, "ID Listing tidak tersedia", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
+                        val detailUrl = "https://raywhitecipete.net/ListingView/Detail/$cleanId"
+                        val message = detailUrl
+                        val waUrl = "https://wa.me/6285169671344?text=${android.net.Uri.encode(message)}"
+                        runCatching {
+                            context.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(waUrl)))
+                            showListingNotEditedDialog = false
+                        }.onFailure {
+                            Toast.makeText(context, "Gagal membuka WhatsApp", Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Chat Production")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showListingNotEditedDialog = false }) {
+                    Text("Nanti")
+                }
             }
         )
     }

@@ -501,6 +501,7 @@ fun SchedulingDialog(
             listingTitleMap = listingTitleMap,
             allMeetingListings = igListings,
             viewModel = viewModel,
+            isListingEdited = listing.meHighlighted,
             onDismiss = { detailListing = null },
             onViewDetails = { detailListing = null }
         )
@@ -932,6 +933,10 @@ private fun UnscheduledCard(
                         fontSize = 9.sp
                     )
                 }
+                EditStatusBadge(
+                    isEdited = listing.meHighlighted,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp)
+                )
             }
 
             // Card body
@@ -1022,6 +1027,35 @@ private fun UnscheduledCard(
     }
 }
 
+@Composable
+private fun EditStatusBadge(isEdited: Boolean, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        color = if (isEdited) Color(0xFF2563EB).copy(alpha = 0.95f)
+        else Color(0xFF64748B).copy(alpha = 0.94f),
+        shape = RoundedCornerShape(6.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Icon(
+                imageVector = if (isEdited) Icons.Default.AutoFixHigh else Icons.Default.HourglassEmpty,
+                contentDescription = null,
+                tint = Color.White,
+                modifier = Modifier.size(10.dp)
+            )
+            Text(
+                text = if (isEdited) "Sudah Edit" else "Belum Edit",
+                color = Color.White,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
+        }
+    }
+}
+
 // ── Scheduled listing card (extracted for clarity) ─────────────────────────────
 @Composable
 private fun ScheduledListingCard(
@@ -1068,6 +1102,10 @@ private fun ScheduledListingCard(
                             modifier = Modifier.size(32.dp)
                         )
                     }
+                    EditStatusBadge(
+                        isEdited = listing.meHighlighted,
+                        modifier = Modifier.align(Alignment.TopEnd).padding(5.dp)
+                    )
                 }
 
                 Column(
@@ -1721,6 +1759,7 @@ fun SchedulingScreenContent(
             listingTitleMap = listingTitleMap,
             allMeetingListings = igListings,
             viewModel = viewModel,
+            isListingEdited = listing.meHighlighted,
             onDismiss = { detailListing = null },
             onViewDetails = { detailListing = null }
         )

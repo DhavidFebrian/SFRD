@@ -12,6 +12,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
@@ -275,6 +276,7 @@ private fun ReelPreviewDialog(reel: ReelItem, viewModel: ScheduleViewModel, onDi
     var playbackErrorMessage by remember(reel.idListing) { mutableStateOf<String?>(null) }
     var useDrivePreview by remember(reel.idListing) { mutableStateOf(false) }
     var driveWebView by remember(reel.idListing) { mutableStateOf<WebView?>(null) }
+    var showFullPreview by remember(reel.idListing) { mutableStateOf(false) }
     DisposableEffect(reel.idListing) {
         onDispose {
             driveWebView?.apply { stopLoading(); loadUrl("about:blank"); destroy() }
@@ -346,25 +348,26 @@ private fun ReelPreviewDialog(reel: ReelItem, viewModel: ScheduleViewModel, onDi
     }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Surface(Modifier.fillMaxSize(), color = Color.Black) {
             Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
                 TopAppBar(
                     title = {
                         Column {
-                            Text("Reels · ${reel.idListing}", fontWeight = FontWeight.Bold)
-                            Text(reel.namaMe, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            Text("Posts · Reels ${reel.idListing}", fontWeight = FontWeight.Bold, color = Color.White)
+                            Text(reel.namaMe, style = MaterialTheme.typography.labelSmall, color = Color(0xFF58A6FF))
                         }
                     },
                     navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kembali") } },
                     actions = {
-                        IconButton(onClick = { openDriveLink(context, reel.driveLink) }) { Icon(Icons.Default.OpenInNew, "Buka Google Drive") }
-                        IconButton(onClick = { enqueueReelDownload(context, reel) }) { Icon(Icons.Default.Download, "Download video") }
-                    }
+                        IconButton(onClick = { openDriveLink(context, reel.driveLink) }) { Icon(Icons.Default.OpenInNew, "Buka Google Drive", tint = Color.White) }
+                        IconButton(onClick = { enqueueReelDownload(context, reel) }) { Icon(Icons.Default.Download, "Download video", tint = Color.White) }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black)
                 )
 
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
                 Box(
-                    Modifier.fillMaxWidth().height(420.dp).background(Color.Black),
+                    Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(Color.Black),
                     contentAlignment = Alignment.Center
                 ) {
                     if (useDrivePreview) {
@@ -449,37 +452,81 @@ private fun ReelPreviewDialog(reel: ReelItem, viewModel: ScheduleViewModel, onDi
                     }
                 }
 
+                OutlinedButton(
+                    onClick = {
+                        player.pause()
+                        showFullPreview = true
+                    },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.28f))
+                ) {
+                    Icon(Icons.Default.Fullscreen, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Full Preview")
+                }
+
                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = .55f)
+                        color = Color(0xFF161B22),
+                        border = BorderStroke(1.dp, Color(0xFF30363D))
                     ) {
                         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                            Text("ID Listing ${reel.idListing}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                            ReelInfoRow("Marketing (ME)", reel.namaMe.ifBlank { "N/A" })
-                            ReelInfoRow("Status Posting IG", if (reel.postingIg) "Sudah Diposting" else "Belum Diposting")
-                            ReelInfoRow("Jadwal Posting", formatPublishJadwalPostingDate(reel.jadwalPosting))
+                            Text("INFORMASI TASK & KONTEN", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFFFFA657))
+                            HorizontalDivider(color = Color(0xFF30363D))
+                            ReelInfoRow("ID Listing", reel.idListing, darkTheme = true)
+                            ReelInfoRow("Marketing (ME)", reel.namaMe.ifBlank { "N/A" }, darkTheme = true)
+                            ReelInfoRow("Status Posting IG", if (reel.postingIg) "Sudah Diposting" else "Belum Diposting", darkTheme = true)
+                            ReelInfoRow("Jadwal Posting", formatPublishJadwalPostingDate(reel.jadwalPosting), darkTheme = true)
                             if (reel.catatan.isNotBlank()) {
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                Text("Catatan", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(reel.catatan, style = MaterialTheme.typography.bodySmall)
+                                Text("Catatan", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = .55f))
+                                Text(reel.catatan, style = MaterialTheme.typography.bodySmall, color = Color.White)
                             }
                         }
                     }
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text("Video Reels", Modifier.weight(1f), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
+                        Text("Video Reels", Modifier.weight(1f), fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge, color = Color.White)
                         FilledTonalButton(onClick = { enqueueReelDownload(context, reel) }) {
                             Icon(Icons.Default.Download, null, Modifier.size(17.dp)); Spacer(Modifier.width(5.dp)); Text("Download")
                         }
                     }
-                    OutlinedTextField(
-                        value = caption,
-                        onValueChange = { caption = it; captionEdited = true },
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 90.dp, max = 150.dp),
-                        label = { Text("Caption Instagram") },
-                        placeholder = { Text("Tulis caption Reels...") }
-                    )
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFF161616),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                    ) {
+                        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.Default.EditNote, contentDescription = null, tint = Color(0xFFFFDF00), modifier = Modifier.size(18.dp))
+                                Text(
+                                    "Pratinjau Caption Posting (Bisa Di-edit):",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFFFDF00)
+                                )
+                            }
+                            OutlinedTextField(
+                                value = caption,
+                                onValueChange = { caption = it; captionEdited = true },
+                                modifier = Modifier.fillMaxWidth().heightIn(min = 140.dp),
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White, fontSize = 13.sp, lineHeight = 18.sp),
+                                placeholder = { Text("Tulis caption postingan...", color = Color.Gray) },
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = Color(0xFF0D1117),
+                                    unfocusedContainerColor = Color(0xFF0D1117),
+                                    focusedBorderColor = Color(0xFFFFDF00).copy(alpha = .8f),
+                                    unfocusedBorderColor = Color(0xFF30363D),
+                                    focusedTextColor = Color.White,
+                                    unfocusedTextColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
+                    }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
                             onClick = { clipboard.setText(AnnotatedString(caption)); Toast.makeText(context, "Caption disalin", Toast.LENGTH_SHORT).show() },
@@ -498,14 +545,79 @@ private fun ReelPreviewDialog(reel: ReelItem, viewModel: ScheduleViewModel, onDi
             }
         }
     }
+
+    if (showFullPreview) {
+        FullReelPreviewDialog(reel = reel, onDismiss = { showFullPreview = false })
+    }
 }
 
 @Composable
-private fun ReelInfoRow(label: String, value: String) {
+private fun ReelInfoRow(label: String, value: String, darkTheme: Boolean = false) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = if (darkTheme) Color.White.copy(alpha = .55f) else MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(12.dp))
-        Text(value, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+        Text(value, style = MaterialTheme.typography.labelSmall, color = if (darkTheme) Color.White else Color.Unspecified, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+    }
+}
+
+@Composable
+private fun FullReelPreviewDialog(reel: ReelItem, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var webView by remember(reel.idListing) { mutableStateOf<WebView?>(null) }
+    DisposableEffect(reel.idListing) {
+        onDispose {
+            webView?.apply { stopLoading(); loadUrl("about:blank"); destroy() }
+            webView = null
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                if (reel.previewUrl.isNotBlank()) {
+                    AndroidView(
+                        factory = {
+                            WebView(context).apply {
+                                webView = this
+                                setBackgroundColor(android.graphics.Color.BLACK)
+                                settings.javaScriptEnabled = true
+                                settings.domStorageEnabled = true
+                                settings.mediaPlaybackRequiresUserGesture = false
+                                settings.useWideViewPort = true
+                                settings.loadWithOverviewMode = true
+                                settings.userAgentString = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+                                CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+                                webChromeClient = WebChromeClient()
+                                webViewClient = WebViewClient()
+                                if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                                    WebViewCompat.addDocumentStartJavaScript(
+                                        this,
+                                        REEL_PLAYER_CONTROLS_SCRIPT,
+                                        setOf("https://drive.google.com")
+                                    )
+                                }
+                                loadUrl(reel.previewUrl)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                    )
+                }
+
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .statusBarsPadding()
+                        .padding(12.dp)
+                        .background(Color.Black.copy(alpha = .68f), CircleShape)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Tutup full preview", tint = Color.White)
+                }
+            }
+        }
     }
 }
 
@@ -537,7 +649,8 @@ private fun buildReelCaption(
         rawPrice = price,
         namaMe = reel.namaMe,
         judulTask = title,
-        scrapedTitle = title
+        scrapedTitle = title,
+        editNotes = reel.catatan
     )
 }
 

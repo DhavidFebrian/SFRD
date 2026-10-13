@@ -1064,6 +1064,7 @@ fun TaskDashboardScreen(
                 listingTitleMap = viewModel.listingTitleMap.collectAsState().value,
                 allMeetingListings = weeklyMeetingIgListings,
                 viewModel = viewModel,
+                isListingEdited = editedIgCells[task.source] == true,
                 onDismiss = { selectedTaskForIgMockup = null },
                 onViewDetails = {
                     selectedScheduleForDetail = mapEditFotoToSchedule(task)
@@ -1855,6 +1856,27 @@ fun TaskUploadIgCard(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
                         modifier = Modifier.size(32.dp)
                     )
+                }
+                if (!isEdited) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.58f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "LISTING\nBELUM EDIT",
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 0.6.sp
+                            ),
+                            modifier = Modifier
+                                .background(Color(0xFFD32F2F).copy(alpha = 0.94f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 12.dp, vertical = 7.dp)
+                        )
+                    }
                 }
                 // Status badge on image top-right
                 Box(
