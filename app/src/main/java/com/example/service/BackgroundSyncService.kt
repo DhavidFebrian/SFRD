@@ -85,9 +85,10 @@ class BackgroundSyncService : Service() {
                         
                         // 1. Sync schedules for all months
                         try {
-                            val months = listOf("Juni 2026", "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026")
+                            val months = listOf("Juni 2026", "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026", "Foto Ulang")
                             val parsedSchedules = mutableListOf<com.example.data.Schedule>()
                             val parsedEditFotoTasks = mutableListOf<com.example.data.EditFotoTask>()
+                            val successfullyFetchedSheets = mutableSetOf<String>()
                             val moshiObj = Moshi.Builder()
                                 .addLast(KotlinJsonAdapterFactory())
                                 .build()
@@ -119,6 +120,7 @@ class BackgroundSyncService : Service() {
                                             parsedSchedules.add(mapSheetScheduleToSchedule(it, monthName))
                                         }
                                     }
+                                    successfullyFetchedSheets.add(monthName)
                                 } catch (e: Exception) {
                                     Log.e("BackgroundSyncService", "Failed to sync month $monthName", e)
                                 }
@@ -128,7 +130,11 @@ class BackgroundSyncService : Service() {
                                 val actualSchedules = parsedSchedules.filter { it.lokasi.isNotBlank() && it.lokasi != "CHAT_MESSAGE" }
                                 if (actualSchedules.isNotEmpty()) {
                                     val unsyncedSchedules = db.scheduleDao().getSchedulesList().filter { !it.synced }
-                                    db.scheduleDao().updateSchedulesTransaction(actualSchedules, unsyncedSchedules)
+                                    db.scheduleDao().updateSchedulesTransaction(
+                                        newSchedules = actualSchedules,
+                                        unsyncedSchedules = unsyncedSchedules,
+                                        fetchedSheetNames = successfullyFetchedSheets
+                                    )
                                     
                                     val finalSchedules = db.scheduleDao().getSchedulesList()
                                     com.example.receiver.AlarmReceiver.syncAllAlarms(applicationContext, finalSchedules)

@@ -21,7 +21,11 @@ interface ScheduleDao {
     suspend fun getSchedulesList(): List<Schedule>
 
     @Transaction
-    suspend fun updateSchedulesTransaction(newSchedules: List<Schedule>, unsyncedSchedules: List<Schedule>) {
+    suspend fun updateSchedulesTransaction(
+        newSchedules: List<Schedule>,
+        unsyncedSchedules: List<Schedule>,
+        fetchedSheetNames: Set<String>
+    ) {
         val existingSchedules = getSchedulesList()
         val existingMap = existingSchedules.associateBy {
             if (it.no > 0 && it.sheetName.isNotBlank()) {
@@ -65,21 +69,20 @@ interface ScheduleDao {
             emptyList()
         }
 
-        val finalSchedulesToInsertWithoutNonAktif = updatedNewSchedules + filteredUnsynced
-        val insertedIds = finalSchedulesToInsertWithoutNonAktif.map { it.id }.toSet()
-        val nonAktifSchedulesToKeep = existingSchedules.filter {
-            val isNonAktif = it.idListing.isNotBlank() &&
-                             it.namaMe.isNotBlank() &&
-                             it.lokasi.isNotBlank() &&
-                             it.tanggal.isBlank() &&
-                             it.jam.isBlank()
-            isNonAktif && !insertedIds.contains(it.id)
-        }
-        val finalSchedulesToInsert = finalSchedulesToInsertWithoutNonAktif + nonAktifSchedulesToKeep
+        // A successfully fetched sheet is authoritative. Do not retain synced rows that
+        // disappeared remotely (especially Foto Ulang / Jadwal Non-Aktif), otherwise
+        // deleted spreadsheet rows accumulate forever in the local database.
+        // `filteredUnsynced` still protects local changes that have not reached Sheets.
+        val finalSchedulesToInsert = updatedNewSchedules + filteredUnsynced
         val idsToKeep = finalSchedulesToInsert.map { it.id }.toSet()
-        val fetchedMonths = newSchedules.map { it.sheetName }.filter { it.isNotBlank() }.distinct().toSet()
+        val normalizedFetchedSheets = fetchedSheetNames
+            .filter { it.isNotBlank() }
+            .map { it.trim().lowercase() }
+            .toSet()
         val idsToDelete = existingSchedules.filter { existing ->
-            !idsToKeep.contains(existing.id) && (fetchedMonths.isEmpty() || fetchedMonths.contains(existing.sheetName))
+            existing.synced &&
+                !idsToKeep.contains(existing.id) &&
+                normalizedFetchedSheets.contains(existing.sheetName.trim().lowercase())
         }.map { it.id }
 
         // Optimize: skip database write entirely if the new state matches the existing state exactly

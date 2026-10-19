@@ -86,6 +86,7 @@ class ScheduleRepository(
         val monthsToSync = listOf("Juni 2026", "Juli 2026", "Agustus 2026", "September 2026", "Oktober 2026", "November 2026", "Desember 2026", "Foto Ulang")
         val schedulesList = mutableListOf<Schedule>()
         val editFotoTaskList = mutableListOf<EditFotoTask>()
+        val successfullyFetchedSheets = mutableSetOf<String>()
         
         var anySuccess = false
         var lastError: Exception? = null
@@ -136,6 +137,7 @@ class ScheduleRepository(
                             schedulesList.add(mapSheetScheduleToSchedule(it, month))
                         }
                     }
+                    successfullyFetchedSheets.add(month)
                     anySuccess = true
                 } catch (e: Exception) {
                     lastError = e
@@ -149,7 +151,11 @@ class ScheduleRepository(
 
         // Sync Schedules in transaction
         val unsyncedSchedules = scheduleDao.getAllSchedules().first().filter { !it.synced }
-        scheduleDao.updateSchedulesTransaction(schedulesList, unsyncedSchedules)
+        scheduleDao.updateSchedulesTransaction(
+            newSchedules = schedulesList,
+            unsyncedSchedules = unsyncedSchedules,
+            fetchedSheetNames = successfullyFetchedSheets
+        )
 
         // Sync Edit Foto Tasks in transaction
         val unsyncedTasks = editFotoTaskDao.getAllEditFotoTasks().first().filter { !it.synced }
