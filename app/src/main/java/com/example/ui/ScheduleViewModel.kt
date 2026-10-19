@@ -41,6 +41,8 @@ data class AgentContact(
     val avatarUrl: String = ""
 )
 
+internal fun resolveWebAutofillValue(webValue: String?): String = webValue?.trim().orEmpty()
+
 val AGENT_CONTACT_LIST = listOf(
     AgentContact("donny", "087877777677", "donny.raywhite@yahoo.com", "donny.raywhite", "https://s3-ap-southeast-1.amazonaws.com/hhproperty/MarketingAgent/49c8a2a7b029496da370b2d445857ce5.jpg"),
     AgentContact("agung", "081808801688", "agung.rwcipete@gmail.com", "agungrwcipete", "https://s3-ap-southeast-1.amazonaws.com/hhproperty/MarketingAgent/76df4404fcde4c45894f190ea993fe28.jpg"),
@@ -3349,6 +3351,12 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch {
             formListingId.map { it.trim() }.distinctUntilChanged().collect { id ->
                 if (id != lastAutofilledId) {
+                    // Do not leave the previous listing's ME/location visible while the
+                    // newly entered listing is being fetched from the web.
+                    if (lastAutofilledId != null) {
+                        formNamaMe.value = ""
+                        formLokasi.value = ""
+                    }
                     lastAutofilledId = null
                 }
                 if (id.isBlank()) {
@@ -3367,7 +3375,9 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 .distinctUntilChanged()
                 .collect { id ->
                     if (id.isNotBlank() && id.length >= 3) {
-                        fetchListingImageIfNeeded(id)
+                        // The Add Schedule autofill must reflect the requested listing URL,
+                        // not an older row for the same ID in Sheets or a stale disk cache.
+                        fetchListingImageIfNeeded(id, forceRefresh = true)
                     }
                 }
         }
@@ -3381,35 +3391,14 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
             ) { currentId, agents, titles, descs ->
                 if (currentId.isNotBlank() && currentId.length >= 3) {
                     val normalizedCurrentId = normalizeIdListing(currentId)
-                    // Pull from the local Room DB (Google Sheets cached values)
-                    val schedules = allSchedules.value
-                    val tasks = allEditFotoTasks.value
-
-                    // 1. Try Google Sheet schedules first
-                    val existingSchedule = schedules.find { 
-                        normalizeIdListing(it.idListing).equals(normalizedCurrentId, ignoreCase = true) && 
-                        it.namaMe.isNotBlank() 
-                    }
-                    // 2. Try Google Sheet edit foto tasks
-                    val existingTask = tasks.find { 
-                        normalizeIdListing(it.idListing).equals(normalizedCurrentId, ignoreCase = true) && 
-                        it.namaMe.isNotBlank() 
-                    }
-
-                    val sheetMe = existingSchedule?.namaMe?.trim() ?: existingTask?.namaMe?.trim()
-                    // Get location from sheet schedule or parse from task title/notes
-                    val sheetLocation = existingSchedule?.lokasi?.trim() ?: existingTask?.judul?.let { parseLocationFromScraped(it, "") } ?: ""
-
                     val scrapedAgent = agents[currentId] ?: agents[normalizedCurrentId]
                     val title = titles[currentId] ?: titles[normalizedCurrentId]
                     val desc = descs[currentId] ?: descs[normalizedCurrentId]
 
-                    // Prioritize sheet ME name if available, otherwise scraped agent name
-                    val finalMe = if (!sheetMe.isNullOrBlank()) sheetMe else scrapedAgent?.name ?: ""
-                    // Prioritize sheet location if available, otherwise scraped location
-                    val finalLoc = if (sheetLocation.isNotBlank()) {
-                        sheetLocation
-                    } else if (!title.isNullOrBlank() || !desc.isNullOrBlank()) {
+                    // Autofill is intentionally web-only. Sheet rows may be manually edited,
+                    // duplicated, or stale and must never override the requested listing page.
+                    val finalMe = resolveWebAutofillValue(scrapedAgent?.name)
+                    val finalLoc = if (!title.isNullOrBlank() || !desc.isNullOrBlank()) {
                         parseLocationFromScraped(title ?: "", desc ?: "")
                     } else {
                         ""
