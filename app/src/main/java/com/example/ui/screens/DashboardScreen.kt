@@ -1087,8 +1087,16 @@ fun DashboardScreen(
                                             imageUrl = listingImagesMap[schedule.idListing.trim()],
                                             isSold = listingSoldMap[schedule.idListing.trim()] == true,
                                             isMeHighlighted = highlightedMeListingIds.contains(schedule.idListing.trim()),
+                                            webAgentName = agentInfoMap[schedule.idListing.trim()]?.name,
                                             onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, schedule.namaMe) },
-                                            onClick = { selectedScheduleForDetail = schedule }
+                                            onClick = {
+                                                selectedScheduleForDetail = schedule.copy(
+                                                    namaMe = resolveListingContactName(
+                                                        spreadsheetName = schedule.namaMe,
+                                                        webListingName = agentInfoMap[schedule.idListing.trim()]?.name
+                                                    )
+                                                )
+                                            }
                                         )
                                     }
                                     if (pair.size > 1) {
@@ -1099,8 +1107,16 @@ fun DashboardScreen(
                                                 imageUrl = listingImagesMap[schedule.idListing.trim()],
                                                 isSold = listingSoldMap[schedule.idListing.trim()] == true,
                                                 isMeHighlighted = highlightedMeListingIds.contains(schedule.idListing.trim()),
+                                                webAgentName = agentInfoMap[schedule.idListing.trim()]?.name,
                                                 onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, schedule.namaMe) },
-                                                onClick = { selectedScheduleForDetail = schedule }
+                                                onClick = {
+                                                    selectedScheduleForDetail = schedule.copy(
+                                                        namaMe = resolveListingContactName(
+                                                            spreadsheetName = schedule.namaMe,
+                                                            webListingName = agentInfoMap[schedule.idListing.trim()]?.name
+                                                        )
+                                                    )
+                                                }
                                             )
                                         }
                                     } else {
@@ -1232,8 +1248,16 @@ fun DashboardScreen(
                                             imageUrl = listingImagesMap[schedule.idListing.trim()],
                                             isSold = listingSoldMap[schedule.idListing.trim()] == true,
                                             isMeHighlighted = highlightedMeListingIds.contains(schedule.idListing.trim()),
+                                            webAgentName = agentInfoMap[schedule.idListing.trim()]?.name,
                                             onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, schedule.namaMe) },
-                                            onClick = { selectedScheduleForDetail = schedule }
+                                            onClick = {
+                                                selectedScheduleForDetail = schedule.copy(
+                                                    namaMe = resolveListingContactName(
+                                                        spreadsheetName = schedule.namaMe,
+                                                        webListingName = agentInfoMap[schedule.idListing.trim()]?.name
+                                                    )
+                                                )
+                                            }
                                         )
                                     }
                                     if (pair.size > 1) {
@@ -1244,8 +1268,16 @@ fun DashboardScreen(
                                                 imageUrl = listingImagesMap[schedule.idListing.trim()],
                                                 isSold = listingSoldMap[schedule.idListing.trim()] == true,
                                                 isMeHighlighted = highlightedMeListingIds.contains(schedule.idListing.trim()),
+                                                webAgentName = agentInfoMap[schedule.idListing.trim()]?.name,
                                                 onFetchImage = { id -> viewModel.fetchListingImageIfNeeded(id, schedule.namaMe) },
-                                                onClick = { selectedScheduleForDetail = schedule }
+                                                onClick = {
+                                                    selectedScheduleForDetail = schedule.copy(
+                                                        namaMe = resolveListingContactName(
+                                                            spreadsheetName = schedule.namaMe,
+                                                            webListingName = agentInfoMap[schedule.idListing.trim()]?.name
+                                                        )
+                                                    )
+                                                }
                                             )
                                         }
                                     } else {
@@ -1346,12 +1378,18 @@ private fun SoldWatermark(modifier: Modifier = Modifier) {
     }
 }
 
+internal fun resolveListingContactName(
+    spreadsheetName: String,
+    webListingName: String?
+): String = webListingName?.trim().takeUnless { it.isNullOrBlank() } ?: spreadsheetName.trim()
+
 @Composable
 fun MediaScheduleCard(
     schedule: Schedule,
     imageUrl: String?,
     isSold: Boolean,
     isMeHighlighted: Boolean = false,
+    webAgentName: String? = null,
     onFetchImage: (String) -> Unit,
     onClick: () -> Unit
 ) {
@@ -1493,7 +1531,11 @@ fun MediaScheduleCard(
                 )
 
                 // ME details with highlight support
-                if (schedule.namaMe.isNotBlank()) {
+                val displayedMeName = resolveListingContactName(
+                    spreadsheetName = schedule.namaMe,
+                    webListingName = webAgentName
+                )
+                if (displayedMeName.isNotBlank()) {
                     Spacer(modifier = Modifier.height(2.dp))
                     Box(
                         modifier = Modifier
@@ -1518,7 +1560,7 @@ fun MediaScheduleCard(
                                 modifier = Modifier.size(10.dp)
                             )
                             Text(
-                                text = "ME: ${schedule.namaMe}",
+                                text = "ME: $displayedMeName",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontSize = 9.sp,
                                     fontWeight = if (isMeHighlighted) FontWeight.Bold else FontWeight.Normal
