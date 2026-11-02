@@ -61,7 +61,7 @@ val AGENT_CONTACT_LIST = listOf(
     AgentContact("resmi", "081380620625", "resmi.raywhite@gmail.com", "", "https://s3-ap-southeast-1.amazonaws.com/hhproperty/MarketingAgent/d0f6229f97b44b5391a670a49b491976.jpg"),
     AgentContact("sam", "081298070006", "sam.rwcipete@gmail.com", "samsuperagent", "https://s3-ap-southeast-1.amazonaws.com/hhproperty/MarketingAgent/b56e268949314c07836bdc7c147b6097.png"),
     AgentContact("santiaji", "085219698553", "ajisantiaji88@gmail.com", "", "https://s3-ap-southeast-1.amazonaws.com/hhproperty/MarketingAgent/fa937a9a751f47f185d1f5f6751992a8.jpg"),
-    AgentContact("vincent", "081212892189", "vincent@raywhitecipete.net", "vincentbrata", "https://s3-ap-southeast-1.amazonaws.com/hhproperty/MarketingAgent/77f71d4c791a430a9064cbee1a095441.jpg"),
+    AgentContact("vincent", "081212892189", "vincent@raywhitecipete.net", "by.vproperty", "https://s3-ap-southeast-1.amazonaws.com/hhproperty/MarketingAgent/77f71d4c791a430a9064cbee1a095441.jpg"),
     AgentContact("yayan", "082114005670", "yayanhb2005@gmail.com", "raywhite_yayan", "https://s3-ap-southeast-1.amazonaws.com/hhproperty/MarketingAgent/6de32af7a6ae4661ad21dd78f23fa8da.jpg"),
     AgentContact("haryadi", "08111373777", "haryadi.raywhite@gmail.com", "Haryadi.raywhite", "https://s3-ap-southeast-1.amazonaws.com/hhproperty/MarketingAgent/8e79bb1daff74ba587f0eadf26c9b399.png"),
     AgentContact("rony", "0811190046", "rony.raywhitecipete@gmail.com", "rony.raywhitecipete", "https://s3-ap-southeast-1.amazonaws.com/hhproperty/MarketingAgent/8fdc71d7862e4d7ba439058003ea91fc.jpg"),
@@ -3324,14 +3324,18 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                         dao.insertAllAgentContacts(missingPresets)
                     }
 
-                    // 2. Update blank avatarUrls for existing contacts if they have a preset avatar
-                    val toUpdate = existing.filter { it.avatarUrl.isBlank() }.mapNotNull { ent ->
+                    // 2. Reconcile required preset updates while preserving user-managed contact fields.
+                    val toUpdate = existing.mapNotNull { ent ->
                         val preset = AGENT_CONTACT_LIST.find { it.nameKey == ent.nameKey }
-                        if (preset != null && preset.avatarUrl.isNotBlank()) {
-                            ent.copy(avatarUrl = preset.avatarUrl)
-                        } else {
-                            null
-                        }
+                        val updatedAvatar = if (ent.avatarUrl.isBlank() && !preset?.avatarUrl.isNullOrBlank()) {
+                            preset?.avatarUrl.orEmpty()
+                        } else ent.avatarUrl
+                        val updatedInstagram = if (ent.nameKey == "vincent") {
+                            preset?.instagram ?: ent.instagram
+                        } else ent.instagram
+
+                        ent.copy(avatarUrl = updatedAvatar, instagram = updatedInstagram)
+                            .takeIf { it != ent }
                     }
                     if (toUpdate.isNotEmpty()) {
                         dao.insertAllAgentContacts(toUpdate)
