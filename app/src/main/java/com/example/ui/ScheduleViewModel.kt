@@ -41,6 +41,30 @@ data class AgentContact(
     val avatarUrl: String = ""
 )
 
+internal fun buildPublishMonths(now: Calendar = Calendar.getInstance()): List<String> {
+    val firstYear = 2026
+    val firstMonth = Calendar.JUNE
+    val lastYear = now.get(Calendar.YEAR).coerceAtLeast(firstYear)
+    val lastMonth = if (lastYear == firstYear) {
+        now.get(Calendar.MONTH).coerceAtLeast(firstMonth)
+    } else {
+        Calendar.DECEMBER
+    }
+    val monthNames = listOf(
+        "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+        "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+    )
+
+    val months = buildList {
+        for (year in firstYear..lastYear) {
+            val start = if (year == firstYear) firstMonth else Calendar.JANUARY
+            val end = if (year == lastYear) lastMonth else Calendar.DECEMBER
+            for (month in start..end) add("${monthNames[month]} $year")
+        }
+    }
+    return listOf("Semua Bulan") + months.asReversed()
+}
+
 internal fun resolveWebAutofillValue(webValue: String?): String = webValue?.trim().orEmpty()
 
 val AGENT_CONTACT_LIST = listOf(
@@ -666,14 +690,7 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
     private val _meetingSyncStatus = MutableStateFlow<SyncState>(SyncState.Idle)
     val meetingSyncStatus: StateFlow<SyncState> = _meetingSyncStatus.asStateFlow()
 
-    val ALL_PUBLISH_MONTHS = listOf(
-        "Semua Bulan",
-        "September 2026",
-        "Oktober 2026",
-        "Agustus 2026",
-        "Juli 2026",
-        "Juni 2026"
-    )
+    val ALL_PUBLISH_MONTHS = buildPublishMonths()
 
     val publishSelectedMonth = MutableStateFlow(
         preferenceManager.publishSelectedMonth.ifBlank { "Semua Bulan" }
@@ -1325,7 +1342,10 @@ class ScheduleViewModel(application: Application) : AndroidViewModel(application
                 var anySuccess: Boolean
 
                 if (isSemua) {
-                    val monthsToFetch = listOf("Juni", "Juli", "Agustus", "September", "Oktober")
+                    val monthsToFetch = ALL_PUBLISH_MONTHS
+                        .drop(1)
+                        .map { it.substringBeforeLast(" ") }
+                        .distinct()
                     val results = monthsToFetch.map { m ->
                         async(kotlinx.coroutines.Dispatchers.IO) {
                             val encodedSheet = java.net.URLEncoder.encode(getWeeklyMeetingSheetNameForMonth(m), "UTF-8")
